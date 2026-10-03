@@ -1,0 +1,52 @@
+<Window x:Class="ThinkVisionControl.Ui.FinderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Find hidden settings — ThinkVision Control"
+        Style="{StaticResource DarkWindow}"
+        Width="520" Height="660" MinWidth="420" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20,16,20,20">
+            <TextBlock Text="Find hidden settings" Style="{StaticResource HeaderText}" />
+            <TextBlock Margin="0,6,0,0" Style="{StaticResource MutedText}"
+                       Text="This only reads from the monitor — nothing is written here. It compares Lenovo's undocumented codes before and after you change one setting with the monitor's own buttons, so you can name what each code controls. A named code then appears under Advanced in the panel." />
+
+            <TextBlock Text="STEP 1" Style="{StaticResource SectionText}" />
+            <DockPanel>
+                <Button x:Name="SnapshotButton" Content="Take snapshot" Click="Snapshot_Click" />
+                <TextBlock x:Name="SnapshotInfo" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource MutedText}" />
+            </DockPanel>
+
+            <TextBlock Text="STEP 2" Style="{StaticResource SectionText}" />
+            <TextBlock TextWrapping="Wrap"
+                       Text="Now change ONE setting with the monitor's buttons (e.g. Over Drive), then press Compare." />
+
+            <TextBlock Text="STEP 3" Style="{StaticResource SectionText}" />
+            <Button x:Name="CompareButton" Content="Compare" HorizontalAlignment="Left" IsEnabled="False" Click="Compare_Click" />
+            <ListBox x:Name="ChangesList" Margin="0,8,0,0" MinHeight="60" MaxHeight="160" SelectionChanged="ChangesList_SelectionChanged" />
+
+            <StackPanel x:Name="NamingPanel" Visibility="Collapsed">
+                <TextBlock Text="NAME THIS SETTING" Style="{StaticResource SectionText}" />
+                <DockPanel>
+                    <TextBlock Text="Setting name" Width="120" VerticalAlignment="Center" />
+                    <TextBox x:Name="NameBox" />
+                </DockPanel>
+                <TextBlock Margin="0,10,0,4" Style="{StaticResource MutedText}"
+                           Text="Name the values you know (cycle through them with the monitor's buttons and compare again if needed). Unnamed values keep their hex code." />
+                <ItemsControl x:Name="ValuesList" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,2">
+                                <TextBlock Text="{Binding Caption}" Width="120" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Margin="0,10,0,0" HorizontalAlignment="Right" Content="Save" Click="Save_Click" />
+            </StackPanel>
+
+            <TextBlock x:Name="StatusText" Margin="0,12,0,0" Style="{StaticResource WarnText}" />
+        </StackPanel>
+    </ScrollViewer>
+</Window>
