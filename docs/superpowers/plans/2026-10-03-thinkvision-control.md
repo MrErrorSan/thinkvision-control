@@ -4,7 +4,7 @@ overview: C# .NET 10 WPF tray app that controls the Lenovo P32p-20 over DDC/CI �
 todos:
   - id: hw-write-test
     content: Hardware write gate — brightness 0→20→0 via dxva2 SetVCPFeature from a scratch PowerShell script; confirm the monitor obeys and reads back
-    status: pending
+    status: completed
     parallel: true
   - id: scaffold
     content: Install .NET 10 SDK; create slnx, Core/App/Tests projects, feature branch; land the pinned contracts as compiling stubs
@@ -190,6 +190,10 @@ The default `AppSettings` match §3.4 and §3.5 exactly. `ThisMachineInput` defa
    - `Read` and `Write` return `false` from dxva2 on failure and throw `DdcException`.
    - Call `DestroyPhysicalMonitors` on reconnect and on dispose.
    - `DdcQueue` runs one long-lived worker task fed by a `Channel`.
+   - **Measured on the real monitor (hw-write-test):** after a write that changes a value, reads fail for about 230–300+ ms (0→20 still failed at 300 ms). Rules:
+     - After any `Write`, the next command waits at least 400 ms.
+     - Reads retry up to 5 times with a 150 ms gap before throwing `DdcException`.
+     - Writes are not read back immediately. `ControlService` updates its cache optimistically and confirms on the next refresh.
 4. **profile:**
    - The parser handles nested parentheses and hex tokens, and must survive the real `C6(...)` payload and the firmware bytes in `04(...)`.
    - `ProfileStore` resolves names and safety. Codes from the capabilities that are missing from the profile become Hidden + `ReadOnlyUntilNamed`.
