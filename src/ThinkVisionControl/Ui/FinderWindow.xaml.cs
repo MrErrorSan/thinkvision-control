@@ -1,0 +1,155 @@
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Interop;
+using ThinkVisionControl.Core.Control;
+using ThinkVisionControl.Core.Finder;
+using ThinkVisionControl.Core.Profile;
+
+namespace ThinkVisionControl.Ui;
+
+/// <summary>Read-only snapshot → change one OSD setting → diff → name the code (saved to the user profile overlay).</summary>
+public partial class FinderWindow : Window
+{
+    readonly ControlService _control;
+    readonly ProfileStore _profiles;
+    IReadOnlyDictionary<byte, uint>? _before;
+    List<FinderValue> _values = [];
+
+    public FinderWindow(ControlService control, ProfileStore profiles)
+    {
+        InitializeComponent();
+        _control = control;
+        _profiles = profiles;
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var dark = 1;
+        DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+    }
+
+    async void Snapshot_Click(object sender, RoutedEventArgs e)
+    {
+        SetBusy(true, "Reading the monitor…");
+        try
+        {
+            _before = await Task.Run(() => VendorCodeFinder.SnapshotAsync(_control));
+            SnapshotInfo.Text = $"Snapshot taken ({_before.Count} codes).";
+            CompareButton.IsEnabled = true;
+            ChangesList.ItemsSource = null;
+            NamingPanel.Visibility = Visibility.Collapsed;
+            StatusText.Text = "";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Could not read the monitor: " + ex.Message;
+        }
+        finally
+        {
+            SetBusy(false, null);
+        }
+    }
+
+    async void Compare_Click(object sender, RoutedEventArgs e)
+    {
+        if (_before is null) return;
+        SetBusy(true, "Reading the monitor…");
+        try
+        {
+            var after = await Task.Run(() => VendorCodeFinder.SnapshotAsync(_control));
+            var changes = VendorCodeFinder.Diff(_before, after);
+            ChangesList.ItemsSource = changes.Select(c => new ChangeRow(c, NamedAs(c.Code)?.Name)).ToList();
+            NamingPanel.Visibility = Visibility.Collapsed;
+            StatusText.Text = changes.Count == 0
+                ? "Nothing changed. Make sure the setting really changed on screen, then press Compare again."
+                : "Select a change to name it.";
+            if (changes.Count == 1) ChangesList.SelectedIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Could not read the monitor: " + ex.Message;
+        }
+        finally
+        {
+            SetBusy(false, null);
+        }
+    }
+
+    void ChangesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ChangesList.SelectedItem is not ChangeRow row)
+        {
+            NamingPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var change = row.Change;
+        var existing = NamedAs(change.Code);
+        IEnumerable<byte> allowed = _control.Capabilities?.Vcp.TryGetValue(change.Code, out var list) == true && list is not null
+            ? list
+            : new[] { change.Before, change.After }.Where(v => v <= byte.MaxValue).Select(v => (byte)v).Distinct().Order();
+
+        _values = allowed.Select(v => new FinderValue(v,
+                v == change.Before ? " (before)" : v == change.After ? " (now)" : "",
+                existing?.ValueLabels.TryGetValue(v, out var label) == true ? label : ""))
+            .ToList();
+        ValuesList.ItemsSource = _values;
+        NameBox.Text = existing?.Name ?? "";
+        NamingPanel.Visibility = Visibility.Visible;
+        NameBox.Focus();
+    }
+
+    void Save_Click(object sender, RoutedEventArgs e)
+    {
+        if (ChangesList.SelectedItem is not ChangeRow row) return;
+        var name = NameBox.Text.Trim();
+        if (name.Length == 0)
+        {
+            StatusText.Text = "Enter a name for the setting first.";
+            return;
+        }
+
+        var labels = _values.Where(v => !string.IsNullOrWhiteSpace(v.Label)).ToDictionary(v => v.Value, v => v.Label.Trim());
+        try
+        {
+            _profiles.SaveOverlay(new ControlDefinition(row.Change.Code, name, ControlKind.Enum, PanelSection.Advanced,
+                SafetyClass.Normal, labels));
+            _control.ReloadProfile();
+            StatusText.Text = $"Saved \"{name}\" (0x{row.Change.Code:X2}). It now appears under Advanced in the panel.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "Could not save: " + ex.Message;
+        }
+    }
+
+    ControlDefinition? NamedAs(byte code) =>
+        _control.Controls.TryGetValue(code, out var def) && def.Section != PanelSection.Hidden ? def : null;
+
+    void SetBusy(bool busy, string? message)
+    {
+        SnapshotButton.IsEnabled = !busy;
+        CompareButton.IsEnabled = !busy && _before is not null;
+        if (message is not null) StatusText.Text = message;
+    }
+
+    internal sealed record ChangeRow(CodeChange Change, string? Name)
+    {
+        public override string ToString() =>
+            $"0x{Change.Code:X2}{(Name is null ? "" : $" ({Name})")}: {Change.Before} → {Change.After}";
+    }
+
+    internal sealed class FinderValue(byte value, string note, string label)
+    {
+        public byte Value { get; } = value;
+        public string Caption { get; } = $"0x{value:X2}{note}";
+        public string Label { get; set; } = label;
+    }
+
+    const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+    [DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+}

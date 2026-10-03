@@ -1,0 +1,146 @@
+<Window x:Class="ThinkVisionControl.Ui.PanelWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:ThinkVisionControl.Ui"
+        Title="ThinkVision Control"
+        Style="{StaticResource ChromelessWindow}"
+        Width="360" SizeToContent="Height"
+        Topmost="True" ShowInTaskbar="False" WindowStartupLocation="Manual">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type ui:RangeItem}">
+            <StackPanel Margin="0,4" Visibility="{Binding IsShown, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding ValueText}" Style="{StaticResource ValueText}" />
+                    <TextBlock Text="{Binding Name}" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="{Binding Max, Mode=OneWay}" Value="{Binding Value, Mode=OneWay}"
+                        SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" TickFrequency="1"
+                        ValueChanged="Slider_ValueChanged" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type ui:EnumItem}">
+            <DockPanel Margin="0,4" Visibility="{Binding IsShown, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding Name}" Width="120" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" />
+            </DockPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type ui:ToggleRowItem}">
+            <StackPanel Margin="0,4" Visibility="{Binding IsShown, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding Name}" Margin="0,0,0,4" />
+                <ItemsControl ItemsSource="{Binding Options}" Margin="-2,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Rows="1" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <ToggleButton Margin="2,0" Content="{Binding Label}" IsChecked="{Binding IsActive, Mode=OneWay}"
+                                          Command="{Binding DataContext.Select, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                          CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type ui:ActionItem}">
+            <Button Margin="0,3" Content="{Binding Name}" Command="{Binding Run}" />
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type ui:HotkeyItem}">
+            <StackPanel Margin="0,2">
+                <DockPanel>
+                    <TextBox DockPanel.Dock="Right" Width="170" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+                <TextBlock Text="{Binding Error}" Style="{StaticResource WarnText}" FontSize="11" HorizontalAlignment="Right" />
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+
+    <DockPanel Margin="16,14,8,12">
+        <!-- Header -->
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,8,6">
+            <DockPanel>
+                <Ellipse DockPanel.Dock="Right" Width="10" Height="10" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource OffBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsResponding}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource GoodBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="ThinkVision P32p-20" Style="{StaticResource HeaderText}" />
+            </DockPanel>
+            <TextBlock Text="{Binding RespondingText}" Style="{StaticResource WarnText}" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <!-- Status line -->
+        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,8,0" Text="{Binding Status}">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource WarnText}">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding StatusIsError}" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+            <StackPanel Margin="0,0,8,0">
+                <ItemsControl ItemsSource="{Binding MainItems}" Focusable="False" />
+
+                <TextBlock Text="PRESETS" Style="{StaticResource SectionText}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" Content="Day" Click="Day_Click" />
+                    <Button Grid.Column="1" Content="save" Style="{StaticResource SmallButton}" Margin="4,0,0,0" Click="SaveDay_Click"
+                            ToolTip="Store the current brightness, contrast and colour mode as the Day preset" />
+                    <Button Grid.Column="3" Content="Night" Click="Night_Click" />
+                    <Button Grid.Column="4" Content="save" Style="{StaticResource SmallButton}" Margin="4,0,0,0" Click="SaveNight_Click"
+                            ToolTip="Store the current brightness, contrast and colour mode as the Night preset" />
+                </Grid>
+
+                <Expander x:Name="AdvancedExpander" Header="Advanced" Margin="0,12,0,0" Expanded="Advanced_Expanded">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding AdvancedItems}" Focusable="False" />
+
+                        <TextBlock Text="RESETS" Style="{StaticResource SectionText}" />
+                        <ItemsControl ItemsSource="{Binding ActionItems}" Focusable="False" />
+                        <Button Margin="0,3" Content="Restore backup" Click="Restore_Click"
+                                ToolTip="Re-apply the values saved automatically before the last reset" />
+
+                        <TextBlock Text="THIS MACHINE" Style="{StaticResource SectionText}" />
+                        <DockPanel Margin="0,4">
+                            <TextBlock Text="This machine's input" Width="140" VerticalAlignment="Center" />
+                            <ComboBox ItemsSource="{Binding InputChoices}" SelectedValuePath="Value"
+                                      SelectedValue="{Binding ThisMachineInput}" />
+                        </DockPanel>
+                        <CheckBox Margin="0,6" Content="Start with Windows" IsChecked="{Binding StartWithWindows}" />
+
+                        <TextBlock Text="HOTKEYS" Style="{StaticResource SectionText}" />
+                        <ItemsControl ItemsSource="{Binding Hotkeys}" Focusable="False" />
+                        <Button Margin="0,6,0,0" HorizontalAlignment="Right" Content="Save hotkeys" Click="SaveHotkeys_Click" />
+
+                        <Button Margin="0,14,0,4" Content="Find hidden settings…" Click="Finder_Click" />
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
