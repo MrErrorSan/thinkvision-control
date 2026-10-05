@@ -18,6 +18,8 @@ public partial class App : Application
     const byte Hdmi = 0x11, DisplayPort = 0x0F, UsbC = 0x31;
 
     Mutex? _singleInstance;
+    EventWaitHandle? _showSignal;
+    RegisteredWaitHandle? _showWait;
     Dxva2MonitorLink? _link;
     ControlService? _control;
     HotkeyManager? _hotkeys;
@@ -32,11 +34,16 @@ public partial class App : Application
         base.OnStartup(e);
 
         _singleInstance = new Mutex(true, "ThinkVisionControl.SingleInstance", out var isFirst);
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, "ThinkVisionControl.Show");
         if (!isFirst)
         {
+            // Already running (possibly hidden in the tray): ask that instance to show its window.
+            _showSignal.Set();
             Shutdown();
             return;
         }
+        _showWait = ThreadPool.RegisterWaitForSingleObject(_showSignal,
+            (_, _) => Dispatcher.BeginInvoke(() => _panel?.ShowMainWindow()), null, Timeout.Infinite, executeOnlyOnce: false);
 
         var dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ThinkVisionControl");
         FileLog.Initialize(dataDir);
@@ -72,7 +79,8 @@ public partial class App : Application
         _displayEvents = new DisplayEvents(_control.ReconnectAsync);
 
         ApplySettings(_settings);
-        if (!_settings.BackgroundMode) _panel.ShowMainWindow();
+        // Only a Windows-startup launch in background mode stays hidden; opening the app yourself shows the window.
+        if (!_settings.BackgroundMode || !e.Args.Contains(StartupRegistration.StartupArgument)) _panel.ShowMainWindow();
         _ = StartControlAsync();
     }
 
@@ -84,6 +92,8 @@ public partial class App : Application
         _tray?.Dispose();
         _control?.Dispose();
         _link?.Dispose();
+        _showWait?.Unregister(null);
+        _showSignal?.Dispose();
         _singleInstance?.Dispose();
         base.OnExit(e);
     }

@@ -8,39 +8,39 @@ todos:
     parallel: true
   - id: scaffold
     content: Install .NET 10 SDK; create slnx, Core/App/Tests projects, feature branch; land the pinned contracts as compiling stubs
-    status: pending
+    status: completed
     parallel: true
   - id: ddc-link
     content: NativeMethods, Dxva2MonitorLink (find LEN62A2 by device ID), DdcQueue (serial, 50 ms spacing, 3 retries)
-    status: pending
+    status: completed
     depends-on: scaffold
   - id: profile
     content: CapabilitiesParser, embedded p32p20.profile.json, ProfileStore (embedded + user overlay merge)
-    status: pending
+    status: completed
     depends-on: scaffold
   - id: settings
     content: AppSettings/Preset records, SettingsStore (defaults, corrupt → .bak), HotkeyGesture parser, FileLog
-    status: pending
+    status: completed
     depends-on: scaffold
   - id: control
     content: SafetyPolicy, ControlService (cache, events, throttle, presets, step), BackupStore; VendorCodeFinder diff
-    status: pending
+    status: completed
     depends-on: scaffold
   - id: ui
     content: PanelWindow + PanelViewModel, OsdWindow, FinderWindow, dark theme resources
-    status: pending
+    status: completed
     depends-on: scaffold
   - id: app-shell
     content: App startup/single instance/composition, TrayIcon, HotkeyManager, StartupRegistration, DisplayEvents
-    status: pending
+    status: completed
     depends-on: ddc-link, profile, settings, control, ui
   - id: tests
     content: FakeMonitorLink + focused xUnit tests for parser, profile merge, safety, control service, settings, hotkeys, finder diff, backup
-    status: pending
+    status: completed
     depends-on: app-shell
   - id: hw-checks
     content: With the user — read/write each control, map 0x14 and 0x86 value names into the profile, sleep/resume + re-plug reconnect
-    status: pending
+    status: in_progress
     depends-on: tests
   - id: publish
     content: Single-file self-contained win-x64 publish; smoke-run the exe
@@ -49,6 +49,8 @@ todos:
 ---
 
 # ThinkVision Control v1 — implementation plan
+
+> **Status 2026-10-05:** built and tested (48 tests). After this plan, the UI moved from a tray flyout to a main window with background / interface-only run modes, and range sliders switched from throttled writes to an explicit Apply with a verified read-back. The spec is the current source of truth for those changes. Hardware checks are partly done: colour modes and the vendor codes E0/EA/EC are mapped. Still to do: aspect-ratio names, sleep/resume, the inactive-input test, and publishing.
 
 Spec: [docs/superpowers/specs/2026-10-03-thinkvision-control-design.md](../specs/2026-10-03-thinkvision-control-design.md). The spec's section numbers are referenced as §n.
 

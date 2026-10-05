@@ -62,24 +62,6 @@ public sealed class ControlServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Throttled_slider_detects_monitor_rejecting_a_range_value()
-    {
-        await _control.StartAsync();
-        _link.IgnoredWrites.Add(0x10);
-        var completion = new TaskCompletionSource<WriteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _control.ThrottledWriteCompleted += (_, result) => completion.TrySetResult(result);
-
-        _control.SetThrottled(0x10, 20);
-        var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(WriteOutcome.Blocked, result.Outcome);
-        Assert.Contains("Brightness remains 0", result.Message);
-        Assert.Contains("color mode may lock brightness", result.Message);
-        Assert.True(_control.TryGetCached(0x10, out var reading));
-        Assert.Equal(0u, reading.Current);
-    }
-
-    [Fact]
     public async Task Direct_range_write_verifies_the_monitor_applied_the_requested_value()
     {
         await _control.StartAsync();
@@ -158,30 +140,18 @@ public sealed class ControlServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Throttled_slider_sends_few_writes_and_latest_wins()
+    public async Task Range_write_detects_monitor_rejecting_the_value()
     {
         await _control.StartAsync();
+        _link.IgnoredWrites.Add(0x10); // e.g. brightness locked by a calibrated colour mode
 
-        for (uint v = 1; v <= 20; v++) _control.SetThrottled(0x10, v);
-        await WaitUntil(() => _link.Values[0x10].Current == 20);
+        var result = await _control.SetAsync(0x10, 20);
 
-        Assert.True(_link.Writes.Count <= 3, $"{_link.Writes.Count} writes");
-        Assert.Equal(((byte)0x10, 20u), _link.Writes[^1]);
-    }
-
-    [Fact]
-    public async Task Throttled_slider_reports_monitor_write_failures()
-    {
-        await _control.StartAsync();
-        var completion = new TaskCompletionSource<WriteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _control.ThrottledWriteCompleted += (_, result) => completion.TrySetResult(result);
-        _link.Dead = true;
-
-        _control.SetThrottled(0x10, 20);
-        var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(WriteOutcome.NotResponding, result.Outcome);
-        Assert.Contains("not responding", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(WriteOutcome.Blocked, result.Outcome);
+        Assert.Contains("Brightness remains 0", result.Message);
+        Assert.Contains("color mode may lock brightness", result.Message);
+        Assert.True(_control.TryGetCached(0x10, out var reading));
+        Assert.Equal(0u, reading.Current);
     }
 
     [Fact]
@@ -205,11 +175,5 @@ public sealed class ControlServiceTests : IDisposable
 
         Assert.Equal([new CodeChange(0xEB, 0, 1)], VendorCodeFinder.Diff(before, after));
         Assert.Empty(_link.Writes);
-    }
-
-    static async Task WaitUntil(Func<bool> condition)
-    {
-        for (var i = 0; i < 100 && !condition(); i++) await Task.Delay(50);
-        Assert.True(condition());
     }
 }

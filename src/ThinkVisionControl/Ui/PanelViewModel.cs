@@ -59,7 +59,6 @@ public sealed class PanelViewModel : Observable
     bool _statusIsError;
     int _activeOperations;
     string _busyMessage = "";
-    string? _throttledWriteError;
     bool _controlsBuilt;
 
     public PanelViewModel(ControlService control, SettingsStore settingsStore, ProfileStore profiles,
@@ -74,8 +73,6 @@ public sealed class PanelViewModel : Observable
 
         control.ValueChanged += (code, value) => _dispatcher.InvokeAsync(() => OnValueChanged(code, value));
         control.RespondingChanged += responding => _dispatcher.InvokeAsync(() => OnRespondingChanged(responding));
-        control.ThrottledWriteCompleted += (code, result) =>
-            _dispatcher.InvokeAsync(() => OnThrottledWriteCompleted(code, result));
     }
 
     internal ControlService Control => _control;
@@ -245,23 +242,6 @@ public sealed class PanelViewModel : Observable
         if (code == ColourMode) UpdateRgbVisibility();
     }
 
-    void OnThrottledWriteCompleted(byte code, WriteResult result)
-    {
-        if (result.Outcome == WriteOutcome.Ok)
-        {
-            if (_throttledWriteError is not null && Status == _throttledWriteError)
-                SetStatus("", false);
-            _throttledWriteError = null;
-            return;
-        }
-
-        _throttledWriteError = result.Message;
-        if (_items.TryGetValue(code, out var item) && item is RangeItem range
-            && _control.TryGetCached(code, out var reading))
-            range.SyncFromMonitor(reading.Current, reading.Max);
-        SetStatus(result.Message, true);
-    }
-
     internal async Task ApplyRangeAsync(RangeItem range)
     {
         if (!range.TryStartApply(out var value)) return;
@@ -306,12 +286,6 @@ public sealed class PanelViewModel : Observable
     }
 
     uint? Cached(byte code) => _control.TryGetCached(code, out var r) ? r.Current : null;
-
-    internal void SetThrottled(byte code, uint value)
-    {
-        try { _control.SetThrottled(code, value); }
-        catch (Exception ex) { SetStatus(ex.Message, true); }
-    }
 
     internal async Task WriteAsync(byte code, uint value)
     {

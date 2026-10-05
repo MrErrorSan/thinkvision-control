@@ -14,13 +14,10 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 {
     private const byte ColourMode = 0x14, Brightness = 0x10, Contrast = 0x12;
     private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(100);
     private static readonly WriteResult NotRespondingResult = new(WriteOutcome.NotResponding, "Monitor not responding");
 
     private readonly Lock gate = new();
     private readonly Dictionary<byte, VcpReading> cache = [];
-    private readonly Dictionary<byte, uint> pending = [];
-    private readonly HashSet<byte> flushing = [];
     private Timer? reconnectTimer;
     private int reconnecting;
     private bool responding;
@@ -28,7 +25,6 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 
     public event Action<byte, uint>? ValueChanged;
     public event Action<bool>? RespondingChanged;
-    public event Action<byte, WriteResult>? ThrottledWriteCompleted;
 
     public bool IsResponding { get { lock (gate) return responding; } }
     public MonitorCapabilities? Capabilities { get; private set; }
@@ -181,52 +177,6 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         }
 
         return await SetAsync(code, (uint)Math.Clamp((long)reading.Current + delta, 0, reading.Max));
-    }
-
-    /// <summary>Slider path: latest value wins, at most ~10 writes per second.</summary>
-    public void SetThrottled(byte code, uint value)
-    {
-        lock (gate)
-        {
-            pending[code] = value;
-            if (!flushing.Add(code)) return;
-        }
-        _ = Task.Run(() => FlushAsync(code));
-    }
-
-    private async Task FlushAsync(byte code)
-    {
-        try
-        {
-            while (true)
-            {
-                uint value;
-                lock (gate)
-                {
-                    if (!pending.Remove(code, out value))
-                    {
-                        flushing.Remove(code);
-                        return;
-                    }
-                }
-
-                var interval = Task.Delay(ThrottleInterval);
-                var result = await SetAsync(code, value);
-                ThrottledWriteCompleted?.Invoke(code, result);
-                await interval;
-            }
-        }
-        catch (Exception ex)
-        {
-            FileLog.Write($"Throttled write 0x{code:X2} failed: {ex.Message}");
-            ThrottledWriteCompleted?.Invoke(code,
-                new WriteResult(WriteOutcome.NotResponding, $"Update for 0x{code:X2} failed: {ex.Message}"));
-            lock (gate)
-            {
-                pending.Remove(code);
-                flushing.Remove(code);
-            }
-        }
     }
 
     public async Task<WriteResult> ApplyPresetAsync(Preset preset)
