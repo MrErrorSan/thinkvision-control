@@ -25,7 +25,8 @@
       "values": { "0x00": "Off", "0x01": "On" }, "confirm": null },
     { "code": "0xEC", "name": "USB Charging", "kind": "Enum", "section": "Advanced", "safety": "Normal",
       "values": { "0x00": "Off", "0x01": "On" }, "confirm": null },
-    { "code": "0x86", "name": "Aspect ratio", "kind": "Enum", "section": "Advanced", "safety": "Normal", "values": {}, "confirm": null },
+    { "code": "0x86", "name": "Aspect ratio", "kind": "Enum", "section": "Advanced", "safety": "Normal",
+      "values": { "0x02": "Full screen", "0x05": "Original aspect ratio" }, "confirm": null },
     { "code": "0xCC", "name": "Menu language", "kind": "Enum", "section": "Advanced", "safety": "Normal",
       "values": {
         "0x02": "English", "0x03": "French", "0x04": "German", "0x05": "Italian",

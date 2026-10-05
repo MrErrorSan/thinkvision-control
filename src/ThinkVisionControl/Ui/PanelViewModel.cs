@@ -61,7 +61,7 @@ public sealed class PanelViewModel : Observable
     [
         (0xE0, "Picture", "\uE916", "Reduces motion blur. Extreme can leave trails behind moving objects"),
         (0xEA, "Picture", "\uE793", "Adjusts contrast to match what's on screen"),
-        (0x86, "Picture", "\uE740", null),
+        (0x86, "Picture", "\uE740", "The monitor greys this out at its native resolution and may ignore changes"),
         (0xEC, "Ports", "\uE88E", "Charge devices from the monitor's USB ports while it's in standby"),
         (0xCC, "On-screen menu", "\uE774", "The language of the monitor's own menus"),
     ];
