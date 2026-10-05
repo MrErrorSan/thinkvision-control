@@ -75,7 +75,7 @@ public partial class App : Application
             () => _hotkeys?.Suspend(),
             () => _hotkeys?.Register(_settings.Hotkeys));
         MainWindow = _panel;
-        _control.RespondingChanged += responding => Dispatcher.BeginInvoke(() => _tray?.SetResponding(responding));
+        _control.StatusChanged += status => Dispatcher.BeginInvoke(() => _tray?.SetStatus(status));
         _displayEvents = new DisplayEvents(_control.ReconnectAsync);
 
         ApplySettings(_settings);
@@ -104,7 +104,7 @@ public partial class App : Application
         try
         {
             await _control!.StartAsync();
-            _tray?.SetResponding(_control.IsResponding);
+            _tray?.SetStatus(_control.Status);
         }
         finally
         {
@@ -121,8 +121,8 @@ public partial class App : Application
         if (settings.BackgroundMode)
         {
             _hotkeys ??= new HotkeyManager(OnHotkey);
-            _tray ??= new TrayIcon(_panel!.ShowMainWindow, ExitFromTray);
-            _tray.SetResponding(_control?.IsResponding ?? false);
+            _tray ??= new TrayIcon(_panel!.ShowMainWindow, _panel!.ShowMainWindow, TrayPresetItems, ExitFromTray);
+            _tray.SetStatus(_control?.Status ?? MonitorStatus.Connecting);
             _hotkeys.Register(settings.Hotkeys);
         }
         else
@@ -135,6 +135,10 @@ public partial class App : Application
         try { StartupRegistration.Apply(settings.StartWithWindows); }
         catch (Exception ex) { FileLog.Write($"Start-with-Windows update failed: {ex.Message}"); }
     }
+
+    IEnumerable<(string Label, Action Run)> TrayPresetItems() => _control?.Status == MonitorStatus.Connected
+        ? [("Day preset", () => OnHotkey(HotkeyAction.DayPreset)), ("Night preset", () => OnHotkey(HotkeyAction.NightPreset))]
+        : [];
 
     void ExitFromTray()
     {
