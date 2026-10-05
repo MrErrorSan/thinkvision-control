@@ -4,7 +4,7 @@ using ThinkVisionControl.Core.Ddc;
 namespace ThinkVisionControl.Avalonia.Platform.MacOS;
 
 /// <summary>
-/// macOS setup cards (spec §5). The only fixable case is DDC failing on a built-in HDMI port (M1 and base M2),
+/// macOS setup cards. The only fixable case is DDC failing on a built-in HDMI port (M1 and base M2),
 /// which the link reports as <see cref="LinkFailure.UnsupportedPort"/>. Hotkeys (Carbon) and the menu-bar item
 /// are always available here, so they never produce a card.
 /// </summary>

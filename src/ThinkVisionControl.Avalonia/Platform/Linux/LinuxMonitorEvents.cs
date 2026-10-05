@@ -10,8 +10,7 @@ namespace ThinkVisionControl.Avalonia.Platform.Linux;
 /// read on a background thread, filtered to the drm subsystem, debounced 1.5 s (which also gives udev time to set
 /// up /dev/i2c-* permissions), then <see cref="Changed"/> on the UI thread.
 /// If the socket can't be opened, it polls the connector states in /sys/class/drm/*/status every 3 s instead.
-/// (Avalonia's Screens.Changed needs a live TopLevel, which a tray-only start doesn't have, and spec §4.2 names the
-/// sysfs status as the fallback.)
+/// (Avalonia's Screens.Changed needs a live TopLevel, which a tray-only start doesn't have.)
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed class LinuxMonitorEvents : IMonitorEvents

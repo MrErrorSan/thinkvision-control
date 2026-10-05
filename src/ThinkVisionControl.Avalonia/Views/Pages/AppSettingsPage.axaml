@@ -14,7 +14,7 @@
       <ui:FAInfoBar Margin="0,16,0,0" Severity="Error" IsClosable="False" IsOpen="{Binding HasSettingsError}"
                     IsVisible="{Binding HasSettingsError}" Message="{Binding SettingsError}" />
 
-      <!-- What this machine still needs (spec §5); hidden when nothing applies. -->
+      <!-- What this machine still needs (permissions, extensions, conflicts); hidden when nothing applies. -->
       <StackPanel IsVisible="{Binding HasSetupHints}">
         <TextBlock Classes="SectionHeader" Text="System setup" />
         <ItemsControl ItemsSource="{Binding SetupHints}">

@@ -3,7 +3,7 @@ using Avalonia.Media;
 
 namespace ThinkVisionControl.Avalonia.Theming;
 
-/// <summary>Window background rule (spec §4.1).</summary>
+/// <summary>Window background: Mica on Windows 11, a solid themed background everywhere else (Avalonia would otherwise fall back to a see-through window).</summary>
 public static class Backdrop
 {
     public static void Apply(Window w)

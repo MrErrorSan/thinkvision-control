@@ -14,7 +14,7 @@ namespace ThinkVisionControl.Avalonia.Views;
 /// <summary>
 /// Quick Settings-style tray flyout: brightness and contrast, input tiles, colour mode, Day/Night, a status line and
 /// "All settings". Light-dismiss on deactivate or Esc; closing only hides it. Create one lazily and reuse it.
-/// Acrylic on Windows 11; a solid layer background everywhere else (spec §4.1).
+/// Acrylic on Windows 11; a solid layer background everywhere else.
 /// </summary>
 public partial class FlyoutWindow : Window
 {

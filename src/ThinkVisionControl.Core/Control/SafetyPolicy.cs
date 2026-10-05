@@ -6,7 +6,7 @@ public enum SafetyVerdict { Allow, NeedsConfirmation, Block }
 
 public sealed record SafetyDecision(SafetyVerdict Verdict, uint Value, string Message);
 
-/// <summary>Pure evaluation of the spec §5 safety rules.</summary>
+/// <summary>Pure evaluation of the write safety rules: never write OSD-enable (0xCA) or unnamed vendor codes, only values the monitor advertises, clamp ranges, and confirm guarded actions (resets, power).</summary>
 public static class SafetyPolicy
 {
     public static SafetyDecision Evaluate(ControlDefinition? definition, MonitorCapabilities capabilities,

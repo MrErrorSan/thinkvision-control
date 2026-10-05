@@ -10,7 +10,7 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
-  <!-- Publish (see research_notes/.../resource_footprint.md §6): English-only satellites, R2R for startup,
+  <!-- Publish: English-only satellites, R2R for startup,
        and no single-file compression (it costs ~73 MB private memory for the process lifetime). -->
   <PropertyGroup>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

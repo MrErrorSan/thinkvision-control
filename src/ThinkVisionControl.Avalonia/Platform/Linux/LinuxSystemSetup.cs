@@ -4,7 +4,7 @@ using ThinkVisionControl.Core.Ddc;
 namespace ThinkVisionControl.Avalonia.Platform.Linux;
 
 /// <summary>
-/// The Linux "System setup" cards (spec §5). <see cref="Detect"/> gathers the live facts (desktop, PowerDevil process,
+/// The Linux "System setup" cards. <see cref="Detect"/> gathers the live facts (desktop, PowerDevil process,
 /// distribution); <see cref="Hints"/> turns facts into cards and is pure, for tests.
 /// </summary>
 [SupportedOSPlatform("linux")]
