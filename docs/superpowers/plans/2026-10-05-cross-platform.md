@@ -35,8 +35,8 @@ todos:
     status: pending
     parallel: true
   - id: icons
-    content: Final light/dark icon pair (art pending the user's next round); theme-aware Start Menu shortcut + window icon on Windows; macOS appearance variants
-    status: pending
+    content: Single app icon for all OSes and themes (Dark + shadows, user's pick 2026-10-05): exported PNG/ICO/ICNS/SVG; WPF uses it; Avalonia + macOS bundle reference assets/brand
+    status: completed
     parallel: true
   - id: tests
     content: Codec, EDID match, bus selection, checksum fallback, link-failure → status mapping
@@ -196,13 +196,7 @@ public sealed record PlatformServices(IMonitorEvents MonitorEvents, IHotkeys Hot
    - `make-macos-app.sh` turns `dotnet publish -r osx-arm64` output into `ThinkVision Control.app`: `Info.plist` (`LSUIElement`, `CFBundleIdentifier`, icon), `Contents/MacOS` and `Resources`.
    - The udev rule `KERNEL=="i2c-[0-9]*", TAG+="uaccess"`.
    - A `.desktop` file with `Actions=Day;Night;SwitchToMe`.
-9. **icons:**
-   - Wait for the user's next dark-icon round, then export the light/dark `.ico`, `.icns` and SVG.
-   - Windows (both apps):
-     - `EnsureShortcut` writes `%AppData%\ThinkVisionControl\icon-{light|dark}.ico` and points the Start Menu shortcut's `IconLocation` at the one for the current Windows theme, rewriting it on theme change;
-     - the window/taskbar icon follows the theme at runtime.
-   - macOS: light and dark variants in the `.app` bundle.
-   - Linux: the light icon.
+9. **icons:** done. One icon everywhere, the "Dark + shadows" design the user chose. Masters and exports are in `assets/brand/` (`svg/app-icon.svg`, `png/`, `ico/ThinkVisionControl.ico`, `icns/ThinkVisionControl.icns`). The Avalonia app uses the `.ico`/PNG, and `make-macos-app.sh` copies the `.icns`. There is no theme switching.
 
 Implementation brief boilerplate (every subagent):
 
@@ -247,7 +241,6 @@ The orchestrator verifies once, after all agents land. Touch only the files list
 
 ## Open questions
 
-- The dark icon art is waiting on the user's next iteration notes.
 - FluentAvalonia NativeAOT compatibility is unverified and is measured during verify for the Windows gates.
 - **Assumption:** macOS P/Invoke into private IOKit symbols resolves by name through `NativeLibrary.Load("/System/Library/Frameworks/IOKit.framework/IOKit")`. Research marked it untested. The first Mac run confirms it.
 - **Assumption:** the GNOME GlobalShortcuts portal accepts a host app registered via `Registry.Register`. Unconfirmed; the fallback is the setup card.
