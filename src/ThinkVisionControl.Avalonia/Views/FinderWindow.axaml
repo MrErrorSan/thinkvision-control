@@ -1,0 +1,81 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:FluentAvalonia.UI.Controls"
+        xmlns:vm="using:ThinkVisionControl.Avalonia.ViewModels"
+        xmlns:v="using:ThinkVisionControl.Avalonia.Views"
+        x:Class="ThinkVisionControl.Avalonia.Views.FinderWindow"
+        Title="Find hidden settings"
+        Icon="/Assets/ThinkVisionControl.ico"
+        Width="600" Height="720" MinWidth="460" MinHeight="480"
+        WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <StyleInclude Source="/Views/ViewStyles.axaml" />
+  </Window.Styles>
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="24,16,24,24">
+      <TextBlock Classes="Subtitle" Text="Find hidden settings" />
+      <TextBlock Classes="Body Secondary" Margin="0,8,0,0" TextWrapping="Wrap"
+                 Text="This only reads from the monitor; nothing is written here. It compares Lenovo's undocumented codes before and after you change one setting with the monitor's own buttons, so you can name what each code controls. A named code then appears in Monitor settings." />
+
+      <ui:FAInfoBar x:Name="StatusBar" Margin="0,16,0,0" IsClosable="False" IsOpen="False" IsVisible="False">
+        <ProgressBar x:Name="StatusProgress" IsIndeterminate="True" IsVisible="False" Margin="0,0,0,12" MinWidth="0" />
+      </ui:FAInfoBar>
+
+      <TextBlock Classes="SectionHeader" Text="Step 1" />
+      <ui:FASettingsExpander x:Name="SnapshotCard" Header="Take a snapshot"
+                             Description="Reads the current value of every code the monitor reports"
+                             IconSource="{v:Glyph {x:Static vm:Glyphs.Snapshot}}">
+        <ui:FASettingsExpander.Footer>
+          <Button x:Name="SnapshotButton" Content="Take snapshot" MinWidth="120" Click="Snapshot_Click" />
+        </ui:FASettingsExpander.Footer>
+      </ui:FASettingsExpander>
+
+      <TextBlock Classes="SectionHeader" Text="Step 2" />
+      <ui:FASettingsExpander Header="Change one setting with the monitor's buttons"
+                             Description="For example Over Drive. Change only one, then compare."
+                             IconSource="{v:Glyph {x:Static vm:Glyphs.Display}}" />
+
+      <TextBlock Classes="SectionHeader" Text="Step 3" />
+      <StackPanel Classes="Cards">
+        <ui:FASettingsExpander Header="Compare" Description="Lists the codes whose value changed"
+                               IconSource="{v:Glyph {x:Static vm:Glyphs.Compare}}">
+          <ui:FASettingsExpander.Footer>
+            <Button x:Name="CompareButton" Content="Compare" MinWidth="120" IsEnabled="False" Click="Compare_Click" />
+          </ui:FASettingsExpander.Footer>
+        </ui:FASettingsExpander>
+        <ListBox x:Name="ChangesList" MinHeight="60" MaxHeight="180" SelectionChanged="ChangesList_SelectionChanged"
+                 AutomationProperties.Name="Changed codes" />
+      </StackPanel>
+
+      <StackPanel x:Name="NamingPanel" IsVisible="False">
+        <TextBlock Classes="SectionHeader" Text="Name this setting" />
+        <ui:FASettingsExpander Header="Setting name"
+                               IconSource="{v:Glyph {x:Static vm:Glyphs.Edit}}">
+          <ui:FASettingsExpander.Footer>
+            <TextBox x:Name="NameBox" Width="240" AutomationProperties.Name="Setting name" />
+          </ui:FASettingsExpander.Footer>
+        </ui:FASettingsExpander>
+        <TextBlock Classes="Caption Secondary" Margin="1,8,0,8" TextWrapping="Wrap"
+                   Text="Name the values you know (cycle through them with the monitor's buttons and compare again if needed). Unnamed values keep their hex code." />
+        <ItemsControl x:Name="ValuesList">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Classes="Cards" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="v:FinderValue">
+              <ui:FASettingsExpander Header="{Binding Caption}">
+                <ui:FASettingsExpander.Footer>
+                  <TextBox Width="240" Text="{Binding Label}" AutomationProperties.Name="{Binding Caption}" />
+                </ui:FASettingsExpander.Footer>
+              </ui:FASettingsExpander>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Classes="accent" Margin="0,12,0,0" HorizontalAlignment="Right" MinWidth="120" Content="Save" Click="Save_Click" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>
