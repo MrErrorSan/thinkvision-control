@@ -1,106 +1,95 @@
 using Microsoft.Win32;
-using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace ThinkVisionControl.Ui;
 
-/// <summary>Follows the Windows app theme: swaps the brush palette and the native title-bar colour of every window.</summary>
+/// <summary>
+/// Reports whether the taskbar and apps use the light theme, and raises <see cref="Changed"/> on the UI thread when
+/// either changes. The Fluent theme (<c>ThemeMode="System"</c>) owns the palette, Mica and the title-bar colour.
+/// </summary>
 public sealed class WindowsThemeManager : IDisposable
 {
-    const int DwmwaUseImmersiveDarkMode = 20;
     const string PersonalizeKey = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
 
-    static readonly IReadOnlyDictionary<string, string> LightPalette = new Dictionary<string, string>
-    {
-        ["BgBrush"] = "#F3F3F3",
-        ["SurfaceBrush"] = "#FFFFFF",
-        ["SurfaceHoverBrush"] = "#E9E9E9",
-        ["SurfacePressedBrush"] = "#DCDCDC",
-        ["LineBrush"] = "#E5E5E5",
-        ["AccentBrush"] = "#0067C0",
-        ["AccentHoverBrush"] = "#005A9E",
-        ["TextBrush"] = "#1A1A1A",
-        ["MutedTextBrush"] = "#616161",
-        ["DisabledTextBrush"] = "#9D9D9D",
-        ["WarnBrush"] = "#9D5D00",
-        ["GoodBrush"] = "#107C10",
-        ["OffBrush"] = "#777777",
-        ["ThumbBrush"] = "#5F5F5F",
-    };
-
-    static readonly IReadOnlyDictionary<string, string> DarkPalette = new Dictionary<string, string>
-    {
-        ["BgBrush"] = "#202020",
-        ["SurfaceBrush"] = "#2B2B2B",
-        ["SurfaceHoverBrush"] = "#373737",
-        ["SurfacePressedBrush"] = "#414141",
-        ["LineBrush"] = "#3F3F3F",
-        ["AccentBrush"] = "#60CDFF",
-        ["AccentHoverBrush"] = "#4CC2FF",
-        ["TextBrush"] = "#F3F3F3",
-        ["MutedTextBrush"] = "#A0A0A0",
-        ["DisabledTextBrush"] = "#737373",
-        ["WarnBrush"] = "#F6C344",
-        ["GoodBrush"] = "#6CCB7B",
-        ["OffBrush"] = "#7C7C7C",
-        ["ThumbBrush"] = "#D5D5D5",
-    };
+    // Legacy: remove once pages/tray-flyout land. Brush keys older windows still use, aliased to Fluent brushes.
+    static readonly (string Legacy, string Fluent)[] LegacyBrushes =
+    [
+        ("TextBrush", "TextFillColorPrimaryBrush"),
+        ("MutedTextBrush", "TextFillColorSecondaryBrush"),
+        ("AccentBrush", "AccentFillColorDefaultBrush"),
+        ("SurfaceBrush", "SolidBackgroundFillColorQuarternaryBrush"),
+        ("LineBrush", "CardStrokeColorDefaultBrush"),
+        ("GoodBrush", "SystemFillColorSuccessBrush"),
+        ("OffBrush", "SystemFillColorSolidNeutralBrush"),
+    ];
 
     readonly Application _application;
+    readonly DispatcherTimer _settle;
     bool _disposed;
-    bool _light = true;
 
     public WindowsThemeManager(Application application)
     {
         _application = application;
-        Apply();
-        // Windows does not darken a Win32 title bar on its own; each window must opt in once it has a handle.
-        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
-            new RoutedEventHandler((sender, _) => { if (!_disposed) SetTitleBar((Window)sender, !_light); }));
+        // WPF swaps its Fluent dictionaries when its own windows see the setting change, which can land after
+        // SystemEvents tells us; refresh once more after a short settle so the legacy aliases pick up the new set.
+        _settle = new DispatcherTimer(TimeSpan.FromMilliseconds(750), DispatcherPriority.Background, (_, _) => Refresh(), application.Dispatcher);
+        (IsTaskbarLight, IsAppLight) = Read();
+        AliasLegacyBrushes();
         SystemEvents.UserPreferenceChanged += UserPreferenceChanged;
     }
+
+    /// <summary>True when the taskbar (and notification area) uses the light theme.</summary>
+    public bool IsTaskbarLight { get; private set; }
+
+    /// <summary>True when apps use the light theme.</summary>
+    public bool IsAppLight { get; private set; }
+
+    /// <summary>Raised on the UI thread after <see cref="IsTaskbarLight"/> or <see cref="IsAppLight"/> changes.</summary>
+    public event Action? Changed;
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _settle.Stop();
         SystemEvents.UserPreferenceChanged -= UserPreferenceChanged;
     }
 
     void UserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
-        if (_disposed) return;
-        _application.Dispatcher.BeginInvoke(DispatcherPriority.Normal, Apply);
+        if (_disposed || e.Category is not (UserPreferenceCategory.General or UserPreferenceCategory.Color
+                or UserPreferenceCategory.VisualStyle)) return;
+        _application.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            Refresh();
+            _settle.Stop();
+            _settle.Start();
+        });
     }
 
-    void Apply()
+    void Refresh()
+    {
+        _settle.Stop();
+        if (_disposed) return;
+        AliasLegacyBrushes();
+        var (taskbar, app) = Read();
+        if (taskbar == IsTaskbarLight && app == IsAppLight) return;
+        (IsTaskbarLight, IsAppLight) = (taskbar, app);
+        Changed?.Invoke();
+    }
+
+    void AliasLegacyBrushes()
+    {
+        foreach (var (legacy, fluent) in LegacyBrushes)
+            if (_application.TryFindResource(fluent) is { } brush) _application.Resources[legacy] = brush;
+    }
+
+    static (bool Taskbar, bool App) Read()
     {
         using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
-        var light = key?.GetValue("AppsUseLightTheme", 1) is int value && value != 0;
-        _light = light;
-        var palette = light ? LightPalette : DarkPalette;
-        foreach (var (name, hex) in palette)
-        {
-            var color = (Color)ColorConverter.ConvertFromString(hex);
-            var brush = new SolidColorBrush(color);
-            brush.Freeze();
-            _application.Resources[name] = brush;
-        }
-
-        foreach (Window window in _application.Windows) SetTitleBar(window, !light);
+        // Missing values mean the Windows defaults: dark taskbar, light apps.
+        return (key?.GetValue("SystemUsesLightTheme", 0) is int taskbar && taskbar != 0,
+                key?.GetValue("AppsUseLightTheme", 1) is int app && app != 0);
     }
-
-    static void SetTitleBar(Window window, bool dark)
-    {
-        var handle = new WindowInteropHelper(window).Handle;
-        if (handle == IntPtr.Zero) return;
-        var value = dark ? 1 : 0;
-        DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref value, sizeof(int));
-    }
-
-    [DllImport("dwmapi.dll")]
-    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }
