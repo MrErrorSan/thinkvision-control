@@ -1,0 +1,59 @@
+{
+  "description": "Local footprint measurements for a minimal Avalonia 12.1.3 app vs a minimal WPF app. Probe sources are in footprint_probe/. Each run: process started, 10-12 s idle, then Process.WorkingSet64 / PrivateMemorySize64 / Threads read. startup_ms = time until Process.MainWindowHandle != 0 (polled every 10 ms), a rough proxy for first window. First run of each variant is cold.",
+  "machine": {
+    "os": "Windows 11 Home 10.0.26200",
+    "cpu": "AMD Ryzen 5 5500U",
+    "gpu": "AMD Radeon (integrated) + NVIDIA GeForce GTX 1650 (hybrid laptop)",
+    "dotnet_sdk": "10.0.401",
+    "ilcompiler": "10.0.12",
+    "avalonia": "12.1.3 (Avalonia, Avalonia.Desktop, Avalonia.Themes.Fluent)",
+    "skiasharp": "3.119.4",
+    "date": "2026-10-05"
+  },
+  "window_content": "600x400 Window with TextBlock, Slider, ToggleSwitch (WPF: CheckBox), ComboBox, Button. Avalonia window sets TransparencyLevelHint=Mica, Background=Transparent; FluentTheme.",
+  "publish_sizes_mb_excluding_pdb": {
+    "avalonia_self_contained_jit": {"mb": 103.5, "files": 220},
+    "avalonia_single_file_trimmed": {"mb": 35.8, "files": 1},
+    "avalonia_native_aot": {"mb": 34.8, "files": 4, "breakdown_mb": {"ava.exe": 16.8, "libSkiaSharp.dll": 11.1, "av_libglesv2.dll": 5.1, "libHarfBuzzSharp.dll": 1.7}},
+    "wpf_self_contained_jit_untrimmed": {"mb": 139.5, "files": 399}
+  },
+  "runs": [
+    {"variant": "avalonia_sc_jit", "mode": "window_gpu", "run": 1, "startup_ms": 15010, "ws_mb": 124.3, "private_mb": 95.8, "threads": 53, "note": "cold; window-handle poll timed out"},
+    {"variant": "avalonia_sc_jit", "mode": "window_gpu", "run": 2, "startup_ms": 1857, "ws_mb": 119.5, "private_mb": 92.1, "threads": 53},
+    {"variant": "avalonia_sc_jit", "mode": "window_gpu", "run": 3, "startup_ms": 1790, "ws_mb": 119.8, "private_mb": 92.4, "threads": 53},
+    {"variant": "avalonia_single_file_trimmed", "mode": "window_gpu", "run": 1, "startup_ms": 4372, "ws_mb": 110.7, "private_mb": 91.0, "threads": 53, "note": "cold"},
+    {"variant": "avalonia_single_file_trimmed", "mode": "window_gpu", "run": 2, "startup_ms": 2072, "ws_mb": 110.1, "private_mb": 91.2, "threads": 53},
+    {"variant": "avalonia_single_file_trimmed", "mode": "window_gpu", "run": 3, "startup_ms": 2037, "ws_mb": 118.7, "private_mb": 96.1, "threads": 53},
+    {"variant": "avalonia_native_aot", "mode": "window_gpu", "run": 1, "startup_ms": 3338, "ws_mb": 76.9, "private_mb": 79.1, "threads": 50, "note": "cold"},
+    {"variant": "avalonia_native_aot", "mode": "window_gpu", "run": 2, "startup_ms": 961, "ws_mb": 77.3, "private_mb": 78.3, "threads": 50},
+    {"variant": "avalonia_native_aot", "mode": "window_gpu", "run": 3, "startup_ms": 927, "ws_mb": 75.9, "private_mb": 78.1, "threads": 50},
+    {"variant": "avalonia_native_aot", "mode": "window_gpu", "run": 4, "ws_mb": 76.7, "private_mb": 77.2, "threads": 50},
+    {"variant": "avalonia_native_aot", "mode": "window_gpu", "run": 5, "ws_mb": 76.8, "private_mb": 77.5, "threads": 50},
+    {"variant": "avalonia_native_aot", "mode": "window_software", "run": 1, "ws_mb": 36.3, "private_mb": 12.5, "threads": 9},
+    {"variant": "avalonia_native_aot", "mode": "window_software", "run": 2, "ws_mb": 36.4, "private_mb": 12.6, "threads": 9},
+    {"variant": "avalonia_native_aot", "mode": "tray_only_gpu", "run": 1, "ws_mb": 51.5, "private_mb": 56.6, "threads": 24},
+    {"variant": "avalonia_native_aot", "mode": "tray_only_gpu", "run": 2, "ws_mb": 51.5, "private_mb": 55.6, "threads": 24},
+    {"variant": "avalonia_native_aot", "mode": "tray_only_software", "run": 1, "ws_mb": 20.8, "private_mb": 5.9, "threads": 6},
+    {"variant": "avalonia_native_aot", "mode": "tray_only_software", "run": 2, "ws_mb": 20.9, "private_mb": 5.9, "threads": 6},
+    {"variant": "avalonia_single_file_trimmed", "mode": "window_software", "run": 1, "ws_mb": 67.3, "private_mb": 26.0, "threads": 12},
+    {"variant": "avalonia_single_file_trimmed", "mode": "window_software", "run": 2, "ws_mb": 67.4, "private_mb": 26.0, "threads": 12},
+    {"variant": "avalonia_single_file_trimmed", "mode": "tray_only_gpu", "run": 1, "ws_mb": 80.2, "private_mb": 69.7, "threads": 27},
+    {"variant": "avalonia_single_file_trimmed", "mode": "tray_only_gpu", "run": 2, "ws_mb": 80.1, "private_mb": 70.1, "threads": 27},
+    {"variant": "avalonia_single_file_trimmed", "mode": "tray_only_software", "run": 1, "ws_mb": 48.6, "private_mb": 19.7, "threads": 9},
+    {"variant": "avalonia_single_file_trimmed", "mode": "tray_only_software", "run": 2, "ws_mb": 48.6, "private_mb": 19.7, "threads": 9},
+    {"variant": "wpf_sc_jit", "mode": "window_gpu", "run": 1, "startup_ms": 4467, "ws_mb": 108.3, "private_mb": 61.6, "threads": 22, "note": "cold"},
+    {"variant": "wpf_sc_jit", "mode": "window_gpu", "run": 2, "startup_ms": 507, "ws_mb": 88.3, "private_mb": 43.7, "threads": 22},
+    {"variant": "wpf_sc_jit", "mode": "window_gpu", "run": 3, "startup_ms": 533, "ws_mb": 85.0, "private_mb": 43.4, "threads": 22}
+  ],
+  "modes": {
+    "window_gpu": "default UsePlatformDetect(); Win32 default rendering (ANGLE/D3D on Windows)",
+    "window_software": "Win32PlatformOptions.RenderingMode = [Software]",
+    "tray_only_gpu": "no window; TrayIcon + NativeMenu; ShutdownMode.OnExplicitShutdown; default rendering",
+    "tray_only_software": "as tray_only_gpu but RenderingMode = [Software]"
+  },
+  "caveats": [
+    "Single machine, hybrid GPU laptop; GPU driver threads inflate thread counts and private bytes on the GPU path.",
+    "Whether Mica still renders when RenderingMode=Software was NOT verified (screenshot attempt failed because the window was not in the foreground).",
+    "The WPF baseline here matches the earlier WPF probe in ../Windows 11 design for WPF apps/resource_footprint.md (never-shown WPF ~12 MB private / 43 MB WS; shown ~41-45 MB private / ~90 MB WS)."
+  ]
+}
