@@ -28,6 +28,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 
     public event Action<byte, uint>? ValueChanged;
     public event Action<bool>? RespondingChanged;
+    public event Action<byte, WriteResult>? ThrottledWriteCompleted;
 
     public bool IsResponding { get { lock (gate) return responding; } }
     public MonitorCapabilities? Capabilities { get; private set; }
@@ -139,8 +140,32 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
             return NotRespondingResult;
         }
 
-        if (def.Kind != ControlKind.Action)
-            UpdateCache(code, new VcpReading(v, hasCached ? cached.Max : def.Kind == ControlKind.Range ? 100u : 0u));
+        if (def.Kind == ControlKind.Range)
+        {
+            try
+            {
+                var actual = await queue.Run(l => l.Read(code));
+                UpdateCache(code, actual);
+                if (code == Brightness)
+                    FileLog.Write($"Brightness DDC write verified: requested={v}, readback={actual.Current}, max={actual.Max}.");
+                if (actual.Current != v)
+                {
+                    var detail = code == Brightness ? " The current color mode may lock brightness." : "";
+                    return new(WriteOutcome.Blocked,
+                        $"{def.Name} remains {actual.Current}; the monitor did not apply {v}.{detail}");
+                }
+            }
+            catch (DdcException ex)
+            {
+                FileLog.Write($"Verify read 0x{code:X2} failed: {ex.Message}");
+                SetResponding(false);
+                return NotRespondingResult;
+            }
+        }
+        else if (def.Kind != ControlKind.Action)
+        {
+            UpdateCache(code, new VcpReading(v, hasCached ? cached.Max : 0u));
+        }
 
         return new(WriteOutcome.Ok, Describe(def, v), v);
     }
@@ -186,13 +211,16 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
                 }
 
                 var interval = Task.Delay(ThrottleInterval);
-                await SetAsync(code, value);
+                var result = await SetAsync(code, value);
+                ThrottledWriteCompleted?.Invoke(code, result);
                 await interval;
             }
         }
         catch (Exception ex)
         {
             FileLog.Write($"Throttled write 0x{code:X2} failed: {ex.Message}");
+            ThrottledWriteCompleted?.Invoke(code,
+                new WriteResult(WriteOutcome.NotResponding, $"Update for 0x{code:X2} failed: {ex.Message}"));
             lock (gate)
             {
                 pending.Remove(code);

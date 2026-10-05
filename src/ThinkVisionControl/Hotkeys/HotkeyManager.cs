@@ -24,6 +24,8 @@ public sealed class HotkeyManager : IDisposable
 
     public IReadOnlyCollection<HotkeyAction> Failed => _failed;
 
+    public void Suspend() => UnregisterAll();
+
     public void Register(IReadOnlyDictionary<HotkeyAction, string> hotkeys)
     {
         UnregisterAll();

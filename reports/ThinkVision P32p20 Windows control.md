@@ -1,6 +1,6 @@
 # Control your ThinkVision P32p-20 from Windows
 
-**Yes. Your P32p-20 can be controlled from Windows, and the read-only probe run on it today proves it.** The monitor (EDID `LEN62A2`) answered DDC/CI over the laptop's current HDMI connection. It returned a clean MCCS 2.2 capability string and readable values for brightness, contrast, colour preset, RGB gains, input source, scaling, OSD language and power mode ([local probe](../research_notes/ThinkVision%20P32p20%20Windows%20control/local_probe_raw.txt)). Windows 11 itself cannot do this: no build through 25H2 has a native slider or setting for external-monitor brightness, contrast or input ([Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/5954664/can-we-get-ddc-ci-support-for-monitors-on-windows)). Free tools fill the gap. **Microsoft PowerToys Power Display** (new in April 2026) gives you a tray flyout, profiles and a command-line tool. **NirSoft ControlMyMonitor** can write any VCP code from a one-line command you can bind to a hotkey. **Twinkle Tray** is a lighter alternative with built-in brightness hotkeys. My recommendation is Power Display for everyday clicking, plus ControlMyMonitor commands on hotkeys for one-press actions in the dark. Software can reach roughly half of the OSD menu. Dynamic Contrast, Over Drive, the USB settings, the USB upstream (KVM) switch and the menu-layout options have no standard code and stay behind the buttons unless Lenovo's vendor-specific codes can be decoded. Others have done this on sibling ThinkVision models, and one small Windows tool ships a P32p-20 brightness profile. However, nobody had published this monitor's capability string or input codes before your probe. That probe settles the USB-C input value as `0x31` (49).
+**Yes. Your P32p-20 can be controlled from Windows.** The monitor (EDID `LEN62A2`) answers DDC/CI over the laptop's HDMI connection. The profile now includes the confirmed colour modes, Over Drive, Dynamic Contrast and USB Charging controls; the DP and USB-source settings remain unmapped because they are disabled on the current HDMI input. Windows 11 itself has no native slider or setting for external-monitor brightness, contrast or input ([Microsoft Q&A](https://learn.microsoft.com/en-us/answers/questions/5954664/can-we-get-ddc-ci-support-for-monitors-on-windows)). The original probe confirmed the USB-C input value as `0x31` (49).
 
 ## Your monitor answered: the capability string decoded
 
@@ -29,7 +29,7 @@ The P32p-20 OSD has four groups: Monitor Controls, Advanced Settings, Port Setti
 |---|---|---|---|---|
 | Brightness | `0x10` | 0–100 | 0 | **Confirmed on your monitor** |
 | Contrast | `0x12` | 0–100 | 70 | **Confirmed on your monitor** |
-| Color Mode (sRGB, BT.709, DCI-P3, Neutral, Reddish, Bluish, Low Blue Light, Custom) | `0x14` | `01 05 06 08 0B 0E 0F 12` | `06` | **Confirmed on your monitor**. Eight values for eight modes. `01` = sRGB and `0B` = User 1/Custom by MCCS convention; the other six assignments are unverified |
+| Color Mode | `0x14` | `01` DCI-P3, `05` Bluish, `06` Neutral, `08` Low Blue Light, `0B` sRGB, `0E` Reddish, `0F` BT.709, `12` User/Custom | `06` (Neutral) | **Confirmed by cycling all eight OSD modes and reading VCP `0x14`** |
 | Custom Red / Green / Blue | `0x16` / `0x18` / `0x1A` | 0–100 | 100 / 100 / 100 | **Confirmed on your monitor** |
 | Input Signal (USB-C / DP / HDMI) | `0x60` | `0x11` HDMI (17), `0x0F` DP (15), `0x31` USB-C (49) | `0x11` | **Confirmed on your monitor** |
 | Aspect Ratio (Full Screen / Original AR) | `0x86` | `02`, `05` | `02` | **Confirmed on your monitor**. Which value is which option is unverified |
@@ -38,15 +38,17 @@ The P32p-20 OSD has four groups: Monitor Controls, Advanced Settings, Port Setti
 | Factory Reset | `0x04` (all), `0x05` (brightness + contrast), `0x08` (colour) | write 1 | n/a (write-only) | **Advertised on your monitor**, not tested |
 | Display mode | `0xDC` | reads 0, max 6 | 0 | Readable but not advertised. Meaning unknown |
 | Audio volume | `0x62` | reads 50 | 50 | Readable but not advertised. Effect unknown (no speakers) |
-| Dynamic Contrast (Off/On) | none standard | candidates: `EA`/`EB`/`EC` (`00 01`) | — | **OSD-only / unknown** |
-| Over Drive (Off/Normal/Extreme) | none standard | candidate: `E0` (`00 01 02`, three values like the three OSD options) | — | **OSD-only / unknown** |
-| USB Charging, DP Select (1.1/1.2), USB Source Selection (2.0/3.0) | none standard | candidates among `EA`/`EB`/`EC`, `F6`, `F7`, `F8`, `FA` | — | **OSD-only / unknown** |
+| Dynamic Contrast (Off/On) | `0xEA` | `00` Off, `01` On | `00` (Off) | **Confirmed by OSD change + read-only snapshot** |
+| Over Drive (Off/Normal/Extreme) | `0xE0` | `00` Off, `01` Normal, `02` Extreme | `01` (Normal) | **Confirmed by OSD change + read-only snapshot** |
+| USB Charging (Off/On) | `0xEC` | `00` Off, `01` On | `01` after test | **Confirmed by OSD change + read-only snapshot** |
+| DP Select (1.1/1.2), USB Source Selection (2.0/3.0) | unknown | — | DP 1.2 / USB 2.0 | **Not mapped; both controls are disabled on the current HDMI input** |
 | USB upstream (KVM) switch | none standard | unknown | — | **OSD/hotkey-only / unknown** |
-| Button Repeat Rate, Menu Time Out, Menu H/V position, Transparency | none | — | — | **OSD-only** |
+| Button Repeat Rate | no code detected | Off / Default / Slow | Slow after test | Changing Default → Slow did not change any readable vendor code; not exposed by the app |
+| Menu Time Out, Menu H/V position, Transparency | none identified | — | — | **OSD-only** |
 | OSD lock | none (Menu key, 10 s hold) | `CA(01 02)` is advertised; in MCCS this is the OSD enable/disable control | — | **OSD-only**. Do not write `CA` |
 | DDC/CI on/off | none (Exit key, 10 s hold) | — | — | **Physical button only** |
 
-The vendor codes (`E0`, `EA`, `EB`, `EC`, `F6`, `F7`, `F8`, `FA`) are the only route to the rest of the menu, and nobody has published their meaning for any ThinkVision. The P40w-20 exposes a similar set with no documentation ([ddccontrol-db #445](https://github.com/ddccontrol/ddccontrol-db/issues/445)). You could map them safely once without writing anything. Open ControlMyMonitor's GUI, note the value of each vendor code, change one OSD setting (for example Over Drive) with the buttons, refresh, and see which code moved. Writing guessed values to unknown codes is the riskier half of that experiment and is not worth doing blind. One caveat from the siblings applies to brightness: P24q/h-20 owners report that brightness is locked in the factory-calibrated sRGB, DCI-P3 and BT.709 modes ([Lenovo forum: P24q-20](https://forums.lenovo.com/t5/Displays-Options-and-Accessories/P24q-20-OSD-buttons-no-response/m-p/5096178)). If a brightness write is ignored, check the colour preset first.
+Read-only before/after snapshots on this P32p-20 map `0xE0` to Over Drive, `0xEA` to Dynamic Contrast and `0xEC` to USB Charging. `0xEB`, `0xF6`, `0xF7`, `0xF8` and `0xFA` remain unidentified. DP Select and USB Source Selection are disabled while the monitor is on HDMI, so their codes and values have not been tested. One caveat from the siblings applies to brightness: P24q/h-20 owners report that brightness is locked in the factory-calibrated sRGB, DCI-P3 and BT.709 modes ([Lenovo forum: P24q-20](https://forums.lenovo.com/t5/Displays-Options-and-Accessories/P24q-20-OSD-buttons-no-response/m-p/5096178)). Slider writes are now read back so the app can report when the monitor leaves brightness unchanged.
 
 ## Windows has no native control, but three free tools cover the gap
 
@@ -101,8 +103,9 @@ ControlMyMonitor.exe /SetValue "LEN62A2" 60 15         :: DisplayPort (0x0F)
 ControlMyMonitor.exe /SetValue "LEN62A2" 60 49         :: USB-C      (0x31)
 
 :: Colour preset (0x14), RGB gains (0x16/0x18/0x1A), scaling (0x86), language (0xCC)
-ControlMyMonitor.exe /SetValue "LEN62A2" 14 1          :: sRGB
-ControlMyMonitor.exe /SetValue "LEN62A2" 14 11         :: 0x0B = User/Custom (then RGB gains apply)
+ControlMyMonitor.exe /SetValue "LEN62A2" 14 11         :: 0x0B = sRGB
+ControlMyMonitor.exe /SetValue "LEN62A2" 14 18         :: 0x12 = User/Custom (then RGB gains apply)
+ControlMyMonitor.exe /SetValue "LEN62A2" 14 1          :: 0x01 = DCI-P3
 ControlMyMonitor.exe /SetValue "LEN62A2" 16 95         :: red gain 95
 ControlMyMonitor.exe /SetValue "LEN62A2" 86 5          :: the other aspect-ratio option (current is 2)
 ControlMyMonitor.exe /SetValue "LEN62A2" CC 2          :: OSD language English
@@ -112,7 +115,7 @@ ControlMyMonitor.exe /GetValue "LEN62A2" 10
 echo %errorlevel%
 ```
 
-In PowerShell, call it as `& "C:\Tools\ControlMyMonitor\ControlMyMonitor.exe" /SetValue "LEN62A2" 10 30` and read `/GetValue` results from `$LASTEXITCODE`. To map the six unverified colour presets, step through `14 5`, `14 6`, `14 8`, `14 14`, `14 15` and `14 18` (decimal for `0x05`, `0x06`, `0x08`, `0x0E`, `0x0F`, `0x12`) and note which OSD mode name appears. Your current mode is `0x06`, so return to `14 6` afterwards. For one-key control, an AutoHotkey v2 script can wrap these commands. This one uses Ctrl+Alt+arrows for brightness steps and Ctrl+Alt+N/D for night and day presets:
+In PowerShell, call it as `& "C:\Tools\ControlMyMonitor\ControlMyMonitor.exe" /SetValue "LEN62A2" 10 30` and read `/GetValue` results from `$LASTEXITCODE`. The OSD mode values were mapped directly: `0x01` DCI-P3, `0x05` Bluish, `0x06` Neutral, `0x08` Low Blue Light, `0x0B` sRGB, `0x0E` Reddish, `0x0F` BT.709, `0x12` User/Custom. Your monitor is back in Neutral (`0x06`). For one-key control, an AutoHotkey v2 script can wrap these commands. This one uses Ctrl+Alt+arrows for brightness steps and Ctrl+Alt+N/D for night and day presets:
 
 ```autohotkey
 #Requires AutoHotkey v2.0
@@ -169,6 +172,6 @@ Install with `winget install xanderfrangos.twinkletray`. The CLI talks to the ru
 
 ## Conclusion
 
-The failing buttons turn out to matter less than they seemed. Everything you adjust often (brightness, contrast, input, colour mode) is software-reachable today, with codes read from your own monitor rather than guessed from siblings. The buttons now matter for exactly three things: recovering from an input switch away from the laptop, waking from a DDC power-off, and the DDC/CI toggle itself. That last one is the single point of failure for the whole software setup. The practical priority is to protect the buttons from accidental long presses, not to use them for daily adjustments.
+The failing buttons turn out to matter less than they seemed. Brightness, contrast, input, colour mode, Over Drive, Dynamic Contrast and USB Charging are software-reachable with codes observed on your monitor rather than guessed from siblings. The DP Select and USB Source Selection settings remain unavailable on the current HDMI input; Button Repeat Rate and several menu-layout settings have no identified DDC code.
 
-The open question is the vendor block. Eight undocumented codes (`E0`, `EA`–`EC`, `F6`–`F8`, `FA`) are the likeliest home for Over Drive, Dynamic Contrast and the USB settings, and possibly the USB upstream (KVM) switch. Decoding them with the observe-only method above would move the rest of the OSD into software, and would be the first public map of these codes for any ThinkVision. Lenovo's own software is unlikely to do it for you, because it has stopped listing this model.
+The remaining open question is the vendor block. `EB`, `F6`–`F8` and `FA` remain unidentified; mapping requires a setting that is enabled on the current input.

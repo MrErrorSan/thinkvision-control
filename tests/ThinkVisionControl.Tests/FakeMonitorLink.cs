@@ -16,10 +16,11 @@ public sealed class FakeMonitorLink : IMonitorLink
     {
         [0x10] = new(0, 100), [0x12] = new(70, 100), [0x14] = new(6, 14), [0x16] = new(100, 100), [0x18] = new(100, 100),
         [0x1A] = new(100, 100), [0x60] = new(0x11, 49), [0x86] = new(2, 5), [0xCC] = new(2, 13), [0xD6] = new(1, 5),
-        [0xE0] = new(0, 2), [0xEA] = new(0, 1),
+        [0xE0] = new(1, 2), [0xEA] = new(0, 1), [0xEB] = new(0, 1), [0xEC] = new(0, 1),
     };
 
     public List<(byte Code, uint Value)> Writes { get; } = [];
+    public HashSet<byte> IgnoredWrites { get; } = [];
 
     /// <summary>When true every DDC call fails, like a monitor with DDC/CI switched off.</summary>
     public bool Dead { get; set; }
@@ -37,7 +38,8 @@ public sealed class FakeMonitorLink : IMonitorLink
     {
         if (Dead) throw new DdcException($"write 0x{code:X2}");
         Writes.Add((code, value));
-        if (Values.TryGetValue(code, out var r)) Values[code] = r with { Current = value };
+        if (!IgnoredWrites.Contains(code) && Values.TryGetValue(code, out var r))
+            Values[code] = r with { Current = value };
     }
 
     public void Dispose() { }

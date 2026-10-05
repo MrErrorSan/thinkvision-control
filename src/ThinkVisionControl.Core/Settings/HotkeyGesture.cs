@@ -41,6 +41,23 @@ public readonly record struct HotkeyGesture(uint Modifiers, uint VirtualKey)
         return true;
     }
 
+    public static bool TryCreate(uint modifiers, uint virtualKey, out HotkeyGesture gesture)
+    {
+        gesture = default;
+        const uint allModifiers = ModAlt | ModControl | ModShift | ModWin;
+        if (modifiers == 0 || (modifiers & ~allModifiers) != 0 || !IsSupportedKey(virtualKey))
+            return false;
+
+        gesture = new HotkeyGesture(modifiers, virtualKey);
+        return true;
+    }
+
+    private static bool IsSupportedKey(uint key) =>
+        key is >= 0x41 and <= 0x5A
+            or >= 0x30 and <= 0x39
+            or >= 0x70 and <= 0x87
+            || CanonicalNames.ContainsKey(key);
+
     private static bool TryParseKey(string name, out uint vk)
     {
         if (NamedKeys.TryGetValue(name, out vk)) return true;

@@ -23,6 +23,7 @@ public partial class App : Application
     HotkeyManager? _hotkeys;
     TrayIcon? _tray;
     DisplayEvents? _displayEvents;
+    WindowsThemeManager? _themeManager;
     PanelWindow? _panel;
     AppSettings _settings = SettingsStore.Defaults;
 
@@ -44,6 +45,16 @@ public partial class App : Application
             FileLog.Write($"Unhandled: {args.Exception}");
             args.Handled = true;
         };
+        _themeManager = new WindowsThemeManager(this);
+        try
+        {
+            var shortcut = StartMenuRegistration.EnsureShortcut();
+            FileLog.Write($"Start Menu shortcut ensured: {shortcut}");
+        }
+        catch (Exception ex)
+        {
+            FileLog.Write($"Start Menu shortcut creation failed: {ex}");
+        }
 
         var settingsStore = new SettingsStore(dataDir);
         _settings = settingsStore.Load();
@@ -52,19 +63,23 @@ public partial class App : Application
         _link = new Dxva2MonitorLink(profiles.EdidId);
         _control = new ControlService(new DdcQueue(_link), profiles, new BackupStore(dataDir));
 
-        _hotkeys = new HotkeyManager(OnHotkey);
-        _panel = new PanelWindow(new PanelViewModel(_control, settingsStore, profiles, () => _hotkeys.Failed, ApplySettings));
-        _tray = new TrayIcon(_panel.ShowNearTray, Shutdown);
-        _control.RespondingChanged += responding => Dispatcher.BeginInvoke(() => _tray.SetResponding(responding));
+        _panel = new PanelWindow(new PanelViewModel(_control, settingsStore, profiles,
+            () => _hotkeys?.Failed ?? [], ApplySettings),
+            () => _hotkeys?.Suspend(),
+            () => _hotkeys?.Register(_settings.Hotkeys));
+        MainWindow = _panel;
+        _control.RespondingChanged += responding => Dispatcher.BeginInvoke(() => _tray?.SetResponding(responding));
         _displayEvents = new DisplayEvents(_control.ReconnectAsync);
 
         ApplySettings(_settings);
+        if (!_settings.BackgroundMode) _panel.ShowMainWindow();
         _ = StartControlAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         _displayEvents?.Dispose();
+        _themeManager?.Dispose();
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _control?.Dispose();
@@ -75,30 +90,60 @@ public partial class App : Application
 
     async Task StartControlAsync()
     {
-        await _control!.StartAsync();
-        _tray!.SetResponding(_control.IsResponding);
+        _panel?.SetConnecting(true);
+        try
+        {
+            await _control!.StartAsync();
+            _tray?.SetResponding(_control.IsResponding);
+        }
+        finally
+        {
+            _panel?.SetConnecting(false);
+        }
     }
 
     void ApplySettings(AppSettings settings)
     {
         _settings = settings;
-        _hotkeys!.Register(settings.Hotkeys);
+        ShutdownMode = settings.BackgroundMode
+            ? ShutdownMode.OnExplicitShutdown
+            : ShutdownMode.OnMainWindowClose;
+        if (settings.BackgroundMode)
+        {
+            _hotkeys ??= new HotkeyManager(OnHotkey);
+            _tray ??= new TrayIcon(_panel!.ShowMainWindow, ExitFromTray);
+            _tray.SetResponding(_control?.IsResponding ?? false);
+            _hotkeys.Register(settings.Hotkeys);
+        }
+        else
+        {
+            _hotkeys?.Dispose();
+            _hotkeys = null;
+            _tray?.Dispose();
+            _tray = null;
+        }
         try { StartupRegistration.Apply(settings.StartWithWindows); }
         catch (Exception ex) { FileLog.Write($"Start-with-Windows update failed: {ex.Message}"); }
+    }
+
+    void ExitFromTray()
+    {
+        _panel?.AllowClose();
+        Shutdown();
     }
 
     async void OnHotkey(HotkeyAction action)
     {
         if (action == HotkeyAction.OpenPanel)
         {
-            _panel!.ShowNearTray();
+            _panel!.ShowMainWindow();
             return;
         }
 
         var result = await (action switch
         {
-            HotkeyAction.BrightnessUp => _control!.StepAsync(Brightness, 10),
-            HotkeyAction.BrightnessDown => _control!.StepAsync(Brightness, -10),
+            HotkeyAction.BrightnessUp => _control!.StepAsync(Brightness, 5),
+            HotkeyAction.BrightnessDown => _control!.StepAsync(Brightness, -5),
             HotkeyAction.ContrastUp => _control!.StepAsync(Contrast, 5),
             HotkeyAction.ContrastDown => _control!.StepAsync(Contrast, -5),
             HotkeyAction.DayPreset => _control!.ApplyPresetAsync(_settings.Day),

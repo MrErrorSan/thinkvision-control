@@ -13,4 +13,5 @@ public sealed record AppSettings(
     Preset Day,
     Preset Night,
     byte ThisMachineInput,
-    bool StartWithWindows);
+    bool StartWithWindows,
+    bool BackgroundMode = true);

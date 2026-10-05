@@ -3,19 +3,55 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:ThinkVisionControl.Ui"
         Title="ThinkVision Control"
-        Style="{StaticResource ChromelessWindow}"
-        Width="360" SizeToContent="Height"
-        Topmost="True" ShowInTaskbar="False" WindowStartupLocation="Manual">
+        Icon="/ThinkVisionControl;component/Assets/ThinkVisionControl.ico"
+        Style="{StaticResource DarkWindow}"
+        Width="920" Height="720" MinWidth="720" MinHeight="560"
+        WindowStyle="SingleBorderWindow" ResizeMode="CanResize"
+        Topmost="False" ShowInTaskbar="True" WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <DataTemplate DataType="{x:Type ui:RangeItem}">
             <StackPanel Margin="0,4" Visibility="{Binding IsShown, Converter={StaticResource BoolToVis}}">
                 <DockPanel>
+                    <ProgressBar DockPanel.Dock="Right" Width="34" Height="4" Margin="10,0,6,0"
+                                 IsIndeterminate="True" Foreground="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Center"
+                                 Visibility="{Binding IsApplying, Converter={StaticResource BoolToVis}}" />
+                    <Button DockPanel.Dock="Right" Padding="12,3"
+                            IsEnabled="{Binding CanApply}" Click="ApplyRange_Click">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                <Setter Property="Content" Value="Apply" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsApplying}" Value="True">
+                                        <Setter Property="Content" Value="Applying…" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     <TextBlock DockPanel.Dock="Right" Text="{Binding ValueText}" Style="{StaticResource ValueText}" />
                     <TextBlock Text="{Binding Name}" />
                 </DockPanel>
-                <Slider Minimum="0" Maximum="{Binding Max, Mode=OneWay}" Value="{Binding Value, Mode=OneWay}"
-                        SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" TickFrequency="1"
-                        ValueChanged="Slider_ValueChanged" />
+                <Slider Minimum="0" Maximum="{Binding Max, Mode=OneWay}"
+                        Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" TickFrequency="10"
+                        TickPlacement="BottomRight"
+                        ToolTip="Drag the slider or use the arrow keys. Tick marks show 10-point steps." />
+                <Grid Margin="8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="0" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Grid.Column="0" Text="20" HorizontalAlignment="Right" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="40" HorizontalAlignment="Right" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="60" HorizontalAlignment="Right" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Grid.Column="3" Text="80" HorizontalAlignment="Right" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                    <TextBlock Grid.Column="4" Text="100" HorizontalAlignment="Right" FontSize="10" Foreground="{DynamicResource MutedTextBrush}" />
+                </Grid>
             </StackPanel>
         </DataTemplate>
 
@@ -52,95 +88,179 @@
 
         <DataTemplate DataType="{x:Type ui:HotkeyItem}">
             <StackPanel Margin="0,2">
-                <DockPanel>
-                    <TextBox DockPanel.Dock="Right" Width="170" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                </DockPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding Text}" Foreground="{DynamicResource MutedTextBrush}"
+                               VerticalAlignment="Center" Margin="8,0" />
+                    <Button Grid.Column="2" Content="Change…" Padding="8,2" Click="ChangeHotkey_Click" />
+                </Grid>
                 <TextBlock Text="{Binding Error}" Style="{StaticResource WarnText}" FontSize="11" HorizontalAlignment="Right" />
             </StackPanel>
         </DataTemplate>
     </Window.Resources>
 
-    <DockPanel Margin="16,14,8,12">
-        <!-- Header -->
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,8,6">
+    <Grid Margin="28,22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,22">
             <DockPanel>
                 <Ellipse DockPanel.Dock="Right" Width="10" Height="10" VerticalAlignment="Center">
                     <Ellipse.Style>
                         <Style TargetType="Ellipse">
-                            <Setter Property="Fill" Value="{StaticResource OffBrush}" />
+                            <Setter Property="Fill" Value="{DynamicResource OffBrush}" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsResponding}" Value="True">
-                                    <Setter Property="Fill" Value="{StaticResource GoodBrush}" />
+                                    <Setter Property="Fill" Value="{DynamicResource GoodBrush}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Ellipse.Style>
                 </Ellipse>
-                <TextBlock Text="ThinkVision P32p-20" Style="{StaticResource HeaderText}" />
+                <TextBlock Text="ThinkVision Control" FontSize="24" FontWeight="SemiBold" />
             </DockPanel>
             <TextBlock Text="{Binding RespondingText}" Style="{StaticResource WarnText}" Margin="0,4,0,0" />
+            <DockPanel Margin="0,12,0,0" LastChildFill="True"
+                       Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                <ProgressBar DockPanel.Dock="Left" Width="100" Height="4" Margin="0,0,10,0"
+                             IsIndeterminate="True" Foreground="{DynamicResource AccentBrush}"
+                             VerticalAlignment="Center" />
+                <TextBlock Text="{Binding BusyMessage}" Style="{StaticResource MutedText}"
+                           VerticalAlignment="Center" />
+            </DockPanel>
         </StackPanel>
 
-        <!-- Status line -->
-        <TextBlock DockPanel.Dock="Bottom" Margin="0,8,8,0" Text="{Binding Status}">
+        <TabControl x:Name="NavigationTabs" Grid.Row="1" Grid.RowSpan="2"
+                    SelectionChanged="NavigationTabs_SelectionChanged">
+            <TabItem AutomationProperties.Name="Display">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE770;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0" />
+                        <TextBlock Text="Display" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer x:Name="PanelScrollViewer" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <StackPanel Margin="0,18,14,14">
+                        <TextBlock Text="Monitor controls" Style="{StaticResource HeaderText}" Margin="0,0,0,12" />
+                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,16">
+                            <ItemsControl ItemsSource="{Binding MainItems}" Focusable="False" />
+                        </Border>
+
+                        <TextBlock Text="Presets" Style="{StaticResource HeaderText}" Margin="0,0,0,10" />
+                        <UniformGrid Columns="4" MaxWidth="520" HorizontalAlignment="Left">
+                            <Button Margin="2" Click="Day_Click" ToolTip="Apply the Day preset"
+                                    AutomationProperties.Name="Apply Day preset">
+                                <TextBlock Text="&#xE706;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                            </Button>
+                            <Button Margin="2" Click="SaveDay_Click" ToolTip="Save current settings as the Day preset"
+                                    AutomationProperties.Name="Save Day preset">
+                                <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                            </Button>
+                            <Button Margin="2" Click="Night_Click" ToolTip="Apply the Night preset"
+                                    AutomationProperties.Name="Apply Night preset">
+                                <TextBlock Text="&#xE708;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                            </Button>
+                            <Button Margin="2" Click="SaveNight_Click" ToolTip="Save current settings as the Night preset"
+                                    AutomationProperties.Name="Save Night preset">
+                                <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                            </Button>
+                        </UniformGrid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem AutomationProperties.Name="Advanced">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0" />
+                        <TextBlock Text="Advanced" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer x:Name="AdvancedScrollViewer" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <StackPanel Margin="0,18,14,14">
+                        <TextBlock Text="Monitor settings" Style="{StaticResource HeaderText}" Margin="0,0,0,12" />
+                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,16">
+                            <ItemsControl x:Name="AdvancedItemsControl" ItemsSource="{Binding AdvancedItems}" Focusable="False" />
+                        </Border>
+
+                        <TextBlock Text="Resets and recovery" Style="{StaticResource HeaderText}" Margin="0,0,0,12" />
+                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,16">
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding ActionItems}" Focusable="False" />
+                                <Button Margin="0,8,0,0" Content="Restore backup" HorizontalAlignment="Left"
+                                        Click="Restore_Click"
+                                        ToolTip="Re-apply the values saved automatically before the last reset" />
+                            </StackPanel>
+                        </Border>
+                        <Button Content="Find hidden settings…" HorizontalAlignment="Left" Click="Finder_Click" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem AutomationProperties.Name="App and shortcuts">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE734;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0" />
+                        <TextBlock Text="App &amp; shortcuts" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <StackPanel Margin="0,18,14,14">
+                        <TextBlock Text="App behavior" Style="{StaticResource HeaderText}" Margin="0,0,0,12" />
+                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,20">
+                            <StackPanel>
+                                <CheckBox Margin="0,6" Content="Run in background and listen for shortcuts"
+                                          IsChecked="{Binding BackgroundMode}" />
+                                <TextBlock Text="Keep the tray icon and global shortcuts active while the app is closed."
+                                           Style="{StaticResource MutedText}" Margin="24,0,0,12" />
+                                <CheckBox Margin="0,6" Content="Start with Windows" IsChecked="{Binding StartWithWindows}" />
+                                <DockPanel Margin="0,14,0,4" MaxWidth="440" HorizontalAlignment="Left">
+                                    <TextBlock Text="This machine's input" Width="160" VerticalAlignment="Center" />
+                                    <ComboBox ItemsSource="{Binding InputChoices}" SelectedValuePath="Value"
+                                              SelectedValue="{Binding ThisMachineInput}" />
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Keyboard shortcuts" Style="{StaticResource HeaderText}" Margin="0,0,0,12" />
+                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="20">
+                            <StackPanel>
+                                <TextBlock Text="Select Change, press a key combination, then confirm to apply it."
+                                           Style="{StaticResource MutedText}" Margin="0,0,0,8" />
+                                <ItemsControl ItemsSource="{Binding Hotkeys}" Focusable="False" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <TextBlock Grid.Row="3" Margin="0,14,0,0" Text="{Binding Status}">
             <TextBlock.Style>
                 <Style TargetType="TextBlock" BasedOn="{StaticResource WarnText}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding StatusIsError}" Value="False">
-                            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </TextBlock.Style>
         </TextBlock>
-
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-            <StackPanel Margin="0,0,8,0">
-                <ItemsControl ItemsSource="{Binding MainItems}" Focusable="False" />
-
-                <TextBlock Text="PRESETS" Style="{StaticResource SectionText}" />
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0" Content="Day" Click="Day_Click" />
-                    <Button Grid.Column="1" Content="save" Style="{StaticResource SmallButton}" Margin="4,0,0,0" Click="SaveDay_Click"
-                            ToolTip="Store the current brightness, contrast and colour mode as the Day preset" />
-                    <Button Grid.Column="3" Content="Night" Click="Night_Click" />
-                    <Button Grid.Column="4" Content="save" Style="{StaticResource SmallButton}" Margin="4,0,0,0" Click="SaveNight_Click"
-                            ToolTip="Store the current brightness, contrast and colour mode as the Night preset" />
-                </Grid>
-
-                <Expander x:Name="AdvancedExpander" Header="Advanced" Margin="0,12,0,0" Expanded="Advanced_Expanded">
-                    <StackPanel>
-                        <ItemsControl ItemsSource="{Binding AdvancedItems}" Focusable="False" />
-
-                        <TextBlock Text="RESETS" Style="{StaticResource SectionText}" />
-                        <ItemsControl ItemsSource="{Binding ActionItems}" Focusable="False" />
-                        <Button Margin="0,3" Content="Restore backup" Click="Restore_Click"
-                                ToolTip="Re-apply the values saved automatically before the last reset" />
-
-                        <TextBlock Text="THIS MACHINE" Style="{StaticResource SectionText}" />
-                        <DockPanel Margin="0,4">
-                            <TextBlock Text="This machine's input" Width="140" VerticalAlignment="Center" />
-                            <ComboBox ItemsSource="{Binding InputChoices}" SelectedValuePath="Value"
-                                      SelectedValue="{Binding ThisMachineInput}" />
-                        </DockPanel>
-                        <CheckBox Margin="0,6" Content="Start with Windows" IsChecked="{Binding StartWithWindows}" />
-
-                        <TextBlock Text="HOTKEYS" Style="{StaticResource SectionText}" />
-                        <ItemsControl ItemsSource="{Binding Hotkeys}" Focusable="False" />
-                        <Button Margin="0,6,0,0" HorizontalAlignment="Right" Content="Save hotkeys" Click="SaveHotkeys_Click" />
-
-                        <Button Margin="0,14,0,4" Content="Find hidden settings…" Click="Finder_Click" />
-                    </StackPanel>
-                </Expander>
-            </StackPanel>
-        </ScrollViewer>
-    </DockPanel>
+    </Grid>
 </Window>

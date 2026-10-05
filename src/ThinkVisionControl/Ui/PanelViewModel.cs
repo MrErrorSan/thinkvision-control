@@ -39,8 +39,9 @@ public sealed record InputChoice(byte Value, string Label)
 
 public sealed class PanelViewModel : Observable
 {
-    const byte Brightness = 0x10, Contrast = 0x12, ColourMode = 0x14, Input = 0x60, CustomColourMode = 0x0B;
+    const byte Brightness = 0x10, Contrast = 0x12, ColourMode = 0x14, Input = 0x60, CustomColourMode = 0x12;
     static readonly byte[] RgbGains = [0x16, 0x18, 0x1A];
+    static readonly byte[] ColourModeOrder = [0x0B, 0x01, 0x0F, 0x06, 0x0E, 0x05, 0x08, 0x12];
     const string NotRespondingText = "Monitor not responding — DDC/CI may be off (hold Exit for 10 s)";
     const string InUseText = "In use by another app";
 
@@ -50,10 +51,16 @@ public sealed class PanelViewModel : Observable
     readonly Action<AppSettings> _settingsChanged;
     readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
     readonly Dictionary<byte, ControlItem> _items = [];
+    readonly List<string> _busyOperations = [];
     AppSettings _settings;
     bool _isResponding;
+    bool _isConnecting;
     string _status = "";
     bool _statusIsError;
+    int _activeOperations;
+    string _busyMessage = "";
+    string? _throttledWriteError;
+    bool _controlsBuilt;
 
     public PanelViewModel(ControlService control, SettingsStore settingsStore, ProfileStore profiles,
         Func<IReadOnlyCollection<HotkeyAction>> failedHotkeys, Action<AppSettings> settingsChanged)
@@ -66,7 +73,9 @@ public sealed class PanelViewModel : Observable
         _settings = settingsStore.Load();
 
         control.ValueChanged += (code, value) => _dispatcher.InvokeAsync(() => OnValueChanged(code, value));
-        control.RespondingChanged += responding => _dispatcher.InvokeAsync(() => IsResponding = responding);
+        control.RespondingChanged += responding => _dispatcher.InvokeAsync(() => OnRespondingChanged(responding));
+        control.ThrottledWriteCompleted += (code, result) =>
+            _dispatcher.InvokeAsync(() => OnThrottledWriteCompleted(code, result));
     }
 
     internal ControlService Control => _control;
@@ -93,6 +102,13 @@ public sealed class PanelViewModel : Observable
 
     public string RespondingText => _isResponding ? "" : NotRespondingText;
 
+    public bool IsBusy => _activeOperations > 0 || _isConnecting;
+    public string BusyMessage
+    {
+        get => _isConnecting ? "Connecting to monitor…" : _busyMessage;
+        private set => Set(ref _busyMessage, value);
+    }
+
     public string Status { get => _status; private set => Set(ref _status, value); }
     public bool StatusIsError { get => _statusIsError; private set => Set(ref _statusIsError, value); }
 
@@ -118,6 +134,17 @@ public sealed class PanelViewModel : Observable
         }
     }
 
+    public bool BackgroundMode
+    {
+        get => _settings.BackgroundMode;
+        set
+        {
+            if (value == _settings.BackgroundMode) return;
+            if (SaveSettings(_settings with { BackgroundMode = value }))
+                OnChanged();
+        }
+    }
+
     /// <summary>Rebuilds every control from the current profile and cache, then refreshes the Main codes in the background.</summary>
     public void OnShowing()
     {
@@ -126,6 +153,23 @@ public sealed class PanelViewModel : Observable
     }
 
     public void OnAdvancedExpanded() => RefreshInBackground(AdvancedItems);
+
+    internal void SetConnecting(bool connecting)
+    {
+        if (_isConnecting == connecting) return;
+        _isConnecting = connecting;
+        OnChanged(nameof(IsBusy));
+        OnChanged(nameof(BusyMessage));
+    }
+
+    void OnRespondingChanged(bool responding)
+    {
+        IsResponding = responding;
+        if (!responding || _controlsBuilt || _control.Capabilities is null) return;
+
+        Rebuild();
+        RefreshInBackground(MainItems.Concat(AdvancedItems));
+    }
 
     void Rebuild()
     {
@@ -137,6 +181,7 @@ public sealed class PanelViewModel : Observable
         IsResponding = _control.IsResponding;
 
         var caps = _control.Capabilities;
+        _controlsBuilt = caps is not null;
         if (caps is not null)
         {
             var visible = _control.Controls.Values
@@ -165,8 +210,15 @@ public sealed class PanelViewModel : Observable
         OnChanged(nameof(StartWithWindows));
     }
 
-    static IReadOnlyList<byte> AllowedValues(MonitorCapabilities caps, ControlDefinition def) =>
-        caps.Vcp.TryGetValue(def.Code, out var values) && values is not null ? values : def.ValueLabels.Keys.Order().ToList();
+    static IReadOnlyList<byte> AllowedValues(MonitorCapabilities caps, ControlDefinition def)
+    {
+        if (def.Code == ColourMode)
+            return ColourModeOrder.Where(value => caps.AllowsValue(ColourMode, value)).ToList();
+
+        return caps.Vcp.TryGetValue(def.Code, out var values) && values is not null
+            ? values
+            : def.ValueLabels.Keys.Order().ToList();
+    }
 
     void RefreshInBackground(IEnumerable<ControlItem> items)
     {
@@ -176,9 +228,14 @@ public sealed class PanelViewModel : Observable
 
     async Task RefreshAsync(List<byte> codes)
     {
+        BeginBusy("Reading monitor settings…");
         try { await Task.Run(() => _control.RefreshAsync(codes)); }
         catch { /* surfaced through RespondingChanged */ }
-        SyncAll();
+        finally
+        {
+            SyncAll();
+            EndBusy("Reading monitor settings…");
+        }
     }
 
     void OnValueChanged(byte code, uint value)
@@ -186,6 +243,47 @@ public sealed class PanelViewModel : Observable
         if (!_items.TryGetValue(code, out var item)) return;
         item.Sync(value, _control.TryGetCached(code, out var r) ? r.Max : 0);
         if (code == ColourMode) UpdateRgbVisibility();
+    }
+
+    void OnThrottledWriteCompleted(byte code, WriteResult result)
+    {
+        if (result.Outcome == WriteOutcome.Ok)
+        {
+            if (_throttledWriteError is not null && Status == _throttledWriteError)
+                SetStatus("", false);
+            _throttledWriteError = null;
+            return;
+        }
+
+        _throttledWriteError = result.Message;
+        if (_items.TryGetValue(code, out var item) && item is RangeItem range
+            && _control.TryGetCached(code, out var reading))
+            range.SyncFromMonitor(reading.Current, reading.Max);
+        SetStatus(result.Message, true);
+    }
+
+    internal async Task ApplyRangeAsync(RangeItem range)
+    {
+        if (!range.TryStartApply(out var value)) return;
+
+        var success = false;
+        var busyMessage = $"Applying {range.Name}…";
+        BeginBusy(busyMessage);
+        try
+        {
+            var result = await Guard(() => _control.SetAsync(range.Code, value));
+            if (result?.Outcome == WriteOutcome.NeedsConfirmation)
+                result = Confirm(result.Message) ? await Guard(() => _control.SetAsync(range.Code, value, confirmed: true)) : null;
+
+            Report(result);
+            success = result?.Outcome == WriteOutcome.Ok;
+        }
+        finally
+        {
+            range.FinishApply(success);
+            SyncFromCache(range);
+            EndBusy(busyMessage);
+        }
     }
 
     void SyncAll()
@@ -217,18 +315,37 @@ public sealed class PanelViewModel : Observable
 
     internal async Task WriteAsync(byte code, uint value)
     {
-        var result = await Guard(() => _control.SetAsync(code, value));
-        if (result?.Outcome == WriteOutcome.NeedsConfirmation)
-            result = Confirm(result.Message) ? await Guard(() => _control.SetAsync(code, value, confirmed: true)) : null;
-        Report(result);
-        if (_items.TryGetValue(code, out var item)) SyncFromCache(item);
-        if (code == ColourMode) UpdateRgbVisibility();
+        var busyMessage = _items.TryGetValue(code, out var item) ? $"Applying {item.Name}…" : "Applying monitor setting…";
+        BeginBusy(busyMessage);
+        try
+        {
+            var result = await Guard(() => _control.SetAsync(code, value));
+            if (result?.Outcome == WriteOutcome.NeedsConfirmation)
+                result = Confirm(result.Message) ? await Guard(() => _control.SetAsync(code, value, confirmed: true)) : null;
+            Report(result);
+            if (_items.TryGetValue(code, out item)) SyncFromCache(item);
+            if (code == ColourMode) UpdateRgbVisibility();
+        }
+        finally
+        {
+            EndBusy(busyMessage);
+        }
     }
 
     public async Task ApplyPresetAsync(bool night)
     {
-        Report(await Guard(() => _control.ApplyPresetAsync(night ? _settings.Night : _settings.Day)));
-        SyncAll();
+        var preset = night ? _settings.Night : _settings.Day;
+        var busyMessage = $"Applying {preset.Name} preset…";
+        BeginBusy(busyMessage);
+        try
+        {
+            Report(await Guard(() => _control.ApplyPresetAsync(preset)));
+            SyncAll();
+        }
+        finally
+        {
+            EndBusy(busyMessage);
+        }
     }
 
     public void SavePreset(bool night)
@@ -246,10 +363,36 @@ public sealed class PanelViewModel : Observable
 
     public async Task RestoreBackupAsync()
     {
-        var result = await Guard(() => _control.RestoreLatestBackupAsync());
-        if (result?.Outcome == WriteOutcome.Ok) SetStatus(result.Message.Length > 0 ? result.Message : "Backup restored.", false);
-        else Report(result);
-        SyncAll();
+        const string busyMessage = "Restoring monitor backup…";
+        BeginBusy(busyMessage);
+        try
+        {
+            var result = await Guard(() => _control.RestoreLatestBackupAsync());
+            if (result?.Outcome == WriteOutcome.Ok) SetStatus(result.Message.Length > 0 ? result.Message : "Backup restored.", false);
+            else Report(result);
+            SyncAll();
+        }
+        finally
+        {
+            EndBusy(busyMessage);
+        }
+    }
+
+    void BeginBusy(string message)
+    {
+        _busyOperations.Add(message);
+        _activeOperations++;
+        BusyMessage = _busyOperations[^1];
+        OnChanged(nameof(IsBusy));
+    }
+
+    void EndBusy(string message)
+    {
+        var index = _busyOperations.LastIndexOf(message);
+        if (index >= 0) _busyOperations.RemoveAt(index);
+        _activeOperations = Math.Max(0, _activeOperations - 1);
+        BusyMessage = _busyOperations.LastOrDefault() ?? "";
+        OnChanged(nameof(IsBusy));
     }
 
     void RebuildHotkeys()
@@ -262,7 +405,7 @@ public sealed class PanelViewModel : Observable
                 failed.Contains(action) ? InUseText : null));
     }
 
-    public void SaveHotkeys()
+    public bool SaveHotkeys()
     {
         var map = new Dictionary<HotkeyAction, string>();
         var valid = true;
@@ -277,7 +420,7 @@ public sealed class PanelViewModel : Observable
             }
             else
             {
-                item.Error = "Not a valid hotkey (example: Ctrl+Alt+PageUp)";
+                item.Error = "Choose a letter, number, arrow, Home/End, or function key with a modifier.";
                 valid = false;
             }
         }
@@ -292,13 +435,14 @@ public sealed class PanelViewModel : Observable
         if (!valid)
         {
             SetStatus("Hotkeys not saved — fix the marked entries.", true);
-            return;
+            return false;
         }
 
-        if (!SaveSettings(_settings with { Hotkeys = map })) return;
+        if (!SaveSettings(_settings with { Hotkeys = map })) return false;
         var failed = FailedHotkeys();
         foreach (var item in Hotkeys) item.Error = failed.Contains(item.Action) ? InUseText : null;
         SetStatus(failed.Count == 0 ? "Hotkeys saved." : "Hotkeys saved, but some are in use by another app.", failed.Count > 0);
+        return true;
     }
 
     IReadOnlyCollection<HotkeyAction> FailedHotkeys()
@@ -381,22 +525,30 @@ public abstract class ControlItem(PanelViewModel owner, ControlDefinition defini
 public sealed class RangeItem(PanelViewModel owner, ControlDefinition definition) : ControlItem(owner, definition)
 {
     uint _value, _max = 100;
-    long _lastUserEdit = long.MinValue / 2;
+    uint? _pendingValue;
+    uint _applyingValue;
+    bool _isApplying;
 
     public double Max => _max;
-    public double Value => _value;
-    public string ValueText => _value.ToString();
+    public double Value
+    {
+        get => _pendingValue ?? _value;
+        set => UserSet(value);
+    }
+    public string ValueText => _pendingValue is { } pending ? $"{pending} (current {_value})" : _value.ToString();
+    public bool CanApply => _pendingValue.HasValue && !_isApplying;
+    public bool IsApplying => _isApplying;
 
-    /// <summary>Called only for slider changes the user made; sends the value through the throttled path.</summary>
+    /// <summary>Stages a user-selected value without writing to the monitor.</summary>
     public void UserSet(double value)
     {
         var v = (uint)Math.Clamp(Math.Round(value), 0, _max);
-        if (v == _value) return;
-        _value = v;
-        _lastUserEdit = Environment.TickCount64;
+        uint? next = v == _value ? null : v;
+        if (_pendingValue == next) return;
+        _pendingValue = next;
         OnChanged(nameof(Value));
         OnChanged(nameof(ValueText));
-        Owner.SetThrottled(Code, v);
+        OnChanged(nameof(CanApply));
     }
 
     public override void Sync(uint value, uint max)
@@ -406,8 +558,51 @@ public sealed class RangeItem(PanelViewModel owner, ControlDefinition definition
             _max = max;
             OnChanged(nameof(Max));
         }
-        // Throttled writes echo intermediate values back; don't let them yank the slider while it is being dragged.
-        if (Environment.TickCount64 - _lastUserEdit < 1000 || value == _value) return;
+        SetMonitorValue(value);
+    }
+
+    public void SyncFromMonitor(uint value, uint max)
+    {
+        if (max > 0 && max != _max)
+        {
+            _max = max;
+            OnChanged(nameof(Max));
+        }
+        SetMonitorValue(value);
+    }
+
+    internal bool TryStartApply(out uint value)
+    {
+        value = 0;
+        if (_pendingValue is not { } pending || _isApplying) return false;
+        _applyingValue = value = pending;
+        _isApplying = true;
+        OnChanged(nameof(IsApplying));
+        OnChanged(nameof(CanApply));
+        return true;
+    }
+
+    internal void FinishApply(bool succeeded)
+    {
+        if (succeeded && _pendingValue == _applyingValue) _pendingValue = null;
+        _isApplying = false;
+        OnChanged(nameof(IsApplying));
+        OnChanged(nameof(Value));
+        OnChanged(nameof(ValueText));
+        OnChanged(nameof(CanApply));
+    }
+
+    void SetMonitorValue(uint value)
+    {
+        if (value == _value) return;
+        _value = value;
+        OnChanged(nameof(Value));
+        OnChanged(nameof(ValueText));
+    }
+
+    void SetValue(uint value)
+    {
+        if (value == _value) return;
         _value = value;
         OnChanged(nameof(Value));
         OnChanged(nameof(ValueText));

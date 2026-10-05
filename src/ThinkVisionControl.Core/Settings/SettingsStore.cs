@@ -17,10 +17,10 @@ public sealed class SettingsStore(string directory)
     public static AppSettings Defaults { get; } = new(
         new Dictionary<HotkeyAction, string>
         {
-            [HotkeyAction.BrightnessUp] = "Ctrl+Alt+PageUp",
-            [HotkeyAction.BrightnessDown] = "Ctrl+Alt+PageDown",
-            [HotkeyAction.ContrastUp] = "Ctrl+Alt+Shift+PageUp",
-            [HotkeyAction.ContrastDown] = "Ctrl+Alt+Shift+PageDown",
+            [HotkeyAction.BrightnessUp] = "Ctrl+Alt+Up",
+            [HotkeyAction.BrightnessDown] = "Ctrl+Alt+Down",
+            [HotkeyAction.ContrastUp] = "Ctrl+Alt+Left",
+            [HotkeyAction.ContrastDown] = "Ctrl+Alt+Right",
             [HotkeyAction.DayPreset] = "Ctrl+Alt+Home",
             [HotkeyAction.NightPreset] = "Ctrl+Alt+End",
             [HotkeyAction.InputHdmi] = "Ctrl+Alt+F1",
@@ -32,7 +32,8 @@ public sealed class SettingsStore(string directory)
         new Preset("Day", 60, 70, null),
         new Preset("Night", 0, 70, null),
         0x11,
-        false);
+        false,
+        true);
 
     private string FilePath => Path.Combine(directory, "settings.json");
 
@@ -53,7 +54,17 @@ public sealed class SettingsStore(string directory)
 
         var hotkeys = new Dictionary<HotkeyAction, string>();
         foreach (var (action, gesture) in Defaults.Hotkeys)
-            hotkeys[action] = loaded.Hotkeys?.GetValueOrDefault(action) ?? gesture;
+        {
+            var saved = loaded.Hotkeys?.GetValueOrDefault(action);
+            hotkeys[action] = saved switch
+            {
+                "Ctrl+Alt+PageUp" when action == HotkeyAction.BrightnessUp => gesture,
+                "Ctrl+Alt+PageDown" when action == HotkeyAction.BrightnessDown => gesture,
+                "Ctrl+Alt+Shift+PageUp" when action == HotkeyAction.ContrastUp => gesture,
+                "Ctrl+Alt+Shift+PageDown" when action == HotkeyAction.ContrastDown => gesture,
+                _ => saved ?? gesture,
+            };
+        }
         return loaded with { Hotkeys = hotkeys };
     }
 

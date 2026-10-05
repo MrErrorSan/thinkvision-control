@@ -33,7 +33,7 @@ FA(10 12 EA 14))mswhql(1)asset_eep(40)mccs_ver(2.2))
 |---|---|---|---|---|
 | Brightness | 0x10 | 0–100 | range | yes |
 | Contrast | 0x12 | 0–100 | range | yes |
-| Colour mode | 0x14 | 01 05 06 08 0B 0E 0F 12 (names mapped during the hardware check; 01 = sRGB, 0B = User/Custom by MCCS convention) | enum | yes |
+| Colour mode | 0x14 | 01 = DCI-P3, 05 = Bluish, 06 = Neutral, 08 = Low Blue Light, 0B = sRGB, 0E = Reddish, 0F = BT.709, 12 = User/Custom (confirmed by cycling the OSD and reading VCP 0x14) | enum | yes |
 | Red / green / blue gain | 0x16 / 0x18 / 0x1A | 0–100 | range | yes, shown when colour mode is Custom |
 | Input source | 0x60 | 0x11 HDMI, 0x0F DP, 0x31 USB-C | enum | yes |
 | Aspect ratio | 0x86 | 02, 05 (names mapped during the hardware check) | enum | Advanced |
@@ -45,7 +45,7 @@ FA(10 12 EA 14))mswhql(1)asset_eep(40)mccs_ver(2.2))
 
 ## 3. Architecture
 
-One process, `ThinkVisionControl.exe`, which lives in the tray and optionally starts with Windows. Six units, each with one job:
+One process, `ThinkVisionControl.exe`, with a per-user Start Menu shortcut and a remembered operating mode. Both modes use the same resizable Windows app window with Display, Advanced, and App & shortcuts pages. Background mode also keeps a tray icon and registers global shortcuts; closing the window hides it while the process stays alive. Interface-only mode starts with the window visible, registers no global shortcuts or tray icon, and exits when the window closes. Both modes optionally start with Windows. Six units, each with one job:
 
 ### 3.1 Monitor link (`Ddc/`)
 - Wraps `dxva2.dll`/`user32.dll`: `EnumDisplayMonitors`, `GetPhysicalMonitorsFromHMONITOR`, `GetCapabilitiesStringLength`, `CapabilitiesRequestAndCapabilitiesReply`, `GetVCPFeatureAndVCPFeatureReply`, `SetVCPFeature`, `DestroyPhysicalMonitors`.
@@ -59,17 +59,17 @@ One process, `ThinkVisionControl.exe`, which lives in the tray and optionally st
 - `p32p20.profile.json` (embedded in the exe as a resource; finder results and other user edits are saved as an overlay in `%AppData%\ThinkVisionControl\profile.user.json`) holds the display name, kind, value labels and safety class for each code.
 - When the profile and the capabilities differ, the capabilities decide which codes and values may be written; the profile only supplies names.
 
-### 3.3 Tray panel (`Ui/`)
-- WPF dark flyout anchored near the tray, closing when it loses focus.
+### 3.3 Main window (`Ui/`)
+- Standard resizable WPF app window with native Windows title bar, app icon, and Display, Advanced, and App & shortcuts navigation tabs. Tray and Open Panel hotkey restore and activate this same window.
+- Light and dark palettes follow the Windows app theme and refresh when the Windows theme changes.
 - Opens immediately with cached values, then refreshes in the background.
-- Sections, top to bottom:
-  1. Brightness and contrast sliders.
-  2. Input buttons (active one highlighted).
-  3. Colour mode list, plus the RGB sliders when the mode is Custom.
-  4. Day and Night preset buttons, each with "save current values".
-  5. Advanced, collapsed: aspect ratio, OSD language, power, the three resets, restore backup, start with Windows, hotkey editor.
-  6. Hidden-settings finder.
-- Slider drags are throttled: only the latest value is sent, at about 10 per second.
+- Display page contains brightness and contrast sliders, input buttons, colour mode and Custom RGB gains, and Day/Night apply/save icon actions.
+- Range sliders stage a selected value locally; an explicit Apply button sends one write, verifies it with a fresh DDC read, and reports the actual monitor value.
+- Active monitor reads and writes show an indeterminate progress indicator and operation label; the range Apply button shows its own applying state.
+- Advanced page separates monitor settings from resets/recovery and the hidden-settings finder.
+- App & shortcuts page contains the remembered run mode, Start with Windows, machine input, and capture-based hotkey editor.
+- App behavior lets the user switch between the two modes immediately; the selected mode is persisted and restored on the next launch.
+- Slider adjustments do not write to the monitor until explicitly applied.
 - Tray icon states: normal; grey when the monitor is not responding (tooltip: "Monitor not responding — DDC/CI may be off (hold Exit for 10 s)").
 
 ### 3.4 Hotkeys and on-screen feedback (`Hotkeys/`)
@@ -78,8 +78,8 @@ One process, `ThinkVisionControl.exe`, which lives in the tray and optionally st
 
 | Action | Keys |
 |---|---|
-| Brightness +10 / −10 | Ctrl+Alt+PageUp / PageDown |
-| Contrast +5 / −5 | Ctrl+Alt+Shift+PageUp / PageDown |
+| Brightness +5 / −5 | Ctrl+Alt+Up / Down |
+| Contrast +5 / −5 | Ctrl+Alt+Left / Right |
 | Day / Night preset | Ctrl+Alt+Home / End |
 | Input HDMI / DP / USB-C | Ctrl+Alt+F1 / F2 / F3 |
 | Switch monitor to this machine | Ctrl+Alt+M |

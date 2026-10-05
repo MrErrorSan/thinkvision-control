@@ -59,8 +59,11 @@ This strongly suggests the P32p-20 uses **DP = 0x0F, HDMI = 0x11 (HDMI-1), USB-C
   | 0xD6 | Power mode | 01 = on, 05 = off (P40w-20); P27q-10 and P44w-10 also list 04 | sibling caps |
   | 0xDC | Display mode | P40w-20 lists 00 01 03 05 | sibling caps |
   | 0x62 | Audio volume | **probably not supported**: the P32p-20 has no speakers, only a 3.5 mm audio-out, and no sibling caps string lists 0x62 | spec + sibling caps |
-  | 0xE0–0xFD | Manufacturer-specific | unknown meanings (P40w-20 exposes E0, EA, EB, EC, F2, F4, F5, F6, F7, F8, FA) | sibling caps |
-- **Colour preset 0x14.** The standard MCCS 0x14 meanings are: 01 = sRGB, 05 = 6500 K, 06 = 7500 K, 08 = 9300 K, 0B = User 1. The P32p-20 OSD colour modes are sRGB, BT.709, DCI-P3, Neutral, Reddish, Bluish, Low Blue Light and Custom, so Lenovo probably maps Neutral/Reddish/Bluish to the 6500/7500/9300 K style slots and Custom to User 1. The extra values (0E/0F on P40w-20) are probably vendor-specific (e.g. DCI-P3/BT.709). This mapping is an inference. Verify by reading 0x14 while switching OSD modes.
+  | 0xE0 | Over Drive | 00 Off, 01 Normal, 02 Extreme | P32p-20 OSD change + read-only snapshot |
+  | 0xEA | Dynamic Contrast | 00 Off, 01 On | P32p-20 OSD change + read-only snapshot |
+  | 0xEC | USB Charging | 00 Off, 01 On | P32p-20 OSD change + read-only snapshot |
+  | 0xE0–0xFD (other) | Manufacturer-specific | remaining codes not mapped | P40w-20 exposes similar codes |
+- **P32p-20 colour mode 0x14, experimentally mapped:** 01 = DCI-P3, 05 = Bluish, 06 = Neutral, 08 = Low Blue Light, 0B = sRGB, 0E = Reddish, 0F = BT.709, 12 = User/Custom. Values were captured by cycling through each OSD mode and reading VCP 0x14. These differ from conventional MCCS meanings for some values.
 - **Out-of-range 0x60 values.** The P40w-20 advertises "FF" and repeats the list inside 60(...). This looks like a firmware quirk in the capabilities string. Tools that parse it strictly may show odd entries such as "0xFF". Ignore them.
 
 ### Gaps
@@ -81,7 +84,7 @@ This strongly suggests the P32p-20 uses **DP = 0x0F, HDMI = 0x11 (HDMI-1), USB-C
 - Port Settings: USB Charging, DP Select, USB Source Selection.
 - Menu Settings: Language, Menu Time Out, Menu H/V position, Transparency, Factory Reset.
 
-**DDC reach:** brightness, contrast, input, colour preset/RGB gains, scaling, language, power and factory reset are probably DDC-reachable (standard MCCS codes). DCR, Over Drive, Low Blue Light, Button Repeat Rate, USB Charging, DP 1.1/1.2, USB 2.0/3.0, the USB upstream (KVM) switch and the menu-layout settings have no standard MCCS code. They are OSD-only unless Lenovo exposes them via vendor-specific E0–FF codes, which is unverified.
+**DDC reach:** brightness, contrast, input, colour preset/RGB gains, scaling, language, power and factory reset use standard MCCS codes. Read-only OSD-change snapshots on this P32p-20 additionally confirmed vendor codes for Dynamic Contrast (`0xEA`), Over Drive (`0xE0`) and USB Charging (`0xEC`). DP Select and USB Source Selection are disabled on the current HDMI input and remain unmapped. Changing Button Repeat Rate from Default to Slow did not change any readable vendor code; it is not exposed by the app. Menu-layout settings also have no identified VCP code.
 
 ### Cited Findings
 - Rear ports: 1x USB-C 3.2 Gen 1 (DP 1.2 Alt Mode, up to 90 W PD, USB upstream), 1x USB-B 3.2 Gen 1 upstream, 3x USB 3.2 Gen 1 downstream (1x BC 1.2), 1x HDMI 2.0, 1x DisplayPort 1.2, 1x Ethernet RJ-45 (10/100/1000), power, 1x 3.5 mm audio-out. — [PSREF spec](https://psref.lenovo.com/syspool/Sys/PDF/ThinkVision/ThinkVision_P32p_20/ThinkVision_P32p_20_Spec.PDF)
@@ -115,7 +118,7 @@ This strongly suggests the P32p-20 uses **DP = 0x0F, HDMI = 0x11 (HDMI-1), USB-C
 - **USB Source Selection (USB 2.0 vs USB 3.0)** probably controls the USB-C lane split. USB 2.0 leaves all 4 lanes for DP 1.2 (4K60). USB 3.0 leaves 2 DP lanes, which would limit USB-C video to roughly 4K30. This matches the default being USB 2.0. Inference from DP Alt Mode lane maths; not stated in the guide.
 - The "KVM" in the spec sheet is the USB-upstream switch (USB-B vs USB-C). It is a hotkey and OSD function, not a standard MCCS code. Switching both video and USB from software would need VCP 0x60 plus an undocumented vendor code, or LDCC/LADM.
 - "Input Signal" default "Auto" appears in the defaults column, but "Auto" is not listed as an option. Auto-input-detect behaviour is unclear.
-- Probably DDC-reachable via standard MCCS: brightness (0x10), contrast (0x12), input (0x60), colour preset (0x14), RGB gain (0x16/18/1A), scaling (0x86), language (0xCC), power (0xD6), factory resets (0x04/05/08). Probably OSD-only (or vendor-code only): DCR, Over Drive, Low Blue Light (unless it is a 0x14 value), USB Charging, DP 1.1/1.2, USB 2.0/3.0, the USB UFP/KVM switch, button repeat, menu position/transparency/timeout, and the DDC/CI enable itself.
+- Confirmed via vendor VCP: Dynamic Contrast (`0xEA`), Over Drive (`0xE0`) and USB Charging (`0xEC`). DP Select and USB Source Selection remain untested because they are disabled on HDMI; Button Repeat Rate changed no readable vendor code, and menu-layout controls remain without identified codes.
 
 ### Gaps
 - The RJ-45 "remote network management" is not explained in the user guide. It is unclear whether it is just a USB-NIC passthrough to the host or a monitor-management channel. This was not resolved. The LDCC Artery (enterprise network management) guidebook URL returned 404.

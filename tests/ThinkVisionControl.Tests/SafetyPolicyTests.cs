@@ -40,7 +40,7 @@ public class SafetyPolicyTests
     }
 
     [Fact]
-    public void Unnamed_vendor_code_is_blocked() => Assert.Equal(SafetyVerdict.Block, Eval(0xE0, 1, confirmed: true).Verdict);
+    public void Unnamed_vendor_code_is_blocked() => Assert.Equal(SafetyVerdict.Block, Eval(0xEB, 1, confirmed: true).Verdict);
 
     [Fact]
     public void Unsupported_code_is_blocked() => Assert.Equal(SafetyVerdict.Block, Eval(0x62, 10).Verdict);

@@ -29,7 +29,9 @@ public sealed class ControlServiceTests : IDisposable
         Assert.True(_control.IsResponding);
         Assert.True(_control.TryGetCached(0x12, out var contrast));
         Assert.Equal(70u, contrast.Current);
-        Assert.False(_control.TryGetCached(0xE0, out _)); // hidden codes are not read at start
+        Assert.True(_control.TryGetCached(0xE0, out var overDrive));
+        Assert.Equal(1u, overDrive.Current);
+        Assert.False(_control.TryGetCached(0xEB, out _)); // hidden codes are not read at start
     }
 
     [Fact]
@@ -43,6 +45,53 @@ public sealed class ControlServiceTests : IDisposable
         Assert.Equal(WriteOutcome.Ok, result.Outcome);
         Assert.Equal(((byte)0x10, 100u), _link.Writes.Single());
         Assert.Equal("Brightness 100", result.Message);
+    }
+
+    [Fact]
+    public async Task Step_reports_when_monitor_does_not_apply_brightness()
+    {
+        await _control.StartAsync();
+        _link.IgnoredWrites.Add(0x10);
+
+        var result = await _control.StepAsync(0x10, 5);
+
+        Assert.Equal(WriteOutcome.Blocked, result.Outcome);
+        Assert.Contains("Brightness remains 0", result.Message);
+        Assert.Contains("color mode may lock brightness", result.Message);
+        Assert.Equal(((byte)0x10, 5u), _link.Writes.Single());
+    }
+
+    [Fact]
+    public async Task Throttled_slider_detects_monitor_rejecting_a_range_value()
+    {
+        await _control.StartAsync();
+        _link.IgnoredWrites.Add(0x10);
+        var completion = new TaskCompletionSource<WriteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _control.ThrottledWriteCompleted += (_, result) => completion.TrySetResult(result);
+
+        _control.SetThrottled(0x10, 20);
+        var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(WriteOutcome.Blocked, result.Outcome);
+        Assert.Contains("Brightness remains 0", result.Message);
+        Assert.Contains("color mode may lock brightness", result.Message);
+        Assert.True(_control.TryGetCached(0x10, out var reading));
+        Assert.Equal(0u, reading.Current);
+    }
+
+    [Fact]
+    public async Task Direct_range_write_verifies_the_monitor_applied_the_requested_value()
+    {
+        await _control.StartAsync();
+        _link.IgnoredWrites.Add(0x10);
+
+        var result = await _control.SetAsync(0x10, 25);
+
+        Assert.Equal(WriteOutcome.Blocked, result.Outcome);
+        Assert.Contains("Brightness remains 0", result.Message);
+        Assert.Contains("color mode may lock brightness", result.Message);
+        Assert.True(_control.TryGetCached(0x10, out var reading));
+        Assert.Equal(0u, reading.Current);
     }
 
     [Fact]
@@ -76,7 +125,7 @@ public sealed class ControlServiceTests : IDisposable
         await _control.StartAsync();
 
         Assert.Equal(WriteOutcome.Blocked, (await _control.SetAsync(0xCA, 2, confirmed: true)).Outcome);
-        Assert.Equal(WriteOutcome.Blocked, (await _control.SetAsync(0xE0, 1, confirmed: true)).Outcome);
+        Assert.Equal(WriteOutcome.Blocked, (await _control.SetAsync(0xEB, 1, confirmed: true)).Outcome);
         Assert.Empty(_link.Writes);
     }
 
@@ -121,14 +170,29 @@ public sealed class ControlServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Throttled_slider_reports_monitor_write_failures()
+    {
+        await _control.StartAsync();
+        var completion = new TaskCompletionSource<WriteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _control.ThrottledWriteCompleted += (_, result) => completion.TrySetResult(result);
+        _link.Dead = true;
+
+        _control.SetThrottled(0x10, 20);
+        var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(WriteOutcome.NotResponding, result.Outcome);
+        Assert.Contains("not responding", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Preset_sets_colour_mode_then_brightness_then_contrast()
     {
         await _control.StartAsync();
 
-        var result = await _control.ApplyPresetAsync(new Preset("Night", 0, 60, 0x0B));
+        var result = await _control.ApplyPresetAsync(new Preset("Night", 0, 60, 0x12));
 
         Assert.Equal("Night preset", result.Message);
-        Assert.Equal(new (byte, uint)[] { (0x14, 0x0B), (0x10, 0), (0x12, 60) }, _link.Writes);
+        Assert.Equal(new (byte, uint)[] { (0x14, 0x12), (0x10, 0), (0x12, 60) }, _link.Writes);
     }
 
     [Fact]
@@ -136,10 +200,10 @@ public sealed class ControlServiceTests : IDisposable
     {
         await _control.StartAsync();
         var before = await VendorCodeFinder.SnapshotAsync(_control);
-        _link.Values[0xE0] = new(2, 2); // user changed Over Drive with the buttons
+        _link.Values[0xEB] = new(1, 1); // user changed an unidentified OSD setting with the buttons
         var after = await VendorCodeFinder.SnapshotAsync(_control);
 
-        Assert.Equal([new CodeChange(0xE0, 0, 2)], VendorCodeFinder.Diff(before, after));
+        Assert.Equal([new CodeChange(0xEB, 0, 1)], VendorCodeFinder.Diff(before, after));
         Assert.Empty(_link.Writes);
     }
 
