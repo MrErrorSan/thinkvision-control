@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("windows")]
+
 namespace ThinkVisionControl.Ddc.Windows;
 
 internal static class NativeMethods
