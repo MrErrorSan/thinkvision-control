@@ -32,6 +32,11 @@ public sealed class FakeMonitorLink : IMonitorLink
 
     public bool IsConnected { get; private set; }
 
+    /// <summary>What the link reports when it can't connect (e.g. PermissionDenied on Linux).</summary>
+    public LinkFailure FailureWhenAbsent { get; set; } = LinkFailure.NotFound;
+
+    public LinkFailure LastFailure => IsConnected ? LinkFailure.None : FailureWhenAbsent;
+
     public bool TryConnect()
     {
         ConnectCount++;
