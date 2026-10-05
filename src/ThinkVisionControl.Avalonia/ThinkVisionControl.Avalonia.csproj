@@ -30,6 +30,8 @@
   <ItemGroup>
     <ProjectReference Include="..\ThinkVisionControl.Core\ThinkVisionControl.Core.csproj" />
     <ProjectReference Include="..\ThinkVisionControl.Ddc.Windows\ThinkVisionControl.Ddc.Windows.csproj" />
+    <ProjectReference Include="..\ThinkVisionControl.Ddc.Linux\ThinkVisionControl.Ddc.Linux.csproj" />
+    <ProjectReference Include="..\ThinkVisionControl.Ddc.MacOS\ThinkVisionControl.Ddc.MacOS.csproj" />
   </ItemGroup>
 
 </Project>
