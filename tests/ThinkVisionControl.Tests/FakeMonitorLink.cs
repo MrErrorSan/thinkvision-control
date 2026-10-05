@@ -20,6 +20,8 @@ public sealed class FakeMonitorLink : IMonitorLink
     };
 
     public List<(byte Code, uint Value)> Writes { get; } = [];
+    public int ReadCount { get; private set; }
+    public int ConnectCount { get; private set; }
     public HashSet<byte> IgnoredWrites { get; } = [];
 
     /// <summary>When true every DDC call fails, like a monitor with DDC/CI switched off.</summary>
@@ -30,12 +32,19 @@ public sealed class FakeMonitorLink : IMonitorLink
 
     public bool IsConnected { get; private set; }
 
-    public bool TryConnect() => IsConnected = !Absent;
+    public bool TryConnect()
+    {
+        ConnectCount++;
+        return IsConnected = !Absent;
+    }
 
     public string ReadCapabilities() => Dead ? throw new DdcException("dead") : P32p20Capabilities;
 
-    public VcpReading Read(byte code) =>
-        !Dead && Values.TryGetValue(code, out var r) ? r : throw new DdcException($"read 0x{code:X2}");
+    public VcpReading Read(byte code)
+    {
+        ReadCount++;
+        return !Dead && Values.TryGetValue(code, out var r) ? r : throw new DdcException($"read 0x{code:X2}");
+    }
 
     public void Write(byte code, uint value)
     {

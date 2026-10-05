@@ -7,13 +7,13 @@ public sealed class DisplayEvents : IDisposable
 {
     static readonly TimeSpan Debounce = TimeSpan.FromSeconds(2);
 
-    readonly Func<Task> _reconnect;
+    readonly Action _reconnect;
     readonly Timer _timer;
 
-    public DisplayEvents(Func<Task> reconnect)
+    public DisplayEvents(Action reconnect)
     {
         _reconnect = reconnect;
-        _timer = new Timer(_ => _ = _reconnect());
+        _timer = new Timer(_ => _reconnect());
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }

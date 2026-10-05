@@ -55,11 +55,6 @@ public partial class PanelWindow : Window
         Activate();
     }
 
-    // Kept until the app shell stops calling them: the VM derives "connecting" from ControlService.Status, and the
-    // window always closes for real.
-    internal void SetConnecting(bool connecting) { }
-    internal void AllowClose() { }
-
     void OnClosed(object? sender, EventArgs e)
     {
         if (Equals(_vm.ConfirmAsync, _confirm)) _vm.ConfirmAsync = null;
