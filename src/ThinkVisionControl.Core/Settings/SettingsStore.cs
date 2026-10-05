@@ -33,7 +33,7 @@ public sealed class SettingsStore(string directory)
         new Preset("Night", 0, 70, null),
         0x11,
         false,
-        true);
+        false);
 
     private string FilePath => Path.Combine(directory, "settings.json");
 
