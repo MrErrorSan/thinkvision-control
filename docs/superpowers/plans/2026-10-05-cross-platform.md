@@ -4,35 +4,35 @@ overview: Make Core portable, add Linux (i2c-dev) and macOS (IOAVService) monito
 todos:
   - id: core-portable
     content: Core → net10.0; move dxva2 link to Ddc.Windows; add DdcPacket codec and link failure reasons; tests → net10.0
-    status: pending
+    status: completed
     parallel: false
   - id: avalonia-scaffold
     content: New ThinkVisionControl.Avalonia project (Avalonia 12.1.x, FluentAvalonia 3.1.x), icon font, theme/background rules, pinned platform interfaces as stubs
-    status: pending
+    status: completed
     depends-on: core-portable
   - id: ddc-linux
     content: Ddc.Linux — I2cMonitorLink, EDID match, bus selection, flock, permission/module failure reasons
-    status: pending
+    status: completed
     depends-on: core-portable
   - id: ddc-macos
     content: Ddc.MacOS — IoAvMonitorLink, display→service matching, checksum fallback, HDMI variant, re-lookup
-    status: pending
+    status: completed
     depends-on: core-portable
   - id: avalonia-ui
     content: Port PanelViewModel + pages, dialogs, shortcut editor, flyout, OSD window, setup cards to Avalonia
-    status: pending
+    status: completed
     depends-on: avalonia-scaffold
   - id: platform-layer
     content: Per-OS implementations of IMonitorEvents, IHotkeys, ITray, IOsd, IAutostart, IQuickActions, ISingleInstance, IThemeInfo
-    status: pending
+    status: completed
     depends-on: avalonia-scaffold
   - id: avalonia-shell
     content: App lifecycle (startup modes, commands, single instance, lazy windows, exit-on-close), OS selection, link factory
-    status: pending
+    status: completed
     depends-on: avalonia-ui, platform-layer, ddc-linux, ddc-macos
   - id: readme-scripts
     content: README build-from-source per OS, scripts/make-macos-app.sh, Linux udev rule + .desktop file
-    status: pending
+    status: completed
     parallel: true
   - id: icons
     content: Single app icon for all OSes and themes (Dark + shadows, user's pick 2026-10-05): exported PNG/ICO/ICNS/SVG; WPF uses it; Avalonia + macOS bundle reference assets/brand
@@ -40,15 +40,34 @@ todos:
     parallel: true
   - id: tests
     content: Codec, EDID match, bus selection, checksum fallback, link-failure → status mapping
-    status: pending
+    status: completed
     depends-on: avalonia-shell
   - id: verify
     content: Build all RIDs, tests, Avalonia UI under WSL Ubuntu, Windows gate measurements; hardware checks listed for Linux live USB and Mac
-    status: pending
+    status: in_progress
     depends-on: tests
 ---
 
 # macOS and Linux — implementation plan
+
+> **Status 2026-10-05:** everything here is built.
+> - **Tests and builds:** 89 tests pass. The win-x64, linux-x64 and osx-arm64 builds are clean.
+> - **Windows:** the Avalonia app drives the real P32p-20 (Connected over HDMI, firmware LB1.2).
+> - **Linux:** the published Linux build runs under WSL Ubuntu, and the real i2c link reports `ModuleMissing`, which shows the setup warning (`docs/previews/avalonia/linux/app-real-link-module-missing.png`).
+> - **Hardware:** the jitter probe ran on hardware and the queue now settles only before reads (spec 2026-10-05-windows11-redesign §6).
+>
+> Windows switch gates (spec §7), measured with release single-file builds on the developer's laptop, median of 5 warm runs:
+>
+> | Gate | WPF | Avalonia | Result |
+> |---|---|---|---|
+> | 1. Mica | yes | yes | pass |
+> | 2. Time to window | 0.83 s | 1.78 s | **fail** |
+> | 3. Private memory, tray-only login | 25.7 MB | 37.1 MB | **fail** |
+> | 4. Side-by-side visual review | — | — | pending |
+>
+> Windows stays on WPF. The next lever is NativeAOT (untested; FluentAvalonia compatibility unknown).
+>
+> **Pending (needs hardware):** a Linux live USB with the monitor, a KDE session, and an Apple Silicon Mac. Checklists are in the README and in `Ddc.MacOS/README.md` and `Platform/MacOS/README.md`.
 
 Spec: [2026-10-05-cross-platform-design.md](../specs/2026-10-05-cross-platform-design.md) (§n below). **Tier 2.** Branch: `feature/thinkvision-control` (continue).
 

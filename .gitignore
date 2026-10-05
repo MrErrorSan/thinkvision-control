@@ -6,3 +6,4 @@ publish/
 TestResults/
 .claude/
 docs/brand/icon-size-comparison*.png
+publish-avalonia/
