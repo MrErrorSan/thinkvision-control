@@ -1,0 +1,96 @@
+<UserControl x:Class="ThinkVisionControl.Ui.Pages.DisplayPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:ThinkVisionControl.Ui"
+             xmlns:c="clr-namespace:ThinkVisionControl.Ui.Controls"
+             Focusable="False">
+    <!-- DataContext: PanelViewModel. Mockup A, page "Display". -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="PageResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        <DataTemplate DataType="{x:Type ui:PresetItem}">
+            <c:SettingsCard Header="{Binding Name}" Description="{Binding Description}" Icon="{Binding Icon}">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Apply" MinWidth="80" Command="{Binding ApplyCommand}" />
+                    <Button Style="{StaticResource IconButtonStyle}" Content="&#xE712;" Margin="8,0,0,0" Click="More_Click"
+                            AutomationProperties.Name="{Binding Name, StringFormat='More options for {0}'}" ToolTip="More options">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="{Binding SaveText}" Command="{Binding SaveCommand}" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
+            </c:SettingsCard>
+        </DataTemplate>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <Grid Margin="36,0,36,36">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="1000" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Display" Style="{StaticResource PageTitleStyle}" />
+
+                <!-- Device header: monitor glyph, name, and the status as icon + text. -->
+                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                    <TextBlock Text="&#xE7F4;" FontFamily="{StaticResource IconFont}" FontSize="48" Width="48" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding MonitorTitle}" Style="{StaticResource SubtitleTextStyle}"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding StatusGlyph}" FontFamily="{StaticResource IconFont}" FontSize="16" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyTextStyle}" Margin="8,0,0,0" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <c:InfoBar Margin="0,16,0,0" IsClosable="False" IsOpen="{Binding IsInfoBarOpen}" Severity="{Binding InfoBarSeverity}"
+                           Title="{Binding InfoBarTitle}" Message="{Binding InfoBarMessage}" ActionContent="{Binding InfoBarAction}"
+                           ActionCommand="{Binding InfoBarCommand}" ShowProgress="{Binding InfoBarProgress}" />
+
+                <StackPanel IsEnabled="{Binding IsConnected}">
+                    <TextBlock Text="Brightness and contrast" Style="{StaticResource SectionHeaderStyle}" />
+                    <ContentControl Content="{Binding BrightnessItem}" Focusable="False" />
+                    <ContentControl Content="{Binding ContrastItem}" Focusable="False" />
+
+                    <TextBlock Text="Colour" Style="{StaticResource SectionHeaderStyle}" />
+                    <ContentControl Content="{Binding ColourModeItem}" Focusable="False" />
+                    <c:SettingsExpander Header="Custom colour" Icon="&#xE9E9;" Description="{Binding CustomColourDescription}">
+                        <ItemsControl ItemsSource="{Binding RgbItems}" IsEnabled="{Binding IsCustomColour}" Focusable="False" />
+                    </c:SettingsExpander>
+
+                    <TextBlock Text="Input" Style="{StaticResource SectionHeaderStyle}" />
+                    <c:SettingsCard Header="Input" Icon="&#xE961;" Description="{Binding InputDescription}"
+                                    Visibility="{Binding HasInput, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl ItemsSource="{Binding InputItem.Options}" Focusable="False" AutomationProperties.Name="Input">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <RadioButton GroupName="DisplayPageInput" Content="{Binding Label}" MinWidth="120" Margin="8,4,0,4"
+                                                 IsChecked="{Binding IsActive, Mode=OneWay}" Click="Input_Click" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </c:SettingsCard>
+
+                    <TextBlock Text="Presets" Style="{StaticResource SectionHeaderStyle}" />
+                    <ContentControl Content="{Binding Day}" Focusable="False" />
+                    <ContentControl Content="{Binding Night}" Focusable="False" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

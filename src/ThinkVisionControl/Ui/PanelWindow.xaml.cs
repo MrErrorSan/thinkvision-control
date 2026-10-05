@@ -1,17 +1,29 @@
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
+using ThinkVisionControl.Ui.Controls;
+using ThinkVisionControl.Ui.Pages;
 
 namespace ThinkVisionControl.Ui;
 
+/// <summary>
+/// The settings window (layout A). It always really closes; the shared <see cref="PanelViewModel"/> outlives it and the
+/// app shell creates a new window on the next show.
+/// </summary>
 public partial class PanelWindow : Window
 {
+    const double WideWidth = 1008, CompactPaneWidth = 48;
+
+    public static readonly DependencyProperty CurrentPageProperty =
+        DependencyProperty.Register(nameof(CurrentPage), typeof(NavigationItem), typeof(PanelWindow),
+            new FrameworkPropertyMetadata(null, (d, e) => ((PanelWindow)d).Navigate(e.NewValue as NavigationItem)));
+
     readonly PanelViewModel _vm;
     readonly Action _suspendHotkeys;
     readonly Action _resumeHotkeys;
+    readonly Func<DialogSpec, Task<bool>> _confirm;
+    readonly Dictionary<NavigationItem, FrameworkElement> _pages = [];
     FinderWindow? _finder;
-    bool _dialogOpen;
-    bool _allowClose;
+    bool _narrow, _collapsed, _overlayOpen;
 
     public PanelWindow(PanelViewModel vm, Action suspendHotkeys, Action resumeHotkeys)
     {
@@ -19,105 +31,145 @@ public partial class PanelWindow : Window
         DataContext = _vm = vm;
         _suspendHotkeys = suspendHotkeys;
         _resumeHotkeys = resumeHotkeys;
-        vm.Confirm = Confirm;
-        Closing += (_, e) =>
-        {
-            if (_allowClose || !_vm.BackgroundMode) return;
-            e.Cancel = true;
-            Hide();
-        };
+        vm.ConfirmAsync = _confirm = ConfirmAsync;
+        CurrentPage = DisplayItem;
+        SizeChanged += (_, _) => UpdatePane();
+        PageHost.PreviewMouseDown += (_, _) => ClosePaneOverlay();
+        Closed += OnClosed;
+        UpdatePane();
     }
 
-    /// <summary>Rebuilds from cache, restores the main window and brings it to the foreground.</summary>
+    /// <summary>The selected navigation item; setting it shows that page.</summary>
+    public NavigationItem? CurrentPage
+    {
+        get => (NavigationItem?)GetValue(CurrentPageProperty);
+        set => SetValue(CurrentPageProperty, value);
+    }
+
+    /// <summary>Shows the window, restores it if minimized and brings it to the foreground.</summary>
     public void ShowMainWindow()
     {
         _vm.OnShowing();
-        PanelScrollViewer.ScrollToTop();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Show();
         Activate();
     }
 
-    internal void SetConnecting(bool connecting) => _vm.SetConnecting(connecting);
+    // Kept until the app shell stops calling them: the VM derives "connecting" from ControlService.Status, and the
+    // window always closes for real.
+    internal void SetConnecting(bool connecting) { }
+    internal void AllowClose() { }
 
-    bool Confirm(string message)
+    void OnClosed(object? sender, EventArgs e)
     {
-        var wasDialogOpen = _dialogOpen;
-        _dialogOpen = true;
-        try
+        if (Equals(_vm.ConfirmAsync, _confirm)) _vm.ConfirmAsync = null;
+        _pages.Clear();
+        PageHost.Content = null;
+    }
+
+    Task<bool> ConfirmAsync(DialogSpec spec) =>
+        IsVisible ? ConfirmCoreAsync(spec) : Task.FromResult(false);
+
+    async Task<bool> ConfirmCoreAsync(DialogSpec spec) => await DialogHost.ShowAsync(spec) == ContentDialogResult.Primary;
+
+    // ---------------------------------------------------------------- navigation
+
+    void Navigate(NavigationItem? item)
+    {
+        if (item is null) return;
+        if (!_pages.TryGetValue(item, out var page))
         {
-            var result = IsVisible
-                ? MessageBox.Show(this, message, "ThinkVision Control", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
-                : MessageBox.Show(message, "ThinkVision Control", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            return result == MessageBoxResult.Yes;
+            page = item == MonitorItem ? new MonitorPage() : item == AppItem ? new AppSettingsPage() : new DisplayPage();
+            _pages[item] = page;
         }
-        finally
+        PageHost.Content = page;
+        ClosePaneOverlay();
+    }
+
+    /// <summary>Expanded pane from 1008 px; icons only below that, where the menu button opens it over the content.</summary>
+    void UpdatePane()
+    {
+        _narrow = ActualWidth > 0 && ActualWidth < WideWidth;
+        if (!_narrow) _overlayOpen = false;
+        Nav.IsCompact = _narrow ? !_overlayOpen : _collapsed;
+        PaneOverlay.Visibility = _overlayOpen ? Visibility.Visible : Visibility.Collapsed;
+        PageHost.Margin = new Thickness(_narrow || _collapsed ? CompactPaneWidth : Nav.OpenPaneLength, 0, 0, 0);
+    }
+
+    void Nav_PaneToggleRequested(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (_narrow) _overlayOpen = !_overlayOpen;
+        else _collapsed = !_collapsed;
+        UpdatePane();
+    }
+
+    void ClosePaneOverlay()
+    {
+        if (!_overlayOpen) return;
+        _overlayOpen = false;
+        UpdatePane();
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        if (e.Handled || DialogHost.IsDialogOpen) return;
+        if (e.Key == Key.Escape && _overlayOpen)
         {
-            _dialogOpen = wasDialogOpen;
+            ClosePaneOverlay();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F6)
+        {
+            // F6 moves focus between the pane and the page.
+            if (Nav.IsKeyboardFocusWithin) (PageHost.Content as UIElement)?.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+            else (CurrentPage ?? DisplayItem).Focus();
+            e.Handled = true;
         }
     }
 
-    void NavigationTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    // ---------------------------------------------------------------- dialogs and tools
+
+    internal async Task EditHotkeyAsync(HotkeyItem item)
     {
-        if (!ReferenceEquals(e.Source, NavigationTabs) || NavigationTabs.SelectedIndex != 1) return;
-        _vm.OnAdvancedExpanded();
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
-        {
-            AdvancedItemsControl.UpdateLayout();
-            AdvancedScrollViewer.ScrollToTop();
-        });
-    }
-
-    void Day_Click(object sender, RoutedEventArgs e) => _ = _vm.ApplyPresetAsync(night: false);
-    void Night_Click(object sender, RoutedEventArgs e) => _ = _vm.ApplyPresetAsync(night: true);
-    void SaveDay_Click(object sender, RoutedEventArgs e) => _vm.SavePreset(night: false);
-    void SaveNight_Click(object sender, RoutedEventArgs e) => _vm.SavePreset(night: true);
-    void Restore_Click(object sender, RoutedEventArgs e) => _ = _vm.RestoreBackupAsync();
-    void ApplyRange_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: RangeItem range })
-            _ = _vm.ApplyRangeAsync(range);
-    }
-
-    internal void AllowClose() => _allowClose = true;
-
-    void ChangeHotkey_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not FrameworkElement { DataContext: HotkeyItem item }) return;
-
-        var wasDialogOpen = _dialogOpen;
-        var saved = false;
-        _dialogOpen = true;
+        var editor = new HotkeyEditor(item.Label, item.Text, text => _vm.HotkeyConflict(item.Action, text));
+        editor.ValidityChanged += valid => DialogHost.IsPrimaryButtonEnabled = valid;
+        DialogHost.IsPrimaryButtonEnabled = false;
         _suspendHotkeys();
         try
         {
-            var capture = new HotkeyCaptureWindow(item.Label) { Owner = this };
-            if (capture.ShowDialog() != true) return;
-
-            var shortcut = capture.Gesture.ToString();
-            if (!Confirm($"Apply {shortcut} for {item.Label}?")) return;
-
-            var previous = item.Text;
-            item.Text = shortcut;
-            saved = _vm.SaveHotkeys();
-            if (!saved) item.Text = previous;
+            var result = await DialogHost.ShowAsync(new DialogSpec("Edit shortcut", editor, "Save", "Reset", "Cancel", DialogButton.Primary));
+            if (result == ContentDialogResult.Primary)
+            {
+                _vm.SaveHotkey(item.Action, editor.Result);
+            }
+            else if (result == ContentDialogResult.Secondary)
+            {
+                var standard = PanelViewModel.DefaultHotkey(item.Action);
+                if (_vm.HotkeyConflict(item.Action, standard) is { } other)
+                    await DialogHost.ShowAsync(new DialogSpec($"{item.Label} can't use its default shortcut",
+                        $"{other} already uses {standard}. Change that shortcut first.", "", null, "OK"));
+                else
+                    _vm.SaveHotkey(item.Action, standard);
+            }
         }
         finally
         {
-            _dialogOpen = wasDialogOpen;
-            if (!saved) _resumeHotkeys();
+            _resumeHotkeys();
+            _vm.RefreshHotkeyWarnings();
         }
     }
 
-    void Finder_Click(object sender, RoutedEventArgs e)
+    internal void OpenFinder()
     {
         if (_finder is null)
         {
-            _finder = new FinderWindow(_vm.Control, _vm.Profiles) { Owner = this };
+            _finder = new FinderWindow(_vm.Control, _vm.Profiles, _vm.RebuildIfControlsChanged) { Owner = this };
             _finder.Closed += (_, _) =>
             {
                 _finder = null;
-                Activate();
+                if (IsVisible) Activate();
             };
             _finder.Show();
         }
