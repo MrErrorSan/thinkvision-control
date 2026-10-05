@@ -7,6 +7,9 @@ namespace ThinkVisionControl.Core.Control;
 
 public enum WriteOutcome { Ok, NeedsConfirmation, Blocked, NotResponding }
 
+/// <summary>Connecting = first attempt in progress; NotFound = monitor not plugged in; NotResponding = found but DDC/CI silent.</summary>
+public enum MonitorStatus { Connecting, NotFound, NotResponding, Connected }
+
 public sealed record WriteResult(WriteOutcome Outcome, string Message, uint? Value = null);
 
 /// <summary>The only write path to the monitor. Owns the value cache and enforces <see cref="SafetyPolicy"/>.</summary>
@@ -20,13 +23,15 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
     private readonly Dictionary<byte, VcpReading> cache = [];
     private Timer? reconnectTimer;
     private int reconnecting;
-    private bool responding;
+    private MonitorStatus status = MonitorStatus.Connecting;
     private bool disposed;
 
     public event Action<byte, uint>? ValueChanged;
     public event Action<bool>? RespondingChanged;
+    public event Action<MonitorStatus>? StatusChanged;
 
-    public bool IsResponding { get { lock (gate) return responding; } }
+    public MonitorStatus Status { get { lock (gate) return status; } }
+    public bool IsResponding => Status == MonitorStatus.Connected;
     public MonitorCapabilities? Capabilities { get; private set; }
     public IReadOnlyDictionary<byte, ControlDefinition> Controls { get; private set; } = new Dictionary<byte, ControlDefinition>();
 
@@ -44,7 +49,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         {
             if (!await queue.Run(l => l.TryConnect()))
             {
-                SetResponding(false);
+                SetStatus(MonitorStatus.NotFound);
                 return;
             }
 
@@ -61,12 +66,12 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
                 .Where(d => d.Kind is ControlKind.Range or ControlKind.Enum && d.Section is PanelSection.Main or PanelSection.Advanced)
                 .Select(d => d.Code)
                 .Union(cached);
-            if (await RefreshCoreAsync(codes)) SetResponding(true);
+            if (await RefreshCoreAsync(codes)) SetStatus(MonitorStatus.Connected);
         }
         catch (Exception ex) when (ex is DdcException or FormatException)
         {
             FileLog.Write($"Connect failed: {ex.Message}");
-            SetResponding(false);
+            SetStatus(MonitorStatus.NotResponding);
         }
     }
 
@@ -93,7 +98,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 
         if (requested > 0 && succeeded == 0)
         {
-            SetResponding(false);
+            SetStatus(MonitorStatus.NotResponding);
             return false;
         }
         return true;
@@ -132,7 +137,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         catch (DdcException ex)
         {
             FileLog.Write($"Write 0x{code:X2}={v} failed: {ex.Message}");
-            SetResponding(false);
+            SetStatus(MonitorStatus.NotResponding);
             return NotRespondingResult;
         }
 
@@ -154,7 +159,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
             catch (DdcException ex)
             {
                 FileLog.Write($"Verify read 0x{code:X2} failed: {ex.Message}");
-                SetResponding(false);
+                SetStatus(MonitorStatus.NotResponding);
                 return NotRespondingResult;
             }
         }
@@ -250,15 +255,16 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         if (changed) ValueChanged?.Invoke(code, reading.Current);
     }
 
-    private void SetResponding(bool value)
+    private void SetStatus(MonitorStatus value)
     {
-        bool changed;
+        bool statusChanged, respondingChanged;
         lock (gate)
         {
             if (disposed) return;
-            changed = responding != value;
-            responding = value;
-            if (value)
+            statusChanged = status != value;
+            respondingChanged = (status == MonitorStatus.Connected) != (value == MonitorStatus.Connected);
+            status = value;
+            if (value == MonitorStatus.Connected)
             {
                 reconnectTimer?.Dispose();
                 reconnectTimer = null;
@@ -268,7 +274,8 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
                 reconnectTimer ??= new Timer(_ => _ = ReconnectTickAsync(), null, ReconnectInterval, ReconnectInterval);
             }
         }
-        if (changed) RespondingChanged?.Invoke(value);
+        if (statusChanged) StatusChanged?.Invoke(value);
+        if (respondingChanged) RespondingChanged?.Invoke(value == MonitorStatus.Connected);
     }
 
     private async Task ReconnectTickAsync()

@@ -176,4 +176,56 @@ public sealed class ControlServiceTests : IDisposable
         Assert.Equal([new CodeChange(0xEB, 0, 1)], VendorCodeFinder.Diff(before, after));
         Assert.Empty(_link.Writes);
     }
+
+    [Fact]
+    public void Status_is_connecting_before_start() => Assert.Equal(MonitorStatus.Connecting, _control.Status);
+
+    [Fact]
+    public async Task Unplugged_monitor_is_reported_as_not_found()
+    {
+        _link.Absent = true;
+        var statuses = new List<MonitorStatus>();
+        _control.StatusChanged += statuses.Add;
+
+        await _control.StartAsync();
+
+        Assert.Equal(MonitorStatus.NotFound, _control.Status);
+        Assert.False(_control.IsResponding);
+        Assert.Equal([MonitorStatus.NotFound], statuses);
+    }
+
+    [Fact]
+    public async Task Found_monitor_without_ddc_is_reported_as_not_responding()
+    {
+        _link.Dead = true;
+
+        await _control.StartAsync();
+
+        Assert.Equal(MonitorStatus.NotResponding, _control.Status);
+    }
+
+    [Fact]
+    public async Task Monitor_plugged_in_later_connects_on_reconnect()
+    {
+        _link.Absent = true;
+        await _control.StartAsync();
+        _link.Absent = false;
+
+        await _control.ReconnectAsync();
+
+        Assert.Equal(MonitorStatus.Connected, _control.Status);
+        Assert.NotNull(_control.Capabilities);
+    }
+
+    [Fact]
+    public async Task Unplugging_after_connect_is_reported_as_not_found()
+    {
+        await _control.StartAsync();
+        _link.Absent = true;
+        _link.Dead = true;
+
+        await _control.ReconnectAsync();
+
+        Assert.Equal(MonitorStatus.NotFound, _control.Status);
+    }
 }

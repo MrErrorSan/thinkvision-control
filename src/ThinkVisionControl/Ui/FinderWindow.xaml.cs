@@ -1,7 +1,5 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interop;
 using ThinkVisionControl.Core.Control;
 using ThinkVisionControl.Core.Finder;
 using ThinkVisionControl.Core.Profile;
@@ -21,13 +19,6 @@ public partial class FinderWindow : Window
         InitializeComponent();
         _control = control;
         _profiles = profiles;
-    }
-
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-        var dark = 1;
-        DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
     }
 
     async void Snapshot_Click(object sender, RoutedEventArgs e)
@@ -147,9 +138,4 @@ public partial class FinderWindow : Window
         public string Caption { get; } = $"0x{value:X2}{note}";
         public string Label { get; set; } = label;
     }
-
-    const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-
-    [DllImport("dwmapi.dll")]
-    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 }

@@ -154,7 +154,11 @@
                         <TextBlock Text="Monitor controls" Style="{StaticResource HeaderText}" Margin="0,0,0,12" />
                         <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
                                 BorderThickness="1" CornerRadius="8" Padding="20" Margin="0,0,0,16">
-                            <ItemsControl ItemsSource="{Binding MainItems}" Focusable="False" />
+                            <Grid>
+                                <ItemsControl ItemsSource="{Binding MainItems}" Focusable="False" />
+                                <TextBlock Text="{Binding EmptyStateText}" Style="{StaticResource MutedText}" TextWrapping="Wrap"
+                                           Visibility="{Binding ShowEmptyState, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
                         </Border>
 
                         <TextBlock Text="Presets" Style="{StaticResource HeaderText}" Margin="0,0,0,10" />

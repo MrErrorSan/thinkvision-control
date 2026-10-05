@@ -42,6 +42,7 @@ public sealed class PanelViewModel : Observable
     const byte Brightness = 0x10, Contrast = 0x12, ColourMode = 0x14, Input = 0x60, CustomColourMode = 0x12;
     static readonly byte[] RgbGains = [0x16, 0x18, 0x1A];
     static readonly byte[] ColourModeOrder = [0x0B, 0x01, 0x0F, 0x06, 0x0E, 0x05, 0x08, 0x12];
+    const string NotFoundText = "ThinkVision P32p-20 not connected — plug it in and the app connects automatically.";
     const string NotRespondingText = "Monitor not responding — DDC/CI may be off (hold Exit for 10 s)";
     const string InUseText = "In use by another app";
 
@@ -54,6 +55,7 @@ public sealed class PanelViewModel : Observable
     readonly List<string> _busyOperations = [];
     AppSettings _settings;
     bool _isResponding;
+    MonitorStatus _monitorStatus;
     bool _isConnecting;
     string _status = "";
     bool _statusIsError;
@@ -70,9 +72,11 @@ public sealed class PanelViewModel : Observable
         _failedHotkeys = failedHotkeys;
         _settingsChanged = settingsChanged;
         _settings = settingsStore.Load();
+        _monitorStatus = control.Status;
 
         control.ValueChanged += (code, value) => _dispatcher.InvokeAsync(() => OnValueChanged(code, value));
         control.RespondingChanged += responding => _dispatcher.InvokeAsync(() => OnRespondingChanged(responding));
+        control.StatusChanged += status => _dispatcher.InvokeAsync(() => OnStatusChanged(status));
     }
 
     internal ControlService Control => _control;
@@ -97,7 +101,23 @@ public sealed class PanelViewModel : Observable
         private set { if (Set(ref _isResponding, value)) OnChanged(nameof(RespondingText)); }
     }
 
-    public string RespondingText => _isResponding ? "" : NotRespondingText;
+    public string RespondingText => _monitorStatus switch
+    {
+        MonitorStatus.NotFound => NotFoundText,
+        MonitorStatus.NotResponding => NotRespondingText,
+        _ => "",
+    };
+
+    /// <summary>Shown inside the empty controls card, so it never looks blank.</summary>
+    public string EmptyStateText => _monitorStatus switch
+    {
+        MonitorStatus.Connecting => "Looking for the monitor…",
+        MonitorStatus.NotFound => "No ThinkVision P32p-20 found. Connect it with HDMI, DisplayPort or USB-C; the controls appear as soon as it is detected.",
+        MonitorStatus.NotResponding => "The monitor is connected but not answering. If the Exit button was held for 10 seconds, DDC/CI is off — hold Exit for 10 seconds again to turn it back on.",
+        _ => "Reading monitor settings…",
+    };
+
+    public bool ShowEmptyState => MainItems.Count == 0;
 
     public bool IsBusy => _activeOperations > 0 || _isConnecting;
     public string BusyMessage
@@ -159,6 +179,13 @@ public sealed class PanelViewModel : Observable
         OnChanged(nameof(BusyMessage));
     }
 
+    void OnStatusChanged(MonitorStatus status)
+    {
+        _monitorStatus = status;
+        OnChanged(nameof(RespondingText));
+        OnChanged(nameof(EmptyStateText));
+    }
+
     void OnRespondingChanged(bool responding)
     {
         IsResponding = responding;
@@ -201,6 +228,7 @@ public sealed class PanelViewModel : Observable
             }
         }
 
+        OnChanged(nameof(ShowEmptyState));
         SyncAll();
         RebuildHotkeys();
         OnChanged(nameof(ThisMachineInput));

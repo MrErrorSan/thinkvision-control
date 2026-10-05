@@ -25,9 +25,12 @@ public sealed class FakeMonitorLink : IMonitorLink
     /// <summary>When true every DDC call fails, like a monitor with DDC/CI switched off.</summary>
     public bool Dead { get; set; }
 
+    /// <summary>When true the monitor is not plugged in, so it cannot be found at all.</summary>
+    public bool Absent { get; set; }
+
     public bool IsConnected { get; private set; }
 
-    public bool TryConnect() => IsConnected = !Dead;
+    public bool TryConnect() => IsConnected = !Absent;
 
     public string ReadCapabilities() => Dead ? throw new DdcException("dead") : P32p20Capabilities;
 
