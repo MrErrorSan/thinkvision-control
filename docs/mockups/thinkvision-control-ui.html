@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="en-GB" class="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ThinkVision Control UI mockups</title>
+<style>
+/* =====================================================================
+   Viewer chrome (plain on purpose, so it is never confused with the app)
+   ===================================================================== */
+html.light{--v-bg:#f4f4f4;--v-fg:#1a1a1a;--v-mut:#5a5a5a;--v-bar:#ffffff;--v-bd:#c8c8c8;--v-on:#1a1a1a;--v-onfg:#fff;--v-tbl:#fff}
+html.dark{--v-bg:#121212;--v-fg:#e8e8e8;--v-mut:#a0a0a0;--v-bar:#1c1c1c;--v-bd:#3a3a3a;--v-on:#e8e8e8;--v-onfg:#111;--v-tbl:#1a1a1a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--v-bg);color:var(--v-fg);font:13px/1.45 "Segoe UI",system-ui,sans-serif}
+.vt{position:sticky;top:0;z-index:100;background:var(--v-bar);border-bottom:1px solid var(--v-bd);display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:8px 16px}
+.vt-name{font-weight:600;margin-right:6px}
+.vt-g{display:flex;align-items:center;gap:0}
+.vt-g>span{color:var(--v-mut);margin-right:6px}
+.vb{font:inherit;color:var(--v-fg);background:transparent;border:1px solid var(--v-bd);margin-left:-1px;padding:3px 9px;cursor:pointer;border-radius:0}
+.vb[aria-pressed="true"]{background:var(--v-on);color:var(--v-onfg);border-color:var(--v-on)}
+.vt select{font:inherit;color:var(--v-fg);background:var(--v-bar);border:1px solid var(--v-bd);padding:3px 4px;margin-left:8px;border-radius:0;max-width:260px}
+.vt label{display:flex;align-items:center;gap:5px;color:var(--v-fg)}
+.vb:focus-visible,.vt select:focus-visible,.vt input:focus-visible{outline:2px solid var(--v-fg);outline-offset:1px}
+main{padding:8px 16px 48px}
+.intro{max-width:980px;color:var(--v-mut);margin:10px 0 4px}
+.intro code{font:12px Consolas,monospace;color:var(--v-fg)}
+.sc{border-top:1px solid var(--v-bd);padding:18px 0 22px}
+.sc>h2{font:600 15px "Segoe UI",sans-serif;margin:0 0 2px}
+.sc>h2 .id{font:12px Consolas,monospace;color:var(--v-mut);margin-right:8px}
+.sc>p{margin:0 0 12px;color:var(--v-mut);max-width:980px}
+.sc-row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.sc-mocks{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;min-width:0}
+.fig{margin:0}
+.fig>figcaption{font:12px Consolas,monospace;color:var(--v-mut);margin:0 0 4px}
+.notes{width:320px;flex:none;font-size:12.5px}
+.notes h3{font:600 12px "Segoe UI",sans-serif;text-transform:uppercase;letter-spacing:.04em;color:var(--v-mut);margin:0 0 6px}
+.notes ul{margin:0;padding-left:16px}
+.notes li{margin:0 0 6px}
+.notes b{font-weight:600}
+.cmp{border-collapse:collapse;background:var(--v-tbl);max-width:1200px;width:100%}
+.cmp th,.cmp td{border:1px solid var(--v-bd);padding:7px 9px;text-align:left;vertical-align:top}
+.cmp thead th{font-weight:600}
+.cmp tbody th{font-weight:600;white-space:nowrap}
+.cmp td.rec{font-weight:600}
+#err{display:none;background:#c42b1c;color:#fff;padding:8px 16px;font:12px Consolas,monospace;white-space:pre-wrap}
+
+/* =====================================================================
+   Windows 11 tokens (WinUI Common_themeresources_any.xaml values)
+   ===================================================================== */
+html.light{
+ --text1:rgba(0,0,0,.894);--text2:rgba(0,0,0,.62);--text3:rgba(0,0,0,.447);--textdis:rgba(0,0,0,.361);
+ --accent:#0067C0;--accent-h:rgba(0,103,192,.9);--accent-p:rgba(0,103,192,.8);--accent-dis:rgba(0,0,0,.216);
+ --accent-text:#003E92;--on-accent:#fff;--on-accent-dis:#fff;--accent-b1:rgba(255,255,255,.08);--accent-b2:rgba(0,0,0,.4);
+ --ctrl:rgba(255,255,255,.7);--ctrl-h:rgba(249,249,249,.5);--ctrl-p:rgba(249,249,249,.3);--ctrl-dis:rgba(249,249,249,.3);
+ --ctrl-stroke:rgba(0,0,0,.059);--ctrl-stroke2:rgba(0,0,0,.161);
+ --ctrl-strong:rgba(0,0,0,.447);--ctrl-strong-dis:rgba(0,0,0,.318);--ctrl-sstroke:rgba(0,0,0,.447);--ctrl-sstroke-dis:rgba(0,0,0,.216);
+ --ctrl-alt:rgba(0,0,0,.024);--ctrl-alt-h:rgba(0,0,0,.059);--ctrl-solid:#fff;
+ --subtle2:rgba(0,0,0,.035);--subtle3:rgba(0,0,0,.024);
+ --card:rgba(255,255,255,.7);--card2:rgba(246,246,246,.5);--card-h:rgba(249,249,249,.5);--card-stroke:rgba(0,0,0,.059);
+ --divider:rgba(0,0,0,.059);--surface-stroke:rgba(117,117,117,.4);--fly-stroke:rgba(0,0,0,.09);
+ --solid-base:#F3F3F3;--dlg-top:#FFFFFF;
+ --mica:linear-gradient(155deg,#E9EEF7 0%,#F1F2F6 38%,#F3F3F3 70%,#F2F1F4 100%);
+ --acr:rgba(250,250,250,.80);--acr-solid:#F9F9F9;--tbar:rgba(238,240,245,.80);--tbar-stroke:rgba(0,0,0,.07);--tip:#F9F9F9;--fly-ft:rgba(0,0,0,.025);
+ --focus-o:rgba(0,0,0,.894);--focus-i:rgba(255,255,255,.7);
+ --crit:#C42B1C;--caut:#9D5D00;--succ:#0F7B0F;--attn:#0067C0;--crit-bg:#FDE7E9;--caut-bg:#FFF4CE;--attn-bg:rgba(246,246,246,.5);--sev-fg:#fff;
+ --sh-win:0 32px 64px rgba(0,0,0,.19),0 2px 21px rgba(0,0,0,.15);--sh-fly:0 8px 16px rgba(0,0,0,.14);--sh-tip:0 4px 8px rgba(0,0,0,.12);
+ --wall:linear-gradient(160deg,#e4ecf7 0%,#cfdff2 45%,#b8cfec 100%);
+ --p1:rgba(0,84,214,.95);--p2:rgba(60,144,255,.75);--p3:rgba(190,224,255,.25);--glow:rgba(120,180,255,.55);
+}
+html.dark{
+ --text1:#FFFFFF;--text2:rgba(255,255,255,.773);--text3:rgba(255,255,255,.529);--textdis:rgba(255,255,255,.365);
+ --accent:#4CC2FF;--accent-h:rgba(76,194,255,.9);--accent-p:rgba(76,194,255,.8);--accent-dis:rgba(255,255,255,.157);
+ --accent-text:#99EBFF;--on-accent:#000;--on-accent-dis:rgba(255,255,255,.529);--accent-b1:rgba(255,255,255,.08);--accent-b2:rgba(0,0,0,.14);
+ --ctrl:rgba(255,255,255,.059);--ctrl-h:rgba(255,255,255,.082);--ctrl-p:rgba(255,255,255,.031);--ctrl-dis:rgba(255,255,255,.043);
+ --ctrl-stroke:rgba(255,255,255,.071);--ctrl-stroke2:rgba(255,255,255,.094);
+ --ctrl-strong:rgba(255,255,255,.545);--ctrl-strong-dis:rgba(255,255,255,.247);--ctrl-sstroke:rgba(255,255,255,.545);--ctrl-sstroke-dis:rgba(255,255,255,.157);
+ --ctrl-alt:rgba(0,0,0,.1);--ctrl-alt-h:rgba(255,255,255,.035);--ctrl-solid:#454545;
+ --subtle2:rgba(255,255,255,.059);--subtle3:rgba(255,255,255,.039);
+ --card:rgba(255,255,255,.051);--card2:rgba(255,255,255,.031);--card-h:rgba(255,255,255,.082);--card-stroke:rgba(0,0,0,.1);
+ --divider:rgba(255,255,255,.082);--surface-stroke:rgba(117,117,117,.4);--fly-stroke:rgba(0,0,0,.2);
+ --solid-base:#202020;--dlg-top:#2B2B2B;
+ --mica:linear-gradient(155deg,#1B2130 0%,#1E2027 40%,#202020 72%,#211F24 100%);
+ --acr:rgba(40,40,40,.84);--acr-solid:#2C2C2C;--tbar:rgba(28,28,30,.82);--tbar-stroke:rgba(255,255,255,.06);--tip:#2C2C2C;--fly-ft:rgba(0,0,0,.14);
+ --focus-o:#FFFFFF;--focus-i:rgba(0,0,0,.7);
+ --crit:#FF99A4;--caut:#FCE100;--succ:#6CCB5F;--attn:#4CC2FF;--crit-bg:#442726;--caut-bg:#433519;--attn-bg:rgba(255,255,255,.031);--sev-fg:#000;
+ --sh-win:0 32px 64px rgba(0,0,0,.56),0 2px 21px rgba(0,0,0,.55);--sh-fly:0 8px 16px rgba(0,0,0,.26);--sh-tip:0 4px 8px rgba(0,0,0,.26);
+ --wall:linear-gradient(160deg,#04070f 0%,#081227 50%,#0c1b3d 100%);
+ --p1:rgba(16,74,214,.95);--p2:rgba(34,116,255,.6);--p3:rgba(110,180,255,.12);--glow:rgba(30,100,255,.45);
+}
+:root{
+ --f-text:"Segoe UI Variable Text","Segoe UI",sans-serif;
+ --f-disp:"Segoe UI Variable Display","Segoe UI",sans-serif;
+ --f-small:"Segoe UI Variable Small","Segoe UI Variable Text","Segoe UI",sans-serif;
+ --f-icon:"Segoe Fluent Icons","Segoe MDL2 Assets";
+ --ease-in:cubic-bezier(0,0,0,1);
+ --rc:4px; /* SettingsCard CornerRadius = ControlCornerRadius */
+}
+
+/* ---------- desktop stage + bloom wallpaper ---------- */
+.host{position:relative}
+.stage{position:relative;overflow:hidden;background:var(--wall);isolation:isolate}
+.st-win{display:inline-block;padding:44px 48px}
+.bloom{position:absolute;left:60%;top:64%;width:0;height:0;pointer-events:none;z-index:-1}
+.bloom::before{content:"";position:absolute;left:-520px;top:-420px;width:1040px;height:840px;border-radius:50%;background:radial-gradient(closest-side,var(--glow),transparent)}
+.bloom i{position:absolute;left:0;top:-80px;width:560px;height:160px;transform-origin:0 50%;border-radius:0 100% 0 100%;background:linear-gradient(90deg,var(--p1) 0%,var(--p2) 55%,var(--p3) 100%);opacity:.62;filter:blur(1px)}
+.bloom i:nth-child(1){transform:rotate(-10deg)}.bloom i:nth-child(2){transform:rotate(35deg)}.bloom i:nth-child(3){transform:rotate(80deg)}
+.bloom i:nth-child(4){transform:rotate(125deg)}.bloom i:nth-child(5){transform:rotate(170deg)}.bloom i:nth-child(6){transform:rotate(215deg)}
+.bloom i:nth-child(7){transform:rotate(260deg)}.bloom i:nth-child(8){transform:rotate(305deg)}
+
+/* ---------- base app typography ---------- */
+.w11{font:14px/20px var(--f-text);color:var(--text1);-webkit-font-smoothing:antialiased}
+.w11 button{font:inherit;color:inherit}
+.ic{font-family:var(--f-icon);font-style:normal;font-weight:normal;line-height:1;display:inline-block;speak:never;-webkit-font-smoothing:antialiased}
+.cap-s{font:12px/16px var(--f-small)}
+.t2{color:var(--text2)}
+.w11 :focus{outline:none}
+.w11 :focus-visible{outline:2px solid var(--focus-o);outline-offset:1px;box-shadow:0 0 0 1px var(--focus-i)}
+
+/* ---------- window ---------- */
+.win{position:relative;display:flex;flex-direction:column;border-radius:8px;overflow:hidden;background:var(--mica);border:1px solid var(--surface-stroke);box-shadow:var(--sh-win)}
+.tb{height:32px;flex:none;display:flex;align-items:center;position:relative;z-index:5}
+.tb-icon{width:16px;height:16px;margin-left:16px;display:block}
+.tb-t{font:12px/16px var(--f-small);margin-left:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-cap{display:flex;align-self:stretch}
+.cap{width:46px;height:32px;border:0;background:transparent;display:grid;place-items:center;font:10px var(--f-icon)!important;color:var(--text1);cursor:default}
+.cap:hover{background:var(--subtle2)}
+.cap.x:hover{background:#C42B1C;color:#fff}
+.cap.x:active{background:rgba(196,43,28,.9);color:rgba(255,255,255,.7)}
+.win-body{flex:1;min-height:0;display:flex;position:relative}
+.content{flex:1;min-width:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--ctrl-strong) transparent}
+.page{max-width:1000px;padding:0 36px 36px}
+.ptitle{font:600 28px/36px var(--f-disp);margin:0;padding:20px 0 0}
+.sh{font:600 14px/20px var(--f-text);margin:30px 0 6px 1px}
+.stack{display:flex;flex-direction:column;gap:4px}
+.lede{font:12px/16px var(--f-small);color:var(--text2);margin:-2px 0 8px 1px}
+html.full .win{height:auto!important}
+html.full .content{overflow:visible}
+@keyframes pgIn{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:none}}
+.pg-anim{animation:pgIn 250ms var(--ease-in)}
+
+/* ---------- NavigationView (Left) ---------- */
+.nav{width:320px;flex:none;display:flex;flex-direction:column;padding:4px 0}
+.nav.compact{width:48px}
+.nv{display:flex;align-items:center;gap:16px;height:36px;margin:2px 4px;padding:0 12px;border:0;border-radius:4px;background:transparent;position:relative;text-align:left;cursor:default;white-space:nowrap;overflow:hidden}
+.nv .ic{font-size:16px;width:16px;flex:none}
+.nv:hover{background:var(--subtle2)}
+.nv:active{background:var(--subtle3);color:var(--text2)}
+.nv.sel{background:var(--subtle2)}
+.nv.sel::before{content:"";position:absolute;left:0;top:10px;width:3px;height:16px;border-radius:2px;background:var(--accent)}
+.nv.ham{width:40px;padding:0 12px}
+.nav-sp{flex:1}
+.nav-div{height:1px;background:var(--divider);margin:4px 0}
+.nav.overlay{position:absolute;left:0;top:0;bottom:0;z-index:8;width:320px;background:var(--acr);backdrop-filter:blur(30px) saturate(150%);border-right:1px solid var(--surface-stroke);border-radius:0 8px 8px 0;box-shadow:var(--sh-fly)}
+
+/* ---------- SelectorBar (variant B) ---------- */
+.bcol{flex:1;display:flex;flex-direction:column;min-width:0}
+.selbar{display:flex;gap:4px;padding:0 16px 4px;flex:none}
+.sel{position:relative;border:0;background:transparent;height:40px;padding:0 12px;border-radius:4px;color:var(--text2);cursor:default}
+.sel:hover{background:var(--subtle2);color:var(--text1)}
+.sel.on{color:var(--text1)}
+.sel.on::after{content:"";position:absolute;left:50%;bottom:3px;width:16px;height:3px;margin-left:-8px;border-radius:2px;background:var(--accent)}
+.dense .page{padding:0 20px 24px}
+.dense .sh{margin:20px 0 8px 1px}
+.dense .card{min-height:60px;padding:12px 16px}
+
+/* ---------- hero (device header) ---------- */
+.hero{display:flex;align-items:center;gap:16px;margin-top:16px}
+.hero-ic{font-size:48px;width:48px}
+.hero-n{font:600 20px/28px var(--f-disp)}
+.hero-s{display:flex;align-items:center;gap:8px;color:var(--text2)}
+.hero-s .ic{font-size:16px}
+.dense .hero{margin-top:8px}.dense .hero-ic{font-size:40px;width:40px}
+
+/* ---------- SettingsCard / SettingsExpander ---------- */
+.card{display:flex;align-items:center;min-height:68px;padding:16px;border-radius:var(--rc);background:var(--card);border:1px solid var(--card-stroke);text-align:left;width:100%}
+.card-ic{font-size:20px;width:20px;margin:0 20px 0 2px;flex:none}
+.card-ic svg{display:block}
+.card-h{flex:1;min-width:0;display:flex;flex-direction:column}
+.card-t{font:14px/20px var(--f-text)}
+.card-d{font:12px/16px var(--f-small);color:var(--text2)}
+.card-c{margin-left:16px;display:flex;align-items:center;gap:8px;flex:none}
+.card.wrap{flex-wrap:wrap}
+.card.wrap .card-c{flex-basis:100%;margin:12px 0 0 42px}
+.card.noic.wrap .card-c{margin-left:0}
+.card.click{cursor:default}
+.card.click:hover{background:var(--card-h)}
+.card.click:active{background:var(--card2)}
+.card-chev{font-size:12px;color:var(--text1);margin-left:16px}
+.is-dis .card-t,.is-dis .card-ic,.is-dis .card-d,.is-dis .card-chev{color:var(--textdis)}
+.warn{display:inline-flex;align-items:center;gap:6px}
+.warn .ic{color:var(--caut);font-size:12px}
+.exp{display:flex;flex-direction:column}
+.exp-h{cursor:default}
+.exp-h:hover{background:var(--card-h)}
+.exp.open>.exp-h{border-radius:var(--rc) var(--rc) 0 0}
+.exp-chev{width:32px;height:32px;border:0;border-radius:4px;background:transparent;display:grid;place-items:center;margin-left:16px;margin-right:-8px;flex:none}
+.exp-chev .ic{font-size:12px;transition:transform 167ms var(--ease-in)}
+.exp.open .exp-chev .ic{transform:rotate(180deg)}
+.exp-chev:hover{background:var(--subtle2)}
+.exp-chev:disabled{color:var(--textdis)}
+.exp-b{display:none;border:1px solid var(--card-stroke);border-top:0;border-radius:0 0 var(--rc) var(--rc);background:var(--card2)}
+.exp.open .exp-b{display:block}
+.ei{display:flex;align-items:center;min-height:52px;padding:8px 44px 8px 58px}
+.ei+.ei{border-top:1px solid var(--card-stroke)}
+.ei .card-h{flex:1}
+.wrap .ei{flex-wrap:wrap}
+
+/* ---------- Buttons ---------- */
+.btn{height:32px;min-width:96px;padding:0 12px;border-radius:4px;border:1px solid var(--ctrl-stroke);border-bottom-color:var(--ctrl-stroke2);background:var(--ctrl);display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:default;white-space:nowrap;background-clip:padding-box}
+.btn:hover{background:var(--ctrl-h)}
+.btn:active{background:var(--ctrl-p);color:var(--text2);border-bottom-color:var(--ctrl-stroke)}
+.btn:disabled{background:var(--ctrl-dis);color:var(--textdis);border-color:var(--ctrl-stroke)}
+.btn.acc{background:var(--accent);color:var(--on-accent);border-color:var(--accent-b1);border-bottom-color:var(--accent-b2)}
+.btn.acc:hover{background:var(--accent-h)}
+.btn.acc:active{background:var(--accent-p);color:var(--on-accent);opacity:.9}
+.btn.acc:disabled{background:var(--accent-dis);color:var(--on-accent-dis);border-color:transparent}
+.btn .ic{font-size:16px}
+.btn.sub{background:transparent;border-color:transparent;min-width:0}
+.btn.sub:hover{background:var(--subtle2)}
+.btn.sub:active{background:var(--subtle3)}
+.ib-btn{width:32px;height:32px;min-width:0;padding:0}
+.link{border:0;background:transparent;color:var(--accent-text);padding:5px 11px;border-radius:4px;cursor:default}
+.link:hover{background:var(--subtle2)}
+
+/* ---------- ToggleSwitch ---------- */
+.tg{display:inline-flex;align-items:center;gap:12px;border:0;background:transparent;padding:0;height:32px;cursor:default}
+.tg-l{min-width:24px;text-align:right}
+.tg-s{width:40px;height:20px;border-radius:10px;border:1px solid var(--ctrl-sstroke);background:var(--ctrl-alt);position:relative;flex:none}
+.tg-s::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:6px;background:var(--ctrl-strong);transition:left 167ms var(--ease-in),width 83ms linear,height 83ms linear,top 83ms linear}
+.tg:hover .tg-s{background:var(--ctrl-alt-h)}
+.tg:hover .tg-s::after{width:14px;height:14px;top:2px;left:2px}
+.tg.on .tg-s{background:var(--accent);border-color:var(--accent)}
+.tg.on .tg-s::after{left:23px;background:var(--on-accent)}
+.tg.on:hover .tg-s{background:var(--accent-h)}
+.tg.on:hover .tg-s::after{left:22px}
+.tg:disabled{color:var(--textdis)}
+.tg:disabled .tg-s{border-color:var(--ctrl-sstroke-dis);background:transparent}
+.tg:disabled .tg-s::after{background:var(--ctrl-strong-dis);width:12px;height:12px;top:3px}
+.tg.on:disabled .tg-s{background:var(--accent-dis);border-color:transparent}
+.tg.on:disabled .tg-s::after{background:var(--on-accent-dis);left:23px}
+
+/* ---------- RadioButtons ---------- */
+.rg{display:flex;flex-wrap:wrap}
+.rb{display:inline-flex;align-items:center;gap:8px;min-width:120px;height:32px;border:0;background:transparent;padding:0 8px 0 0;cursor:default}
+.rb-c{width:20px;height:20px;border-radius:50%;border:1px solid var(--ctrl-sstroke);background:var(--ctrl-alt);position:relative;flex:none}
+.rb:hover .rb-c{background:var(--ctrl-alt-h)}
+.rb.on .rb-c{background:var(--accent);border-color:var(--accent)}
+.rb.on .rb-c::after{content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:var(--on-accent);transition:all 83ms linear}
+.rb.on:hover .rb-c::after{left:2px;top:2px;width:14px;height:14px}
+.rb:disabled{color:var(--textdis)}
+.rb:disabled .rb-c{border-color:var(--ctrl-sstroke-dis);background:transparent}
+.rb.on:disabled .rb-c{background:var(--accent-dis);border-color:transparent}
+.rb.on:disabled .rb-c::after{background:var(--on-accent-dis)}
+
+/* ---------- ComboBox ---------- */
+.cb{height:32px;padding:0 11px;border-radius:4px;border:1px solid var(--ctrl-stroke);border-bottom-color:var(--ctrl-stroke2);background:var(--ctrl);display:inline-flex;align-items:center;justify-content:space-between;gap:12px;cursor:default;text-align:left;background-clip:padding-box}
+.cb .ic{font-size:12px;color:var(--text2)}
+.cb:hover{background:var(--ctrl-h)}
+.cb:active{background:var(--ctrl-p)}
+.cb:disabled{background:var(--ctrl-dis);color:var(--textdis);border-color:var(--ctrl-stroke)}
+.cb:disabled .ic{color:var(--textdis)}
+.cb-full{width:100%}
+
+/* ---------- Slider ---------- */
+.sld{display:flex;align-items:center;gap:12px}
+.sl{-webkit-appearance:none;appearance:none;width:200px;height:32px;margin:0;background:transparent;cursor:default;--f:.4}
+.sl::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--accent) 0 calc(10px + (100% - 20px)*var(--f)),var(--ctrl-strong) calc(10px + (100% - 20px)*var(--f)) 100%)}
+.sl::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;border:1px solid var(--ctrl-stroke);background:radial-gradient(circle,var(--accent) 0 5.5px,var(--ctrl-solid) 6px);box-shadow:0 1px 0 var(--ctrl-stroke2)}
+.sl:hover::-webkit-slider-thumb{background:radial-gradient(circle,var(--accent) 0 6.5px,var(--ctrl-solid) 7px)}
+.sl:active::-webkit-slider-thumb{background:radial-gradient(circle,var(--accent-p) 0 4.5px,var(--ctrl-solid) 5px)}
+.sl:disabled::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--accent-dis) 0 calc(10px + (100% - 20px)*var(--f)),var(--ctrl-strong-dis) calc(10px + (100% - 20px)*var(--f)) 100%)}
+.sl:disabled::-webkit-slider-thumb{background:radial-gradient(circle,var(--accent-dis) 0 5.5px,var(--ctrl-solid) 6px)}
+.sl:focus-visible{outline:2px solid var(--focus-o);outline-offset:1px;border-radius:4px}
+.sld-v{min-width:28px;text-align:right;font-variant-numeric:tabular-nums}
+.sl:disabled+.sld-v{color:var(--textdis)}
+
+/* ---------- InfoBar ---------- */
+.ib{display:flex;align-items:flex-start;flex-wrap:wrap;min-height:48px;padding:0 16px;border-radius:4px;border:1px solid var(--card-stroke);background:var(--attn-bg);margin-top:12px}
+.ib.err{background:var(--crit-bg)}
+.ib.warn{background:var(--caut-bg)}
+.ib-ic{position:relative;width:16px;height:16px;margin:16px 14px 0 0;flex:none}
+.ib-ic .ic{position:absolute;left:0;top:0;font-size:16px}
+.ib-ic .bg{color:var(--attn)}
+.ib.err .ib-ic .bg{color:var(--crit)}
+.ib.warn .ib-ic .bg{color:var(--caut)}
+.ib-ic .fg{color:var(--sev-fg)}
+.ib-tx{flex:1;min-width:0;padding:14px 0 14px}
+.ib-t{font-weight:600;margin-right:12px}
+.ib-a{margin:8px 0 8px 16px;flex:none}
+.ib .pb{margin-top:10px}
+.ib.compact{flex-wrap:wrap}
+.ib.compact .ib-tx{display:flex;flex-direction:column}
+.ib.compact .ib-a{flex-basis:100%;margin:0 0 12px 30px}
+
+/* ---------- ProgressBar (indeterminate) ---------- */
+.pb{position:relative;height:3px;overflow:hidden;border-radius:2px}
+.pb::before{content:"";position:absolute;top:0;bottom:0;left:-40%;width:40%;border-radius:2px;background:var(--accent);animation:pbMove 2s cubic-bezier(.4,0,.6,1) infinite}
+@keyframes pbMove{0%{left:-40%}100%{left:100%}}
+
+/* ---------- ContentDialog ---------- */
+.smoke{position:absolute;inset:0;background:rgba(0,0,0,.3);display:grid;place-items:center;z-index:4}
+.dlg{width:448px;max-width:calc(100% - 48px);border-radius:8px;overflow:hidden;border:1px solid var(--surface-stroke);background:var(--solid-base);box-shadow:var(--sh-win)}
+.dlg.wide{width:500px}
+.dlg-top{background:var(--dlg-top);padding:24px}
+.dlg-t{font:600 20px/28px var(--f-disp);margin:0 0 12px}
+.dlg-cmd{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;padding:24px;border-top:1px solid var(--card-stroke)}
+.dlg-cmd .btn{width:100%}
+@keyframes dlgIn{from{opacity:0;transform:scale(1.05)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.anim .smoke{animation:fade 167ms linear}
+.anim .dlg{animation:dlgIn 250ms var(--ease-in)}
+.cap-area{margin:16px 0 12px;min-height:96px;border-radius:4px;border:1px solid var(--card-stroke);background:var(--card2);display:flex;align-items:center;justify-content:center;gap:8px;cursor:default}
+.kv{min-width:56px;padding:15px 19px;border-radius:4px;background:var(--accent);color:var(--on-accent);font:600 16px/22px var(--f-text);text-align:center;border:1px solid var(--accent-b1);border-bottom-color:var(--accent-b2)}
+.kv.bad{background:transparent;color:var(--crit);border:2px solid var(--crit);padding:14px 18px}
+.kv.live{opacity:.75}
+.cap-ph{color:var(--text3)}
+.dlg-row{display:flex;gap:8px;margin-top:12px}
+.dlg .ib{margin-top:0;margin-bottom:12px}
+
+/* ---------- keycaps on cards ---------- */
+.hk{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;border-radius:4px;padding:4px 4px 4px 4px;cursor:default}
+.hk:hover{background:var(--subtle2)}
+.kc{min-width:28px;height:28px;padding:0 8px;border-radius:4px;background:var(--ctrl);border:1px solid var(--ctrl-stroke);border-bottom-color:var(--ctrl-stroke2);display:inline-grid;place-items:center;font:12px/16px var(--f-small)}
+.hk-ed{font-size:16px;width:32px;text-align:center}
+
+/* ---------- popup (ComboBox dropdown / MenuFlyout) ---------- */
+.pop{position:absolute;z-index:50;min-width:120px;padding:4px 0;border-radius:8px;border:1px solid var(--fly-stroke);background:var(--acr);backdrop-filter:blur(30px) saturate(150%);box-shadow:var(--sh-fly);animation:popIn 250ms var(--ease-in)}
+@keyframes popIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.pi{display:flex;align-items:center;gap:12px;width:calc(100% - 8px);margin:0 4px;min-height:32px;padding:0 11px;border:0;border-radius:4px;background:transparent;text-align:left;position:relative;white-space:nowrap;cursor:default}
+.pi+.pi{margin-top:2px}
+.pi:hover,.pi:focus-visible{background:var(--subtle2)}
+.pi.sel{background:var(--subtle2)}
+.pi.sel::before{content:"";position:absolute;left:0;top:8px;width:3px;height:16px;border-radius:2px;background:var(--accent)}
+.pi .ic{font-size:16px;width:16px}
+.pi.def{font-weight:600}
+.psep{height:1px;background:var(--divider);margin:4px 0}
+
+/* ---------- tray flyout ---------- */
+.fly{position:absolute;right:12px;bottom:60px;width:360px;border-radius:8px;overflow:hidden;border:1px solid var(--fly-stroke);background:var(--acr);backdrop-filter:blur(30px) saturate(150%);box-shadow:var(--sh-fly);z-index:3}
+.fly-m{padding:16px 20px 20px}
+.fly-hd{font-weight:600;margin-bottom:4px}
+.fly-row{display:flex;align-items:center;height:48px;gap:8px}
+.fly-row>.ic{font-size:20px;width:32px;flex:none}
+.fly-row .sld{flex:1}
+.fly-row .sl{flex:1;width:auto;min-width:0}
+.fly-lbl{font:12px/16px var(--f-small);color:var(--text2);margin:12px 0 8px}
+.is-dis .fly-lbl,.fly-row.is-dis>.ic{color:var(--textdis)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{height:48px;border-radius:4px;border:1px solid var(--ctrl-stroke);border-bottom-color:var(--ctrl-stroke2);background:var(--ctrl);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:default;background-clip:padding-box;line-height:18px}
+.tile small{font:12px/16px var(--f-small);color:var(--text2)}
+.tile:hover{background:var(--ctrl-h)}
+.tile.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent-b1);border-bottom-color:var(--accent-b2)}
+.tile.on small{color:var(--on-accent)}
+.tile:disabled{background:var(--ctrl-dis);color:var(--textdis)}
+.tile:disabled small{color:var(--textdis)}
+.tile.on:disabled{background:var(--accent-dis);color:var(--on-accent-dis);border-color:transparent}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.two .btn{width:100%}
+.fly-ft{height:48px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px 0 20px;background:var(--fly-ft);border-top:1px solid var(--divider)}
+.fly-st{display:flex;align-items:center;gap:8px;font:12px/16px var(--f-small);color:var(--text2);white-space:nowrap}
+.fly-st .ic{font-size:16px}
+.fly .ib{margin:4px 0 8px}
+.fly-confirm{margin-top:12px;padding:12px;border-radius:4px;border:1px solid var(--card-stroke);background:var(--card)}
+@keyframes flyIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.fly.anim{animation:flyIn 250ms var(--ease-in)}
+
+/* ---------- taskbar ---------- */
+.tbar{position:absolute;left:0;right:0;bottom:0;height:48px;background:var(--tbar);backdrop-filter:blur(40px) saturate(160%);border-top:1px solid var(--tbar-stroke);z-index:2}
+.tbar-c{position:absolute;left:50%;top:4px;transform:translateX(-50%);display:flex;gap:4px}
+.tba{width:40px;height:40px;border-radius:4px;display:grid;place-items:center;position:relative}
+.tba.hov{background:var(--subtle2)}
+.tba .ic{font-size:24px;color:var(--text1)}
+.tba svg{display:block}
+.tba.run::after{content:"";position:absolute;bottom:2px;left:50%;width:6px;height:3px;margin-left:-3px;border-radius:2px;background:var(--text3)}
+.tray{position:absolute;right:4px;top:4px;height:40px;display:flex;align-items:center;gap:2px}
+.trb{height:40px;min-width:32px;padding:0 8px;border-radius:4px;display:flex;align-items:center;justify-content:center;gap:12px;position:relative;color:var(--text1)}
+.trb .ic{font-size:16px}
+.trb.hov{background:var(--subtle2)}
+.ovl{position:absolute;right:3px;bottom:9px;width:10px;height:10px}
+.ovl .ic{position:absolute;left:0;top:0;font-size:10px}
+.ovl .bg{color:var(--text1)}
+.ovl .fg{color:var(--solid-base)}
+.ovl.err .bg{color:var(--crit)}
+.ovl.err .fg{color:var(--sev-fg)}
+.clock{font:12px/16px var(--f-small);text-align:right;padding:0 8px}
+.tip{position:absolute;z-index:6;padding:6px 9px 8px;border-radius:4px;background:var(--tip);border:1px solid var(--surface-stroke);box-shadow:var(--sh-tip);font:12px/16px var(--f-small);white-space:nowrap}
+.menu{position:absolute;z-index:6;min-width:232px;padding:4px 0;border-radius:8px;border:1px solid var(--fly-stroke);background:var(--acr);backdrop-filter:blur(30px) saturate(150%);box-shadow:var(--sh-fly)}
+.menu .pi{min-height:32px}
+.jl{position:absolute;z-index:6;width:288px;padding:8px 0 4px;border-radius:8px;border:1px solid var(--fly-stroke);background:var(--acr);backdrop-filter:blur(30px) saturate(150%);box-shadow:var(--sh-fly)}
+.jl-h{font:600 14px/20px var(--f-text);padding:4px 16px 6px}
+.jl .pi{min-height:36px}
+.jl .pi svg{display:block}
+
+/* ---------- OSD ---------- */
+.osd{position:absolute;left:50%;bottom:72px;transform:translateX(-50%);width:256px;padding:12px 16px 14px;border-radius:8px;background:var(--acr-solid);border:1px solid var(--surface-stroke);box-shadow:var(--sh-fly);z-index:3}
+.osd-r{display:flex;align-items:center;gap:12px}
+.osd-r .ic{font-size:20px}
+.osd-l{flex:1;color:var(--text2)}
+.osd-v{font:600 18px/24px var(--f-text)}
+.osd-bar{height:4px;border-radius:2px;background:var(--ctrl-strong);margin:10px 0 0 32px;position:relative;overflow:hidden}
+.osd-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:2px}
+@keyframes osdIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+.osd.anim{animation:osdIn 167ms var(--ease-in)}
+
+@media (prefers-reduced-motion:reduce){
+ .w11 *,.w11 *::before,.w11 *::after,.pop{animation:none!important;transition:none!important}
+ .pb::before{left:0;width:30%}
+}
+</style>
+</head>
+<body>
+<div id="err" role="alert"></div>
+<header class="vt" aria-label="Mockup viewer controls">
+ <span class="vt-name">ThinkVision Control · UI mockups</span>
+ <div class="vt-g" role="group" aria-label="Variant"><span>Variant</span>
+  <button class="vb" data-v="variant" data-val="A">A Settings app</button>
+  <button class="vb" data-v="variant" data-val="B">B Compact tabs</button>
+  <button class="vb" data-v="variant" data-val="C">C Flyout first</button>
+ </div>
+ <div class="vt-g" role="group" aria-label="View"><span>View</span>
+  <button class="vb" data-v="view" data-val="gallery">Gallery</button>
+  <button class="vb" data-v="view" data-val="single">Single</button>
+  <select id="vt-sc" aria-label="Scenario"></select>
+ </div>
+ <div class="vt-g" role="group" aria-label="Monitor state"><span>State</span>
+  <button class="vb" data-v="state" data-val="connected">Connected</button>
+  <button class="vb" data-v="state" data-val="connecting">Connecting</button>
+  <button class="vb" data-v="state" data-val="notfound">Not found</button>
+  <button class="vb" data-v="state" data-val="notresponding">Not responding</button>
+ </div>
+ <div class="vt-g" role="group" aria-label="Theme"><span>Theme</span>
+  <button class="vb" data-v="theme" data-val="light">Light</button>
+  <button class="vb" data-v="theme" data-val="dark">Dark</button>
+ </div>
+ <label><input type="checkbox" id="vt-full"> Full page height</label>
+</header>
+<main id="main"></main>
+
+<script>
+"use strict";
+window.addEventListener('error', e => { const b = document.getElementById('err'); b.style.display = 'block'; b.textContent += (e.message + ' @' + e.lineno + '\n'); });
+
+/* ===================== viewer state ===================== */
+const S = { variant: 'A', view: 'gallery', scenario: '', state: 'connected', theme: (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'), full: false };
+
+/* ===================== app model (real content) ===================== */
+const OPT = {
+  colour: ['sRGB', 'DCI-P3', 'BT.709', 'Neutral', 'Reddish', 'Bluish', 'Low Blue Light', 'User / Custom'],
+  overdrive: ['Off', 'Normal', 'Extreme'],
+  aspect: ['Full screen', 'Original aspect ratio'],
+  lang: ['English', 'French', 'German', 'Italian', 'Japanese', 'Russian', 'Spanish', 'Chinese (Simplified)'],
+  thispc: ['HDMI', 'DisplayPort', 'USB-C'],
+  input: ['HDMI', 'DisplayPort', 'USB-C']
+};
+const HK_LIST = [
+  ['bup', 'Brightness up', ['Ctrl', 'Alt', '↑']], ['bdn', 'Brightness down', ['Ctrl', 'Alt', '↓']],
+  ['cup', 'Contrast up', ['Ctrl', 'Alt', '←']], ['cdn', 'Contrast down', ['Ctrl', 'Alt', '→']],
+  ['day', 'Day preset', ['Ctrl', 'Alt', 'Home']], ['night', 'Night preset', ['Ctrl', 'Alt', 'End']],
+  ['hdmi', 'Input HDMI', ['Ctrl', 'Alt', 'F1']], ['dp', 'Input DisplayPort', ['Ctrl', 'Alt', 'F2']],
+  ['usbc', 'Input USB-C', ['Ctrl', 'Alt', 'F3']], ['me', 'Switch to this PC', ['Ctrl', 'Alt', 'M']],
+  ['open', 'Open ThinkVision Control', ['Ctrl', 'Alt', 'O']]
+];
+const TAKEN = ['Ctrl+Alt+M']; // simulated: RegisterHotKey failed because another app owns it
+const MODS = ['Win', 'Ctrl', 'Alt', 'Shift'];
+const M = {
+  brightness: 40, contrast: 70, colour: 'Neutral', input: 'HDMI', red: 100, green: 100, blue: 100,
+  overdrive: 'Normal', dyncon: false, aspect: 'Full screen', usb: true, lang: 'English',
+  bg: false, startup: false, thispc: 'HDMI',
+  presets: { day: { b: 60, c: 70 }, night: { b: 0, c: 70, colour: 'Low Blue Light' } },
+  hk: Object.fromEntries(HK_LIST.map(([k, , keys]) => [k, keys.slice()]))
+};
+const STATUS = {
+  connected: ['E73E', 'Connected over HDMI · Firmware LB1.2', 'Connected · HDMI'],
+  connecting: ['E895', 'Looking for your monitor…', 'Looking for your monitor…'],
+  notfound: ['F140', 'Not connected', 'Not connected'],
+  notresponding: ['E783', 'Not responding', 'Not responding']
+};
+const STATE_LABEL = { connected: 'Connected', connecting: 'Connecting', notfound: 'Not found', notresponding: 'Not responding' };
+
+/* ===================== helpers ===================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const G = (cp, cls = '') => `<span class="ic ${cls}" aria-hidden="true">&#x${cp};</span>`;
+const dis = b => b ? ' disabled' : '';
+const UI = {};
+function U(id, def = {}) { if (!UI[id]) UI[id] = Object.assign({ exp: {} }, JSON.parse(JSON.stringify(def))); return UI[id]; }
+let MOCKS = {};
+function host(id, fn) { MOCKS[id] = fn; return `<div class="host w11" data-host="${id}">${fn()}</div>`; }
+
+function appIcon(px) {
+  return `<svg width="${px}" height="${px}" viewBox="0 0 16 16" aria-hidden="true"><defs><linearGradient id="tvg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd0ff"/><stop offset="1" stop-color="#0063b8"/></linearGradient></defs><rect x="1" y="2" width="14" height="9.6" rx="1.6" fill="url(#tvg)"/><rect x="2.3" y="3.3" width="11.4" height="7" rx=".7" fill="#e8f6ff" opacity=".28"/><rect x="7.25" y="11.4" width="1.5" height="2.1" fill="#7a8796"/><rect x="5" y="13.2" width="6" height="1.4" rx=".7" fill="#7a8796"/></svg>`;
+}
+const BLOOM = '<div class="bloom" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>';
+
+/* ===================== controls ===================== */
+function btn(label, o = {}) {
+  return `<button class="btn${o.acc ? ' acc' : ''}${o.sub ? ' sub' : ''}${o.cls ? ' ' + o.cls : ''}" ${o.act ? `data-act="${o.act}"` : ''} ${o.key ? `data-key="${o.key}"` : ''} ${o.extra || ''} data-fk="${o.fk || (o.act || 'b') + '-' + (o.key || label)}"${dis(o.dis)}>${o.icon ? G(o.icon) : ''}${label ? `<span>${label}</span>` : ''}</button>`;
+}
+function iconBtn(cp, o = {}) {
+  return `<button class="btn sub ib-btn" aria-label="${esc(o.label)}" title="${esc(o.label)}" ${o.act ? `data-act="${o.act}"` : ''} ${o.key ? `data-key="${o.key}"` : ''} data-fk="${(o.act || 'ib') + '-' + (o.key || cp)}"${dis(o.dis)}>${G(cp)}</button>`;
+}
+function toggle(key, o = {}) {
+  const on = !!M[key];
+  return `<button class="tg${on ? ' on' : ''}" role="switch" aria-checked="${on}" aria-label="${esc(o.label || key)}" data-act="tgl" data-key="${key}" data-fk="tgl-${key}"${dis(o.dis)}><span class="tg-l">${on ? 'On' : 'Off'}</span><span class="tg-s"></span></button>`;
+}
+function combo(key, o = {}) {
+  const w = o.full ? '' : `style="min-width:${Math.max(120, Math.max(...OPT[key].map(s => s.length)) * 7.4 + 52) | 0}px"`;
+  return `<button class="cb${o.full ? ' cb-full' : ''}" ${w} aria-haspopup="listbox" aria-label="${esc(o.label || key)}" data-act="combo" data-key="${key}" data-fk="cb-${key}"${dis(o.dis)}><span>${esc(M[key])}</span>${G('E70D')}</button>`;
+}
+function slider(key, d, o = {}) {
+  const v = M[key];
+  return `<div class="sld"><input type="range" class="sl" min="0" max="100" step="1" value="${v}" style="--f:${v / 100}" data-sl="${key}" data-fk="sl-${key}-${o.fk || ''}" aria-label="${esc(o.label || key)}" aria-valuetext="${d ? 'Unknown' : v}"${dis(d)}><span class="sld-v" data-slv="${key}">${d ? '—' : v}</span></div>`;
+}
+function radios(key, d) {
+  return `<div class="rg" role="radiogroup" aria-label="${key}">` + OPT[key].map(v => {
+    const on = M[key] === v;
+    return `<button class="rb${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="radio" data-key="${key}" data-val="${esc(v)}" data-fk="rb-${key}-${esc(v)}" tabindex="${on ? 0 : -1}"${dis(d)}><span class="rb-c"></span><span>${esc(v)}</span></button>`;
+  }).join('') + `</div>`;
+}
+function kcaps(keys) { return keys.map(k => `<span class="kc">${esc(k)}</span>`).join(''); }
+function infobar(sev, title, msg, o = {}) {
+  const fg = { info: 'F13F', err: 'F13D', warn: 'F13C' }[sev];
+  return `<div class="ib ${sev}${o.compact ? ' compact' : ''}" role="${sev === 'err' ? 'alert' : 'status'}">
+    <span class="ib-ic" aria-label="${sev === 'err' ? 'Error' : sev === 'warn' ? 'Warning' : 'Information'}">${G('F136', 'bg')}${G(fg, 'fg')}</span>
+    <div class="ib-tx"><span class="ib-t">${esc(title)}</span>${msg ? `<span class="ib-m">${esc(msg)}</span>` : ''}${o.progress ? '<div class="pb" role="progressbar" aria-label="Working"></div>' : ''}</div>
+    ${o.action ? `<div class="ib-a">${btn(o.action, { act: o.act || 'retry', fk: 'ib-' + sev })}</div>` : ''}
+  </div>`;
+}
+function stateInfoBar(st, compact) {
+  if (st === 'connecting') return infobar('info', 'Looking for your monitor…', '', { progress: true, compact });
+  if (st === 'notfound') return infobar('info', "ThinkVision P32p-20 isn't connected", "Connect it and we'll find it automatically.", { action: 'Check again', compact });
+  if (st === 'notresponding') return infobar('err', "Your monitor isn't responding", "DDC/CI might be off. Hold the monitor's Exit key for 10 seconds, then try again.", { action: 'Try again', compact });
+  return '';
+}
+function card(o) {
+  const icon = o.icon ? `<span class="card-ic">${o.svg ? o.icon : G(o.icon)}</span>` : '';
+  const tag = o.click ? `div role="button" tabindex="${o.dis ? -1 : 0}" data-act="${o.click}" data-fk="card-${o.click}"` : 'div';
+  return `<${tag} class="card${o.dis ? ' is-dis' : ''}${o.wrap ? ' wrap' : ''}${o.icon ? '' : ' noic'}${o.click ? ' click' : ''}">${icon}<div class="card-h"><span class="card-t">${o.title}</span>${o.desc ? `<span class="card-d">${o.desc}</span>` : ''}</div>${o.ctl ? `<div class="card-c">${o.ctl}</div>` : ''}${o.chev ? G('E76C', 'card-chev') : ''}</${o.click ? 'div' : 'div'}>`;
+}
+function expander(ctx, key, o) {
+  const u = U(ctx.id); const open = u.exp[key] !== undefined ? u.exp[key] : !!o.open;
+  const items = o.items.map(it => `<div class="ei${it.dis ? ' is-dis' : ''}"><div class="card-h"><span class="card-t">${it.title}</span>${it.desc ? `<span class="card-d">${it.desc}</span>` : ''}</div>${it.ctl ? `<div class="card-c">${it.ctl}</div>` : ''}</div>`).join('');
+  return `<div class="exp${open && !o.dis ? ' open' : ''}${ctx.wrap ? ' wrap' : ''}">
+    <div class="card exp-h${o.dis ? ' is-dis' : ''}" data-act="exp" data-key="${key}">
+      ${o.icon ? `<span class="card-ic">${o.svg ? o.icon : G(o.icon)}</span>` : ''}
+      <div class="card-h"><span class="card-t">${o.title}</span>${o.desc ? `<span class="card-d">${o.desc}</span>` : ''}</div>
+      ${o.ctl ? `<div class="card-c">${o.ctl}</div>` : ''}
+      <button class="exp-chev" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(o.title)}" data-act="exp" data-key="${key}" data-fk="exp-${key}"${dis(o.dis)}>${G('E70D')}</button>
+    </div>
+    <div class="exp-b">${items}</div>
+  </div>`;
+}
+const sh = t => `<h2 class="sh">${t}</h2>`;
+const stack = arr => `<div class="stack">${arr.join('')}</div>`;
+
+/* ===================== pages ===================== */
+function hero(st) {
+  const [icp, text] = STATUS[st];
+  return `<div class="hero">${G('E7F4', 'hero-ic')}<div><div class="hero-n">ThinkVision P32p-20</div><div class="hero-s">${G(icp)}<span>${text}</span></div></div></div>`;
+}
+function displaySections(ctx) {
+  const d = ctx.st !== 'connected';
+  const custom = M.colour === 'User / Custom';
+  const p = M.presets;
+  const pdesc = k => `Brightness ${p[k].b}, contrast ${p[k].c}${p[k].colour ? ', ' + p[k].colour : ''}`;
+  return (ctx.noHero ? '' : hero(ctx.st)) + (ctx.noInfo ? '' : stateInfoBar(ctx.st)) +
+    sh('Brightness and contrast') + stack([
+      card({ icon: 'E706', title: 'Brightness', ctl: slider('brightness', d, { label: 'Brightness' }), dis: d }),
+      card({ icon: 'E7A1', title: 'Contrast', ctl: slider('contrast', d, { label: 'Contrast' }), dis: d })]) +
+    sh('Colour') + stack([
+      card({ icon: 'E790', title: 'Colour mode', desc: 'Changes apply straight away', ctl: combo('colour', { dis: d, label: 'Colour mode' }), dis: d }),
+      expander(ctx, 'gain', {
+        icon: 'E9E9', title: 'Custom colour', dis: d,
+        desc: custom ? 'Red, green and blue gain' : 'Available in User / Custom colour mode',
+        items: [['red', 'Red gain'], ['green', 'Green gain'], ['blue', 'Blue gain']].map(([k, t]) => ({ title: t, ctl: slider(k, d || !custom, { label: t }), dis: d || !custom }))
+      })]) +
+    sh('Input') + stack([
+      card({ icon: 'E961', title: 'Input', desc: `This PC uses ${M.thispc}`, ctl: radios('input', d), dis: d, wrap: ctx.wrap })]) +
+    sh('Presets') + stack([
+      card({ icon: 'E706', title: 'Day', desc: pdesc('day'), ctl: btn('Apply', { act: 'preset', key: 'day', dis: d }) + iconBtn('E712', { act: 'more', key: 'day', label: 'More options for Day', dis: d }), dis: d }),
+      card({ icon: 'E708', title: 'Night', desc: pdesc('night'), ctl: btn('Apply', { act: 'preset', key: 'night', dis: d }) + iconBtn('E712', { act: 'more', key: 'night', label: 'More options for Night', dis: d }), dis: d })]);
+}
+function monitorSections(ctx) {
+  const d = ctx.st !== 'connected';
+  return (ctx.noInfo ? '' : stateInfoBar(ctx.st)) +
+    sh('Picture') + stack([
+      card({ icon: 'E916', title: 'Over Drive', desc: 'Reduces motion blur. Extreme can leave trails behind moving objects', ctl: combo('overdrive', { dis: d, label: 'Over Drive' }), dis: d, wrap: ctx.wrapLong }),
+      card({ icon: 'E793', title: 'Dynamic Contrast', desc: "Adjusts contrast to match what's on screen", ctl: toggle('dyncon', { dis: d, label: 'Dynamic Contrast' }), dis: d }),
+      card({ icon: 'E740', title: 'Aspect ratio', ctl: combo('aspect', { dis: d, label: 'Aspect ratio' }), dis: d })]) +
+    sh('Ports') + stack([
+      card({ icon: 'E88E', title: 'USB Charging', desc: "Charge devices from the monitor's USB ports while it's in standby", ctl: toggle('usb', { dis: d, label: 'USB Charging' }), dis: d })]) +
+    sh('On-screen menu') + stack([
+      card({ icon: 'E774', title: 'Menu language', desc: "The language of the monitor's own menus", ctl: combo('lang', { dis: d, label: 'Menu language' }), dis: d })]) +
+    sh('Power') + stack([
+      card({ icon: 'E7E8', title: 'Power', desc: 'Put the monitor in standby or turn it off', ctl: btn('Standby', { act: 'noop', key: 'standby', dis: d }) + btn('Turn off', { act: 'dlg', key: 'off', dis: d }), dis: d, wrap: ctx.wrap })]) +
+    sh('Reset') + stack([
+      expander(ctx, 'reset', {
+        icon: 'E7A7', title: 'Reset and restore', desc: 'Return settings to their factory values, or restore a backup', dis: d,
+        items: [
+          { title: 'Factory reset', desc: 'Restores every on-screen-menu setting. We save a backup first', ctl: btn('Reset', { act: 'dlg', key: 'reset', dis: d }) },
+          { title: 'Reset brightness and contrast', ctl: btn('Reset', { act: 'noop', key: 'rbc', dis: d }) },
+          { title: 'Reset colour', ctl: btn('Reset', { act: 'noop', key: 'rcol', dis: d }) },
+          { title: 'Restore backup', desc: 'Backup from 5 October 2026, 09:14', ctl: btn('Restore', { act: 'noop', key: 'restore', dis: d }) }]
+      })]) +
+    sh('Tools') + stack([
+      card({ icon: 'E721', title: 'Find hidden settings', desc: "Look for settings your monitor supports but doesn't list", click: d ? '' : 'noop', chev: true, dis: d })]);
+}
+function appSections(ctx) {
+  const taken = k => TAKEN.includes(M.hk[k].join('+'));
+  return sh('Startup') + stack([
+      expander(ctx, 'bg', {
+        icon: 'E9F5', title: 'Run in background', open: true,
+        desc: 'Keep the tray icon and keyboard shortcuts running after you close the window',
+        ctl: toggle('bg', { label: 'Run in background' }),
+        items: [{ title: 'Start with Windows', desc: M.bg ? 'Starts in the background when you sign in' : 'Turn on Run in background to use this', ctl: toggle('startup', { dis: !M.bg, label: 'Start with Windows' }), dis: !M.bg }]
+      })]) +
+    sh('This PC') + stack([
+      card({ icon: 'E7F4', title: "This PC's input", desc: 'We ask before you switch the monitor away from it', ctl: combo('thispc', { label: "This PC's input" }) })]) +
+    sh('Keyboard shortcuts') +
+    `<p class="lede">${M.bg ? 'Shortcuts work whenever ThinkVision Control is running.' : 'Shortcuts work while the window is open. Turn on Run in background to keep them working after you close it.'}</p>` +
+    stack(HK_LIST.map(([k, name]) => card({
+      title: name,
+      desc: taken(k) ? `<span class="warn">${G('E7BA')}<span>Another app is using this shortcut</span></span>` : '',
+      ctl: `<button class="hk" data-act="hk" data-key="${k}" data-fk="hk-${k}" aria-label="Edit shortcut for ${esc(name)}, currently ${esc(M.hk[k].join(' + ') || 'none')}">${M.hk[k].length ? kcaps(M.hk[k]) : '<span class="t2">Not set</span>'}${G('E70F', 'hk-ed')}</button>`
+    }))) +
+    sh('About') + stack([
+      expander(ctx, 'about', {
+        icon: appIcon(20), svg: true, title: 'ThinkVision Control', desc: 'Version 1.0.0',
+        items: [
+          { title: 'Monitor profile', desc: 'ThinkVision P32p-20 · Firmware LB1.2' },
+          { title: `<span style="display:flex;gap:4px;margin-left:-11px"><button class="link" data-act="noop">Report a problem</button><button class="link" data-act="noop">Release notes</button></span>` }]
+      })]);
+}
+const PAGES = { display: ['Display', 'E7F4', displaySections], monitor: ['Monitor settings', 'E9E9', monitorSections], app: ['App settings', 'E713', appSections] };
+
+/* ===================== dialogs ===================== */
+function hkEval(key, keys) {
+  if (!keys.length) return { ok: false };
+  const main = keys.filter(k => !MODS.includes(k));
+  if (!main.length) return { ok: false, live: true };
+  if (!keys.some(k => k === 'Ctrl' || k === 'Alt' || k === 'Win')) return { ok: false, sev: 'err', t: "This shortcut isn't valid", m: 'Start with Ctrl, Alt or the Windows key.' };
+  const s = keys.join('+');
+  if (TAKEN.includes(s)) return { ok: false, sev: 'warn', t: 'Another app is using this shortcut', m: 'Choose a different combination, or close the app that uses it.' };
+  const other = HK_LIST.find(([k]) => k !== key && M.hk[k].join('+') === s);
+  if (other) return { ok: false, sev: 'warn', t: `${other[1]} already uses this shortcut`, m: 'Choose a different combination.' };
+  return { ok: true };
+}
+function dialogHTML(u) {
+  const k = u.dialog; if (!k) return '';
+  let t, body, cmd, cls = '';
+  if (k === 'reset') {
+    t = 'Reset monitor to factory settings?';
+    body = 'This restores every on-screen-menu setting, and it can turn off DDC/CI on some Lenovo monitors. We save a backup first.';
+    cmd = btn('Reset', { act: 'dlgok', fk: 'dlg-ok' }) + btn('Cancel', { act: 'dlgx', acc: true, fk: 'dlg-default' });
+  } else if (k === 'off') {
+    t = 'Turn off ThinkVision P32p-20?';
+    body = "You might need the monitor's power button to turn it back on.";
+    cmd = btn('Turn off', { act: 'dlgok', fk: 'dlg-ok' }) + btn('Cancel', { act: 'dlgx', acc: true, fk: 'dlg-default' });
+  } else if (k === 'input') {
+    t = `Switch to ${u.target}?`;
+    body = "You won't be able to control the monitor from this PC until you switch back with the monitor's buttons.";
+    cmd = btn('Switch', { act: 'dlgok', fk: 'dlg-ok' }) + btn('Cancel', { act: 'dlgx', acc: true, fk: 'dlg-default' });
+  } else if (k === 'hotkey') {
+    cls = ' wide';
+    const h = u.hk, name = HK_LIST.find(x => x[0] === h.key)[1], ev = hkEval(h.key, h.keys);
+    t = 'Edit shortcut';
+    body = `<div>Press a combination of keys to change the shortcut for <b style="font-weight:600">${esc(name)}</b>.</div>
+      <div class="cap-area" tabindex="0" role="textbox" aria-label="Shortcut keys. Press keys to record" data-cap="1" data-fk="dlg-default">
+        ${h.keys.length ? h.keys.map(x => `<span class="kv${ev.sev === 'err' ? ' bad' : ''}${ev.live ? ' live' : ''}">${esc(x)}</span>`).join('') : '<span class="cap-ph">Press keys</span>'}
+      </div>
+      ${ev.sev ? infobar(ev.sev, ev.t, ev.m) : ''}
+      <div class="cap-s t2">Shortcuts start with Ctrl, Alt or the Windows key, and can include Shift.</div>
+      <div class="dlg-row">${btn('Reset', { act: 'hkreset', icon: 'E7A7', fk: 'hk-reset' })}${btn('Clear', { act: 'hkclear', icon: 'E711', fk: 'hk-clear', dis: !h.keys.length })}</div>`;
+    cmd = btn('Save', { act: 'dlgok', acc: true, dis: !ev.ok, fk: 'dlg-ok' }) + btn('Cancel', { act: 'dlgx', fk: 'dlg-cancel' });
+  }
+  return `<div class="smoke"><div class="dlg${cls}" role="dialog" aria-modal="true" aria-label="${esc(t)}"><div class="dlg-top"><h2 class="dlg-t">${esc(t)}</h2><div class="dlg-b">${body}</div></div><div class="dlg-cmd">${cmd}</div></div></div>`;
+}
+
+/* ===================== windows ===================== */
+function winFrame(o) {
+  return `<div class="win${o.anim ? ' anim' : ''}" style="width:${o.w}px;height:${o.h}px" data-win>
+    <div class="tb">${appIcon(16).replace('<svg', '<svg class="tb-icon"')}<span class="tb-t">${o.title || 'ThinkVision Control'}</span>
+      <div class="tb-cap"><button class="cap" tabindex="-1" aria-label="Minimize">&#xE921;</button><button class="cap" tabindex="-1" aria-label="Maximize">&#xE922;</button><button class="cap x" tabindex="-1" aria-label="Close">&#xE8BB;</button></div></div>
+    <div class="win-body">${o.body}</div>${o.dialog || ''}</div>`;
+}
+function winA(id, o) {
+  const u = U(id, { page: o.page || 'display', dialog: o.dialog || null, exp: o.exp || {}, hk: o.hk || null, target: o.target || null });
+  const st = o.st || S.state, narrow = !!o.narrow; u.narrow = narrow;
+  const ctx = { id, st, wrap: narrow };
+  const compact = narrow || u.collapsed;
+  const item = (k, cls = '') => { const [label, cp] = PAGES[k]; return `<button class="nv${u.page === k ? ' sel' : ''}${cls}" data-act="nav" data-key="${k}" data-fk="nav-${k}" ${compact ? `title="${label}"` : ''} aria-current="${u.page === k ? 'page' : 'false'}">${G(cp)}<span>${label}</span></button>`; };
+  const pane = (cls) => `<nav class="nav ${cls}" aria-label="Navigation"><button class="nv ham" data-act="ham" data-fk="ham" aria-label="${compact && !u.pane ? 'Open' : 'Close'} navigation">${G('E700')}</button>${item('display')}${item('monitor')}<div class="nav-sp"></div><div class="nav-div"></div>${item('app')}</nav>`;
+  const [title, , fn] = PAGES[u.page];
+  const body = pane(compact ? 'compact' : '') + (narrow && u.pane ? pane('overlay') : '') +
+    `<div class="content" data-sk="c"><div class="page${u.pgAnim ? ' pg-anim' : ''}"><h1 class="ptitle">${title}</h1>${fn(ctx)}</div></div>`;
+  return winFrame({ w: o.w || (narrow ? 680 : 1008), h: o.h || 720, body, dialog: dialogHTML(u), anim: u.anim });
+}
+function winB(id, o) {
+  const u = U(id, { page: o.page || 'display', dialog: o.dialog || null, exp: o.exp || {}, hk: o.hk || null, target: o.target || null });
+  const st = o.st || S.state;
+  const ctx = { id, st, wrap: true, wrapLong: false };
+  const tabs = [['display', 'Display'], ['monitor', 'Monitor'], ['app', 'App']];
+  const bar = `<div class="selbar" role="tablist" aria-label="Pages">` + tabs.map(([k, l]) => `<button class="sel${u.page === k ? ' on' : ''}" role="tab" aria-selected="${u.page === k}" data-act="nav" data-key="${k}" data-fk="nav-${k}">${l}</button>`).join('') + `</div>`;
+  const fn = PAGES[u.page][2];
+  const body = `<div class="bcol dense">${bar}<div class="content" data-sk="c"><div class="page${u.pgAnim ? ' pg-anim' : ''}">${fn(ctx)}</div></div></div>`;
+  return winFrame({ w: o.w || 600, h: o.h || 700, body, dialog: dialogHTML(u), anim: u.anim });
+}
+function winC(id, o) {
+  const u = U(id, { page: 'all', dialog: o.dialog || null, exp: o.exp || {}, hk: o.hk || null, target: o.target || null });
+  const st = o.st || S.state;
+  const ctx = { id, st, wrap: false, noHero: true, noInfo: true };
+  const grp = t => `<h2 style="font:600 20px/28px var(--f-disp);margin:40px 0 -12px">${t}</h2>`;
+  const body = `<div class="content" data-sk="c"><div class="page">${hero(st).replace('class="hero"', 'class="hero" style="margin-top:20px"')}${stateInfoBar(st)}
+    ${grp('Display')}${displaySections(ctx)}${grp('Monitor settings')}${monitorSections(ctx)}${grp('App settings')}${appSections(ctx)}</div></div>`;
+  return winFrame({ w: o.w || 720, h: o.h || 720, title: 'ThinkVision Control settings', body, dialog: dialogHTML(u), anim: u.anim });
+}
+const WIN = { A: winA, B: winB, C: winC };
+
+/* ===================== flyout / taskbar / OSD ===================== */
+function flyout(id, o) {
+  const u = U(id, {});
+  const st = o.st, d = st !== 'connected';
+  const [icp, , short] = STATUS[st];
+  const tiles = OPT.input.map(v => {
+    const on = M.input === v;
+    return `<button class="tile${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="radio" data-key="input" data-val="${v}" data-fk="tile-${v}"${dis(d)}><span>${v}</span>${v === M.thispc ? '<small>This PC</small>' : ''}</button>`;
+  }).join('');
+  const confirm = u.confirm ? `<div class="fly-confirm" role="alertdialog" aria-label="Switch to ${u.confirm}?"><div style="font-weight:600">Switch to ${u.confirm}?</div><div class="cap-s t2" style="margin:4px 0 12px">You won't be able to control the monitor from this PC until you switch back with the monitor's buttons.</div><div class="two">${btn('Switch', { act: 'flyok', fk: 'fly-ok' })}${btn('Cancel', { act: 'flyx', acc: true, fk: 'fly-x' })}</div></div>` : '';
+  const foot = o.variant === 'C' ? btn('All settings', { sub: true, icon: 'E713', act: 'goto', key: 'settings' }) : btn('Open ThinkVision Control', { sub: true, icon: 'E8A7', act: 'goto', key: 'display' });
+  return `<div class="fly${u.anim ? ' anim' : ''}" role="dialog" aria-label="ThinkVision Control quick settings">
+    <div class="fly-m${d ? ' is-dis' : ''}">
+      <div class="fly-hd">ThinkVision P32p-20</div>
+      ${stateInfoBar(st, true)}
+      <div class="fly-row${d ? ' is-dis' : ''}">${G('E706')}${slider('brightness', d, { label: 'Brightness', fk: 'f' })}</div>
+      <div class="fly-row${d ? ' is-dis' : ''}">${G('E7A1')}${slider('contrast', d, { label: 'Contrast', fk: 'f' })}</div>
+      <div class="fly-lbl">Input</div><div class="tiles" role="radiogroup" aria-label="Input">${tiles}</div>
+      ${confirm}
+      <div class="fly-lbl">Colour mode</div>${combo('colour', { full: true, dis: d, label: 'Colour mode' })}
+      <div class="fly-lbl">Presets</div><div class="two">${btn('Day', { icon: 'E706', act: 'preset', key: 'day', dis: d, fk: 'fp-day' })}${btn('Night', { icon: 'E708', act: 'preset', key: 'night', dis: d, fk: 'fp-night' })}</div>
+    </div>
+    <div class="fly-ft"><span class="fly-st">${G(icp)}<span>${short}</span></span>${foot}</div>
+  </div>`;
+}
+function trayIcon(ovl, hov) {
+  const o = ovl === 'off' ? `<span class="ovl">${G('F136', 'bg')}${G('F13D', 'fg')}</span>` : ovl === 'err' ? `<span class="ovl err">${G('F136', 'bg')}${G('F13C', 'fg')}</span>` : '';
+  return `<span class="trb${hov ? ' hov' : ''}" aria-label="ThinkVision Control">${G('E7F4')}${o}</span>`;
+}
+function taskbar(o = {}) {
+  const centre = o.mode === 'right' ? '' : `<div class="tbar-c">
+     <span class="tba"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="wl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3ccbf4"/><stop offset="1" stop-color="#0a6fd8"/></linearGradient></defs><rect x="2" y="2" width="9.5" height="9.5" rx="1" fill="url(#wl)"/><rect x="12.5" y="2" width="9.5" height="9.5" rx="1" fill="url(#wl)"/><rect x="2" y="12.5" width="9.5" height="9.5" rx="1" fill="url(#wl)"/><rect x="12.5" y="12.5" width="9.5" height="9.5" rx="1" fill="url(#wl)"/></svg></span>
+     <span class="tba">${G('E721')}</span>
+     <span class="tba">${G('E7C4')}</span>
+     <span class="tba run"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6.5a1.5 1.5 0 0 1 1.5-1.5h5.4l2 2H20.5A1.5 1.5 0 0 1 22 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5z" fill="#e8a317"/><path d="M2 9.5h20v9a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5z" fill="#ffc83d"/></svg></span>
+     <span class="tba">${G('E713')}</span>
+     <span class="tba"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="3" fill="#2b2b2b" stroke="#6b6b6b" stroke-width=".8"/><path d="M6.5 9l3 3-3 3" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M11.5 15.5h5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+     <span class="tba${o.appHov ? ' hov' : ''}${o.appRun ? ' run' : ''}" aria-label="ThinkVision Control (pinned)">${appIcon(24)}</span>
+   </div>`;
+  const tray = o.mode === 'centre' ? '' : `<div class="tray"><span class="trb">${G('E70E')}</span>${trayIcon(o.ovl, o.trayHov)}<span class="trb">${G('E701')}${G('E767')}</span><span class="clock">11:37<br>05/10/2026</span></div>`;
+  return `<div class="tbar">${centre}${tray}</div>`;
+}
+function flyStage(id, st, variant) {
+  return host(id, () => `<div class="stage" style="width:520px;height:${640}px">${BLOOM}${flyout(id, { st, variant })}${taskbar({ mode: 'right', trayHov: true, ovl: st === 'notfound' ? 'off' : st === 'notresponding' ? 'err' : '' })}</div>`);
+}
+
+/* ===================== scenarios ===================== */
+function winStage(id, o) { return host(id, () => `<div class="stage st-win">${BLOOM}${WIN[o.variant || S.variant](id, o)}</div>`); }
+function fig(cap, html) { return `<figure class="fig"><figcaption>${cap}</figcaption>${html}</figure>`; }
+function flyPair(v) {
+  const base = S.state;
+  const other = base === 'notfound' ? 'connected' : 'notfound';
+  return fig(STATE_LABEL[base] + ' (from the State toolbar)', flyStage(`${v}-fly-${base}`, base, v)) + fig(STATE_LABEL[other], flyStage(`${v}-fly-${other}`, other, v));
+}
+function trayScenes() {
+  const w = 520;
+  const s1 = host('tray-full', () => `<div class="stage" style="width:1040px;height:112px">${BLOOM}${taskbar({ ovl: '' })}</div>`);
+  const s2 = host('tray-tip', () => `<div class="stage" style="width:${w}px;height:150px">${BLOOM}<div class="tip" style="left:352px;transform:translateX(-50%);bottom:56px">ThinkVision Control – Not connected</div>${taskbar({ mode: 'right', ovl: 'off', trayHov: true })}</div>`);
+  const s3 = host('tray-tip-err', () => `<div class="stage" style="width:${w}px;height:150px">${BLOOM}<div class="tip" style="left:352px;transform:translateX(-50%);bottom:56px">ThinkVision Control – Not responding</div>${taskbar({ mode: 'right', ovl: 'err', trayHov: true })}</div>`);
+  const menu = (conn) => `<div class="menu" role="menu" style="right:164px;bottom:52px">
+     <button class="pi def" role="menuitem" data-act="goto" data-key="display">Open ThinkVision Control</button><div class="psep"></div>
+     ${conn ? `<button class="pi" role="menuitem" data-act="preset" data-key="day">Day preset</button><button class="pi" role="menuitem" data-act="preset" data-key="night">Night preset</button><div class="psep"></div>` : ''}
+     <button class="pi" role="menuitem" data-act="noop">Exit</button></div>`;
+  const s4 = host('tray-menu-on', () => `<div class="stage" style="width:${w}px;height:300px">${BLOOM}${menu(true)}${taskbar({ mode: 'right', trayHov: true })}</div>`);
+  const s5 = host('tray-menu-off', () => `<div class="stage" style="width:${w}px;height:300px">${BLOOM}${menu(false)}${taskbar({ mode: 'right', ovl: 'off', trayHov: true })}</div>`);
+  return fig('Taskbar while running in the background (centred pinned apps, notification area on the right)', s1) +
+    fig('Tooltip with disconnected overlay', s2) + fig('Tooltip with error overlay', s3) +
+    fig('Right-click menu, connected', s4) + fig('Right-click menu, not connected (presets removed)', s5);
+}
+function jumpScene() {
+  return host('jump', () => `<div class="stage" style="width:920px;height:440px">${BLOOM}
+    <div class="jl" role="menu" style="left:${460 + 3 * 44 - 144}px;bottom:60px">
+      <div class="jl-h">Tasks</div>
+      <button class="pi" role="menuitem" data-act="preset" data-key="day">${G('E706')}<span>Day preset</span></button>
+      <button class="pi" role="menuitem" data-act="preset" data-key="night">${G('E708')}<span>Night preset</span></button>
+      <button class="pi" role="menuitem" data-act="noop">${G('E961')}<span>Switch to this PC</span></button>
+      <div class="psep" style="margin:8px 0 4px"></div>
+      <button class="pi" role="menuitem" data-act="goto" data-key="display">${appIcon(16)}<span>ThinkVision Control</span></button>
+      <button class="pi" role="menuitem" data-act="noop">${G('E718')}<span>Unpin from taskbar</span></button>
+      <button class="pi" role="menuitem" data-act="noop">${G('E711')}<span>Close window</span></button>
+    </div>${taskbar({ appHov: true, appRun: true })}</div>`);
+}
+function osdScenes() {
+  const b = 45;
+  const s1 = host('osd-b', () => `<div class="stage" style="width:600px;height:220px">${BLOOM}<div class="osd anim" role="status" aria-label="Brightness ${b}"><div class="osd-r">${G('E706')}<span class="osd-l">Brightness</span><span class="osd-v">${b}</span></div><div class="osd-bar"><i style="width:${b}%"></i></div></div>${taskbar({ mode: 'centre' })}</div>`);
+  const s2 = host('osd-i', () => `<div class="stage" style="width:600px;height:220px">${BLOOM}<div class="osd anim" role="status" aria-label="Input DisplayPort"><div class="osd-r">${G('E961')}<span class="osd-l">Input →</span><span class="osd-v">DisplayPort</span></div></div>${taskbar({ mode: 'centre' })}</div>`);
+  return fig('Hotkey: Ctrl+Alt+Up', s1) + fig('Hotkey: Ctrl+Alt+F2 (after the switch is confirmed or from a jump-list task)', s2);
+}
+
+const N = { // annotation snippets
+  nav: ['NavigationView, Left pane', 'Display and Monitor settings at the top, App settings pinned to the bottom: "app settings should be the last item… pinned to the bottom". Left suits prominent navigation.'],
+  title: ['Page header', 'Title style 28/36 Semibold, 36 px side padding, 1000 px max column (WinUI Gallery settings page, Toolkit sample).'],
+  card: ['SettingsCard', '20 px icon, Body header, Caption secondary description, control right-aligned; 4 px between cards; BodyStrong section headers with 1,30,0,6 margin.'],
+  slider: ['Slider', 'For "defined, contiguous values (such as volume or brightness)". Writes while dragging, value shown beside it, no Apply button: "don\'t require a confirmation button".'],
+  combo: ['ComboBox', 'Colour mode has 8 options and is "of secondary importance", so a ComboBox rather than radio buttons. Changes apply without confirmation.'],
+  expander: ['SettingsExpander', 'Less-used settings (custom RGB gain) collapse into one level of nesting. Items stay visible but disabled, with the reason in the description.'],
+  radio: ['RadioButtons', 'Three equally weighted inputs that all need to be visible. Switching away from this PC\'s input asks first; other changes never do.'],
+  preset: ['Preset cards', 'One card per preset with a standard Apply button and a More menu ("Save current settings as Day"). Accent colour is not spent here.'],
+  hero: ['Status as icon + text', 'The red/green dot is gone: "Icons and color should not be the only UI components signifying meaning".'],
+  toggle: ['ToggleSwitch', '"For binary settings when changes become effective immediately". On/Off label beside the switch, as in Settings.'],
+  power: ['Standard buttons for Power', 'Standby and Turn off are plain buttons, never accent. Turn off goes through a ContentDialog.'],
+  reset: ['Reset and restore expander', 'One card and one button each. Factory reset asks first; Restore backup and partial resets don\'t, because they\'re recoverable.'],
+  navcard: ['Clickable navigation card', 'Find hidden settings uses IsClickEnabled with a chevron, the Settings pattern for "goes somewhere".'],
+  same: ['Same settings in every state', '"Display the same settings regardless of the app context… disable the SettingsCard… explain why". The reason sits in one InfoBar, not on every card.'],
+  bg: ['Toggle in an expander', 'Run in background owns the child Start with Windows, which is disabled with its reason while the parent is off.'],
+  hk: ['PowerToys shortcut pattern', 'Keycaps plus an edit button on each card. A failed RegisterHotKey shows as a warning in the description, with an icon and text.'],
+  about: ['About expander', 'Last on the page; the collapsed row shows name, icon and version.'],
+  appOn: ['Always enabled', 'App settings and shortcuts stay enabled in every monitor state, so you can still configure them while the monitor is unplugged.'],
+  infobar: ['InfoBar', 'For a "changed application state"; takes layout space instead of floating. Not closable while the state lasts; debounced about 1 s so it doesn\'t flash.'],
+  sev: ['Severity', 'Not found is Informational (an unplugged monitor is normal for a laptop). Not responding is Error. Connecting uses an indeterminate ProgressBar, which "does not block".'],
+  dash: ['"—" for unknown values', 'Disabled sliders show a dash so stale numbers never pass for live ones; "disable all associated labels" when a slider is disabled.'],
+  dialog: ['ContentDialog over Smoke', '8 px corners, Subtitle title as a question, consequence in the body, Smoke #4D000000 behind. Replaces MessageBox, which the WPF Fluent theme doesn\'t style.'],
+  safe: ['Safe default', 'Specific verb plus Cancel, never OK/Cancel. Cancel is the DefaultButton (accent, Enter, first focus): "risky action confirmations: don\'t proceed (or the safe choice)".'],
+  acrylic: ['Acrylic flyout', 'Acrylic is "only for transient, light-dismiss surfaces". 8 px corners, 1 px stroke, flyout elevation; anchored with Shell_NotifyIconGetRect and CalculatePopupWindowPosition; closes on Esc or click-away.'],
+  flyctl: ['Controls apply instantly', 'Same model as the volume flyout: "Show only the most common settings and have them take immediate effect." No accent text on acrylic, only accent fills.'],
+  resident: ['Needs a resident process', 'Exists only while Run in background is on. Its first show pays the one-off WPF render cost (about 30 MB that doesn\'t come back).']
+};
+
+function scenarios(v) {
+  const W = (sfx, o) => winStage(`${v}-${sfx}`, Object.assign({ variant: v }, o));
+  const dlgHost = v === 'C' ? {} : null;
+  const L = [];
+  if (v === 'C') {
+    L.push({ k: 'flyout', t: 'Tray flyout (primary surface)', d: 'Left-click on the tray icon opens this above the notification area. Everything you change here applies immediately. All settings opens the single settings window.', r: () => flyPair('C'), n: [N.acrylic, N.flyctl, ['Input tiles', 'Quick Settings-style tiles act as a three-way radio group; the selected input uses the accent fill. Switching away from this PC confirms inline, because a flyout can\'t host a dialog.'], N.sev, N.resident] });
+    L.push({ k: 'states', t: 'Flyout in every state', d: 'Connecting, Not found, Not responding and Connected side by side. The controls stay visible and disabled; the reason is one compact InfoBar.', r: () => ['connecting', 'notfound', 'notresponding', 'connected'].map(s => fig(STATE_LABEL[s], flyStage(`C-st-${s}`, s, 'C'))).join(''), n: [N.infobar, N.sev, N.dash] });
+    L.push({ k: 'settings', t: 'All settings window (single scrolling page)', d: 'One window, no navigation pane: Display, Monitor settings and App settings follow each other as groups. Follows the State toolbar.', r: () => W('settings', {}), n: [['Single column, no pane', '"Present content from top to bottom in a single column, scrollable if necessary." Group titles use Subtitle, sections BodyStrong.'], N.card, N.slider, N.combo, N.same, N.hk] });
+  } else {
+    L.push({ k: 'display', t: 'Window: Display page', d: 'Opens on Display. Follows the State toolbar; try Not found or Not responding.', r: () => W('display', { page: 'display' }), n: v === 'A' ? [N.nav, N.title, N.card, N.slider, N.combo, N.expander, N.radio, N.preset, N.hero] : [['SelectorBar under the title bar', 'For switching "between a small number of different sets or views"; a top pane suits 5 or fewer categories.'], ['Denser rhythm', '600 px wide; cards are 60 px tall with 12 px padding; section gaps of 20 and 8; still on the 4 px grid.'], ['Cards wrap', 'Below the SettingsCard wrap threshold the control drops under the header, as in the Toolkit.'], N.slider, N.combo, N.radio, N.preset, N.hero] });
+    L.push({ k: 'monitor', t: 'Window: Monitor settings page', d: 'Picture, Ports, On-screen menu, Power, Reset and Tools. Turn off and Factory reset open dialogs.', r: () => W('monitor', { page: 'monitor' }), n: [N.combo, N.toggle, N.power, N.reset, N.navcard, N.same] });
+    L.push({ k: 'app', t: 'Window: App settings page', d: 'Startup, this PC\'s input, keyboard shortcuts and About. Click any shortcut to edit it.', r: () => W('app', { page: 'app' }), n: [N.bg, N.combo, N.hk, N.about, N.appOn] });
+    if (v === 'A') L.push({ k: 'narrow', t: 'Window: narrow form (680 px)', d: 'Below 1008 px the pane collapses to icons (LeftCompact). The menu button opens it as an overlay.', r: () => W('narrow', { page: 'display', narrow: true }), n: [['NavigationView Auto mode', 'Expanded at 1008 px and up, icons only from 641 to 1007 px, menu button below that.'], ['Overlay pane', 'When opened from compact mode the pane overlaps content, so it uses in-app acrylic.'], ['Wrapping cards', 'The Input radios drop below the header rather than squeezing the text.']] });
+    L.push({ k: 'states', t: 'States compared (Display page)', d: 'The four states one above another, cropped to the top of the page. The window always shows the full UI; only the InfoBar and enabled state change.', r: () => ['connecting', 'notfound', 'notresponding', 'connected'].map(s => fig(STATE_LABEL[s], W('st-' + s, { page: 'display', st: s, h: v === 'A' ? 440 : 470 }))).join(''), n: [N.infobar, N.sev, N.dash, N.same] });
+  }
+  const hostPage = v === 'C' ? {} : null;
+  L.push({ k: 'dlg-reset', t: 'Dialog: factory reset', d: 'From Monitor settings, Reset and restore, Factory reset. Shown with the monitor connected.', r: () => W('dlg-reset', { page: 'monitor', st: 'connected', dialog: 'reset', exp: { reset: true } }), n: [N.dialog, N.safe, ['Wording', 'Says what happens and that a backup is saved; no "warning", and the reset-can-turn-off-DDC/CI risk is stated plainly.']] });
+  L.push({ k: 'dlg-off', t: 'Dialog: turn off', d: 'From Monitor settings, Power, Turn off.', r: () => W('dlg-off', { page: 'monitor', st: 'connected', dialog: 'off' }), n: [N.dialog, N.safe] });
+  L.push({ k: 'dlg-input', t: 'Dialog: switch away from this PC', d: 'Only when the new input isn\'t this PC\'s. Pick DisplayPort or USB-C on the Display page to trigger it.', r: () => W('dlg-input', { page: 'display', st: 'connected', dialog: 'input', target: 'DisplayPort' }), n: [N.dialog, N.safe, ['Only when it matters', 'Routine reversible changes (colour mode, presets) get no confirmation; losing control of the monitor does.']] });
+  L.push({ k: 'dlg-hotkey', t: 'Dialog: edit a keyboard shortcut', d: 'Click into the key area and press a combination; Save stays disabled until it\'s valid and free. Opened here for Switch to this PC, which clashes with another app.', r: () => W('dlg-hotkey', { page: 'app', st: S.state, dialog: 'hotkey', hk: { key: 'me', keys: ['Ctrl', 'Alt', 'M'] } }), n: [['PowerToys ShortcutDialog', 'Live capture into large accent keycaps; Save is the default (accent) button and stays disabled until the combination is valid.'], ['Inline InfoBar', 'Conflicts and invalid combinations show as InfoBars inside the dialog: "Don\'t use dialogs for errors that are contextual".'], ['Reset and Clear', 'Secondary buttons, as in PowerToys. Esc closes the dialog; Tab moves focus out of the capture area.']] });
+  if (v !== 'C') L.push({ k: 'flyout', t: 'Tray flyout (secondary, background mode only)', d: 'With Run in background on, left-clicking the tray icon opens this. The footer opens the full window.', r: () => flyPair(v), n: [N.acrylic, N.flyctl, N.resident, N.sev] });
+  L.push({ k: 'tray', t: 'Background: taskbar, tooltip and tray menu', d: 'What you see with the window closed and Run in background on.', r: trayScenes, n: [['Monochrome tray icon', 'Theme-adaptive glyph, like PowerToys\' option, so it never vanishes on a light taskbar.'], ['One overlay, bottom right', 'Disconnected and error overlays differ by shape (× and !), not only colour.'], ['Tooltip "name – status"', 'Doesn\'t explain how to use the icon; recovery steps live in the window\'s InfoBar.'], ['Context menu', 'Default command first and Semibold, Exit last. Items that can\'t run are removed, not disabled. Fluent menus have no Bold, so Semibold stands in.']] });
+  L.push({ k: 'jumplist', t: 'Taskbar jump list', d: 'Right-click the pinned app. Works with nothing running: each task relaunches the exe with an argument, applies it, shows the OSD and exits.', r: jumpScene, n: [['Jump list tasks', 'System.Windows.Shell.JumpList, in-box WPF, no packaging. The shell keeps the list, so it costs nothing while the app is closed.'], ['Shell-drawn', 'Windows draws this menu; the app only supplies titles, icons and arguments. Shown here so the flow can be judged.']] });
+  L.push({ k: 'osd', t: 'On-screen overlay (OSD)', d: 'Shown after a hotkey or jump-list task. Fades and slides in over 167 ms, fades out.', r: osdScenes, n: [['Plain local styles', 'An AllowsTransparency window gets no backdrop, so this uses a solid acrylic-fallback colour, 8 px corners and a 1 px stroke.'], ['Body Large value', '18/24 for the value, Body for the label; the level bar uses the 4 px slider geometry.'], ['Motion', 'Direct entrance cubic-bezier(0,0,0,1) at 167 ms; fade-only when animation effects are off.']] });
+  return L;
+}
+
+/* ===================== rendering ===================== */
+const main = document.getElementById('main');
+function snapshot(root) {
+  const s = {}; root.querySelectorAll('[data-sk]').forEach(e => { s[e.dataset.sk] = e.scrollTop; });
+  const a = document.activeElement; const fk = a && root.contains(a) ? a.getAttribute('data-fk') : null;
+  return { s, fk };
+}
+function restore(root, snap, focusFk) {
+  for (const k in snap.s) { const e = root.querySelector(`[data-sk="${k}"]`); if (e) e.scrollTop = snap.s[k]; }
+  const fk = focusFk || snap.fk;
+  if (fk) { const e = root.querySelector(`[data-fk="${CSS.escape(fk)}"]`); if (e && !e.disabled) e.focus({ preventScroll: true }); }
+}
+function rerender(id, focusFk) {
+  const el = document.querySelector(`[data-host="${id}"]`); if (!el || !MOCKS[id]) return;
+  const snap = snapshot(el); el.innerHTML = MOCKS[id](); restore(el, snap, focusFk);
+  const u = UI[id]; if (u) { u.anim = false; u.pgAnim = false; }
+}
+function rerenderAll() { document.querySelectorAll('[data-host]').forEach(e => rerender(e.dataset.host)); }
+function compareTable() {
+  return `<section class="sc"><h2>Comparing the three layouts</h2><p>Numbers come from the probe measured on this machine (.NET 10, built-in Fluent theme): about 12 MB private before any window is shown, about 45 MB private once a window has rendered, and none of that returns on close or hide.</p>
+  <table class="cmp"><thead><tr><th></th><th>A Settings app</th><th>B Compact tabs</th><th>C Flyout first</th></tr></thead><tbody>
+  <tr><th>Best for</th><td>Deliberate, occasional changes; looks and behaves like Windows Settings and PowerToys</td><td>Keeping open beside other windows; quick tweaks with everything one tab away</td><td>Changing brightness or contrast many times a day</td></tr>
+  <tr><th>Window size</th><td>1008×720, pane collapses to icons below 1008 px (about 680 wide narrow)</td><td>About 600×700</td><td>Flyout 360 wide; settings window about 720×720</td></tr>
+  <tr><th>Discoverability</th><td>High: every page is named in the pane, App settings sits where Windows puts it</td><td>Good: three tabs always visible, less room for descriptions</td><td>Instant for the five common controls; the rest hides behind All settings, and the tray icon may be in the overflow</td></tr>
+  <tr><th>Works with exit-on-close</th><td>Yes. The jump list works with nothing running; the flyout only in background mode</td><td>Yes, same as A</td><td>Only with background mode on: the flyout needs the resident process. The jump list still works without it</td></tr>
+  <tr><th>Resources</th><td>About 45 MB private while the window is open, 0 when closed (exit-on-close)</td><td>Same as A, slightly fewer elements</td><td>About 12 MB idle until the flyout first shows; after that about 45 MB for the rest of the session, because the flyout is a WPF window too</td></tr>
+  <tr><th>Recommendation</th><td class="rec">Recommended: A plus the jump list, with the flyout as an option when Run in background is on</td><td>Good alternative if you prefer a narrow window</td><td>Only if you keep the app running all day</td></tr>
+  </tbody></table></section>`;
+}
+function renderAll() {
+  document.documentElement.className = S.theme + (S.full ? ' full' : '');
+  MOCKS = {};
+  const list = scenarios(S.variant);
+  if (!list.find(s => s.k === S.scenario)) S.scenario = list[0].k;
+  const shown = S.view === 'gallery' ? list : [list.find(s => s.k === S.scenario)];
+  main.innerHTML = (S.view === 'gallery' ? `<p class="intro">Gallery of every scenario for variant ${S.variant}. The State and Theme switches apply live. URL hash keys: <code>variant</code>, <code>view</code> (gallery or single), <code>scenario</code>, <code>state</code> (connected, connecting, notfound, notresponding), <code>theme</code>, <code>full</code>. Mocks are drawn at 1:1 effective pixels.</p>` : '') +
+    shown.map(sc => `<section class="sc" id="sc-${sc.k}"><h2><span class="id">${S.variant}${list.indexOf(sc) + 1}</span>${sc.t}</h2><p>${sc.d}</p><div class="sc-row"><div class="sc-mocks">${sc.r()}</div><aside class="notes" aria-label="Patterns used"><h3>Patterns used</h3><ul>${sc.n.map(([a, b]) => `<li><b>${a}.</b> ${b}</li>`).join('')}</ul></aside></div></section>`).join('') +
+    compareTable();
+  syncToolbar(); writeHash();
+}
+function syncToolbar() {
+  document.querySelectorAll('.vb').forEach(b => b.setAttribute('aria-pressed', String(S[b.dataset.v] === b.dataset.val)));
+  const sel = document.getElementById('vt-sc');
+  sel.innerHTML = scenarios(S.variant).map((s, i) => `<option value="${s.k}"${s.k === S.scenario ? ' selected' : ''}>${S.variant}${i + 1} · ${esc(s.t)}</option>`).join('');
+  sel.disabled = S.view !== 'single';
+  document.getElementById('vt-full').checked = S.full;
+}
+function writeHash() {
+  const p = new URLSearchParams({ variant: S.variant, view: S.view, state: S.state, theme: S.theme });
+  if (S.view === 'single') p.set('scenario', S.scenario);
+  if (S.full) p.set('full', '1');
+  history.replaceState(null, '', '#' + p.toString());
+}
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (/^[ABC]$/.test(p.get('variant'))) S.variant = p.get('variant');
+  if (['gallery', 'single'].includes(p.get('view'))) S.view = p.get('view');
+  if (p.get('scenario')) { S.scenario = p.get('scenario'); if (!p.get('view')) S.view = 'single'; }
+  if (STATUS[p.get('state')]) S.state = p.get('state');
+  if (['light', 'dark'].includes(p.get('theme'))) S.theme = p.get('theme');
+  S.full = p.get('full') === '1';
+}
+
+/* ===================== popups ===================== */
+let POP = null;
+function closePop(refocus) { if (POP) { const a = POP.anchor; POP.el.remove(); POP = null; if (refocus && a && document.contains(a)) a.focus(); } }
+function openPop(anchor, items, onPick, mode) {
+  closePop();
+  const hostEl = anchor.closest('[data-host]');
+  const el = document.createElement('div');
+  el.className = 'pop'; el.setAttribute('role', mode === 'combo' ? 'listbox' : 'menu');
+  el.innerHTML = items.map((it, i) => `<button class="pi${it.sel ? ' sel' : ''}" role="${mode === 'combo' ? 'option' : 'menuitem'}" aria-selected="${!!it.sel}" data-i="${i}">${esc(it.label)}</button>`).join('');
+  hostEl.appendChild(el);
+  const hr = hostEl.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+  let left = ar.left - hr.left, top;
+  if (mode === 'combo') {
+    el.style.minWidth = (ar.width + 8) + 'px'; left -= 4;
+    const si = Math.max(0, items.findIndex(i => i.sel));
+    top = ar.top - hr.top - 5 - si * 34;
+  } else {
+    top = ar.bottom - hr.top + 4; left = ar.right - hr.left - el.offsetWidth;
+  }
+  top = Math.max(8, Math.min(top, hostEl.offsetHeight - el.offsetHeight - 8));
+  el.style.left = Math.max(8, left) + 'px'; el.style.top = top + 'px';
+  POP = { el, anchor };
+  el.addEventListener('click', e => { const b = e.target.closest('.pi'); if (!b) return; const it = items[+b.dataset.i]; closePop(true); onPick(it); });
+  el.addEventListener('keydown', e => {
+    const bs = [...el.querySelectorAll('.pi')], i = bs.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); bs[Math.min(bs.length - 1, i + 1)].focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); bs[Math.max(0, i - 1)].focus(); }
+    if (e.key === 'Tab') { closePop(); }
+  });
+  (el.querySelector('.pi.sel') || el.querySelector('.pi')).focus();
+}
+
+/* ===================== interactions ===================== */
+function hostOf(el) { const h = el.closest('[data-host]'); return h ? h.dataset.host : null; }
+function setM(key, val) { M[key] = val; rerenderAll(); }
+function openDialog(id, kind, extra, opener) {
+  const u = U(id); u.dialog = kind; Object.assign(u, extra || {}); u.opener = opener; u.anim = true;
+  rerender(id, 'dlg-default');
+}
+function closeDialog(id) { const u = U(id); const op = u.opener; u.dialog = null; u.hk = null; rerender(id, op); }
+function retry() {
+  S.state = 'connecting'; rerenderAll(); syncToolbar(); writeHash();
+  setTimeout(() => { if (S.state === 'connecting') { S.state = 'connected'; rerenderAll(); syncToolbar(); writeHash(); } }, 2000);
+}
+function gotoScenario(k) {
+  if (!scenarios(S.variant).find(s => s.k === k)) return;
+  if (S.view === 'single') { S.scenario = k; renderAll(); window.scrollTo(0, 0); }
+  else { const e = document.getElementById('sc-' + k); if (e) e.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }
+}
+
+document.addEventListener('click', e => {
+  const vb = e.target.closest('.vb');
+  if (vb) {
+    const k = vb.dataset.v, v = vb.dataset.val;
+    if (S[k] === v) return;
+    S[k] = v;
+    if (k === 'theme') { document.documentElement.className = S.theme + (S.full ? ' full' : ''); syncToolbar(); writeHash(); }
+    else if (k === 'state') { rerenderAll(); syncToolbar(); writeHash(); }
+    else renderAll();
+    return;
+  }
+  const t = e.target.closest('[data-act]');
+  const id = hostOf(e.target);
+  // light-dismiss the overlay nav pane
+  if (id && UI[id] && UI[id].pane && !e.target.closest('.nav')) { UI[id].pane = false; rerender(id); }
+  if (!t || t.disabled || !t.dataset.act || t.closest('.exp-h.is-dis')) return;
+  const act = t.dataset.act, key = t.dataset.key;
+  const u = id ? U(id) : null;
+  switch (act) {
+    case 'nav': if (u.page !== key) { u.page = key; u.pane = false; u.pgAnim = true; const c = document.querySelector(`[data-host="${id}"] [data-sk]`); if (c) c.scrollTop = 0; rerender(id, 'nav-' + key); } break;
+    case 'ham': if (u.narrow) u.pane = !u.pane; else u.collapsed = !u.collapsed; rerender(id, 'ham'); break;
+    case 'exp': { if (e.target.closest('.card-c')) return; const open = t.closest('.exp').classList.contains('open'); u.exp[key] = !open; rerender(id, 'exp-' + key); break; }
+    case 'tgl': setM(key, !M[key]); restoreFocusAll('tgl-' + key, id); break;
+    case 'combo': openPop(t, OPT[key].map(v => ({ label: v, sel: v === M[key] })), it => { setM(key, it.label); restoreFocusAll('cb-' + key, id); }, 'combo'); break;
+    case 'radio': {
+      const v = t.dataset.val;
+      if (v === M.input) break;
+      if (key === 'input' && v !== M.thispc) {
+        if (t.classList.contains('tile')) { u.confirm = v; rerender(id, 'fly-x'); }
+        else openDialog(id, 'input', { target: v }, t.dataset.fk);
+      } else { setM(key, v); restoreFocusAll(t.dataset.fk, id); }
+      break;
+    }
+    case 'flyok': M.input = u.confirm; u.confirm = null; rerenderAll(); break;
+    case 'flyx': u.confirm = null; rerender(id); break;
+    case 'more': openPop(t, [{ label: `Save current settings as ${key === 'day' ? 'Day' : 'Night'}` }], () => { const p = M.presets[key]; p.b = M.brightness; p.c = M.contrast; p.colour = M.colour === 'Neutral' ? undefined : M.colour; rerenderAll(); }, 'menu'); break;
+    case 'preset': { const p = M.presets[key]; M.brightness = p.b; M.contrast = p.c; if (p.colour) M.colour = p.colour; else if (key === 'day') M.colour = 'Neutral'; rerenderAll(); restoreFocusAll(t.dataset.fk, id); break; }
+    case 'dlg': openDialog(id, key, {}, t.dataset.fk); break;
+    case 'dlgx': closeDialog(id); break;
+    case 'dlgok': {
+      if (u.dialog === 'input') { M.input = u.target; const op = u.opener; u.dialog = null; rerenderAll(); restoreFocusAll(op, id); break; }
+      if (u.dialog === 'hotkey') { if (!hkEval(u.hk.key, u.hk.keys).ok) break; M.hk[u.hk.key] = u.hk.keys.slice(); const op = u.opener; u.dialog = null; u.hk = null; rerenderAll(); restoreFocusAll(op, id); break; }
+      closeDialog(id); break;
+    }
+    case 'hk': openDialog(id, 'hotkey', { hk: { key, keys: M.hk[key].slice() } }, t.dataset.fk); break;
+    case 'hkreset': u.hk.keys = HK_LIST.find(x => x[0] === u.hk.key)[2].slice(); rerender(id, 'dlg-default'); break;
+    case 'hkclear': u.hk.keys = []; rerender(id, 'dlg-default'); break;
+    case 'retry': retry(); break;
+    case 'goto': gotoScenario(key); break;
+  }
+});
+function restoreFocusAll(fk, id) { if (!fk || !id) return; const el = document.querySelector(`[data-host="${id}"] [data-fk="${CSS.escape(fk)}"]`); if (el && !el.disabled) el.focus({ preventScroll: true }); }
+document.addEventListener('mousedown', e => { if (POP && !POP.el.contains(e.target) && e.target !== POP.anchor && !POP.anchor.contains(e.target)) closePop(); });
+
+document.addEventListener('input', e => {
+  const s = e.target.closest('[data-sl]'); if (!s) return;
+  const k = s.dataset.sl, v = +s.value; M[k] = v;
+  document.querySelectorAll(`input[data-sl="${k}"]:not(:disabled)`).forEach(o => { if (o !== s) o.value = v; o.style.setProperty('--f', v / 100); o.setAttribute('aria-valuetext', v); const t = o.nextElementSibling; if (t) t.textContent = v; });
+});
+function keyName(e) {
+  const map = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', ' ': 'Space', PageUp: 'Page Up', PageDown: 'Page Down', Delete: 'Del', Insert: 'Ins' };
+  if (['Control', 'Alt', 'Shift', 'Meta', 'OS', 'AltGraph'].includes(e.key)) return null;
+  if (map[e.key]) return map[e.key];
+  if (/^F\d{1,2}$/.test(e.key)) return e.key;
+  if (e.code && e.code.startsWith('Key')) return e.code.slice(3);
+  if (e.code && e.code.startsWith('Digit')) return e.code.slice(5);
+  return e.key.length === 1 ? e.key.toUpperCase() : e.key;
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (POP) { e.preventDefault(); closePop(true); return; }
+    const id = hostOf(document.activeElement || document.body);
+    if (id && UI[id] && UI[id].dialog) { e.preventDefault(); closeDialog(id); return; }
+    if (id && UI[id] && UI[id].confirm) { UI[id].confirm = null; rerender(id); return; }
+    if (id && UI[id] && UI[id].pane) { UI[id].pane = false; rerender(id, 'ham'); return; }
+    return;
+  }
+  const cap = e.target.closest && e.target.closest('[data-cap]');
+  if (cap) {
+    if (e.key === 'Tab') return;
+    e.preventDefault();
+    const id = hostOf(cap), u = U(id);
+    const mods = []; if (e.metaKey) mods.push('Win'); if (e.ctrlKey) mods.push('Ctrl'); if (e.altKey) mods.push('Alt'); if (e.shiftKey) mods.push('Shift');
+    const k = keyName(e);
+    u.hk.keys = k ? mods.concat(k) : mods;
+    rerender(id, 'dlg-default');
+    return;
+  }
+  // radio group arrow keys
+  const rb = e.target.closest && e.target.closest('[role=radio]');
+  if (rb && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    const g = [...rb.parentElement.querySelectorAll('[role=radio]:not(:disabled)')]; const i = g.indexOf(rb);
+    const n = g[(i + (e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : g.length - 1)) % g.length]; e.preventDefault(); n.focus(); n.click();
+  }
+  // clickable cards
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('div[role=button]')) { e.preventDefault(); e.target.click(); }
+  // F6 between pane and content
+  if (e.key === 'F6') {
+    const h = e.target.closest && e.target.closest('[data-host]'); if (!h) return;
+    const nav = h.querySelector('.nav'), content = h.querySelector('.content'); if (!nav || !content) return;
+    e.preventDefault();
+    const target = nav.contains(e.target) ? content.querySelector('button:not(:disabled),input:not(:disabled),[tabindex="0"]') : nav.querySelector('.nv.sel') || nav.querySelector('.nv');
+    if (target) target.focus();
+  }
+});
+
+document.getElementById('vt-sc').addEventListener('change', e => { S.scenario = e.target.value; renderAll(); });
+document.getElementById('vt-full').addEventListener('change', e => { S.full = e.target.checked; document.documentElement.className = S.theme + (S.full ? ' full' : ''); writeHash(); });
+window.addEventListener('hashchange', () => { const before = JSON.stringify(S); readHash(); if (JSON.stringify(S) !== before) renderAll(); });
+
+readHash();
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,2718 @@
+{
+  "generated": "2026-10-05",
+  "machine": "Windows 11 Home 10.0.26200, .NET SDK 10.0.401, Microsoft.WindowsDesktop.App 10.0.12",
+  "method": "resource_footprint_probe/Program.cs: WPF Application + WinForms NotifyIcon; window with 4 sliders/combobox/checkbox/button. Phases: startup (before any window), shown (+3s), hidden (Hide + 2x GC + 3s), closed (Close + 2x GC + 3s), trimmed (EmptyWorkingSet + 3s). ws_mb=Process.WorkingSet64, private_mb=Process.PrivateMemorySize64 (commit), gc_heap_mb=GC.GetTotalMemory, gc_committed_mb=GCMemoryInfo.TotalCommittedBytes. startup_ms = process start to Window.ContentRendered. Tags: default, fluent (ThemeMode.System), sw (RenderMode.SoftwareOnly), wpfui (WPF-UI 4.3.0 ThemesDictionary+ControlsDictionary), nowin (no window ever created), notray (no NotifyIcon), env-var GC knobs. Note: tags ending -nowin+x in publish runs were plain repeats (parser split on +), i.e. extra runs with a window.",
+  "publish_exe_bytes": {
+    "pub_sc_inv": 154693920.0,
+    "pub_fd": 175783.0,
+    "pub_sc_r2r": 172256914.0,
+    "pub_sc_r2r_comp": 74539013.0,
+    "pub_sc_comp": 69303962.0,
+    "pub_sc": 172946453.0,
+    "pub_sc_sat": 154693920.0
+  },
+  "build_runs": [
+    {
+      "tag": "default",
+      "phase": "startup",
+      "ws_mb": "43.2",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default",
+      "phase": "startup_ms",
+      "ws_mb": "1418",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default",
+      "phase": "shown",
+      "ws_mb": "112.8",
+      "private_mb": "62.6",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default",
+      "phase": "hidden",
+      "ws_mb": "114.6",
+      "private_mb": "63.3",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default",
+      "phase": "closed",
+      "ws_mb": "110.1",
+      "private_mb": "58.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default",
+      "phase": "trimmed",
+      "ws_mb": "7.6",
+      "private_mb": "57.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fluent",
+      "phase": "startup",
+      "ws_mb": "55.3",
+      "private_mb": "15.6",
+      "gc_heap_mb": "2.1",
+      "gc_committed_mb": "3.3",
+      "threads": "8"
+    },
+    {
+      "tag": "fluent",
+      "phase": "startup_ms",
+      "ws_mb": "682",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fluent",
+      "phase": "shown",
+      "ws_mb": "94.3",
+      "private_mb": "46.7",
+      "gc_heap_mb": "4.3",
+      "gc_committed_mb": "3.3",
+      "threads": "25"
+    },
+    {
+      "tag": "fluent",
+      "phase": "hidden",
+      "ws_mb": "97.2",
+      "private_mb": "43.8",
+      "gc_heap_mb": "2.8",
+      "gc_committed_mb": "6.0",
+      "threads": "27"
+    },
+    {
+      "tag": "fluent",
+      "phase": "closed",
+      "ws_mb": "92.1",
+      "private_mb": "38.4",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fluent",
+      "phase": "trimmed",
+      "ws_mb": "7.2",
+      "private_mb": "37.2",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "27"
+    },
+    {
+      "tag": "sw",
+      "phase": "startup",
+      "ws_mb": "43.3",
+      "private_mb": "12.5",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sw",
+      "phase": "startup_ms",
+      "ws_mb": "599",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sw",
+      "phase": "shown",
+      "ws_mb": "82.8",
+      "private_mb": "32.1",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "18"
+    },
+    {
+      "tag": "sw",
+      "phase": "hidden",
+      "ws_mb": "85.2",
+      "private_mb": "33.4",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "20"
+    },
+    {
+      "tag": "sw",
+      "phase": "closed",
+      "ws_mb": "80.8",
+      "private_mb": "28.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "20"
+    },
+    {
+      "tag": "sw",
+      "phase": "trimmed",
+      "ws_mb": "7.6",
+      "private_mb": "28.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "20"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "startup",
+      "ws_mb": "56.2",
+      "private_mb": "15.9",
+      "gc_heap_mb": "2.1",
+      "gc_committed_mb": "3.3",
+      "threads": "8"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "startup_ms",
+      "ws_mb": "602",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "shown",
+      "ws_mb": "84.5",
+      "private_mb": "33.5",
+      "gc_heap_mb": "4.3",
+      "gc_committed_mb": "3.3",
+      "threads": "18"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "hidden",
+      "ws_mb": "87.4",
+      "private_mb": "35.0",
+      "gc_heap_mb": "2.8",
+      "gc_committed_mb": "6.0",
+      "threads": "20"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "closed",
+      "ws_mb": "82.0",
+      "private_mb": "29.0",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "20"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "trimmed",
+      "ws_mb": "7.1",
+      "private_mb": "28.2",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "20"
+    },
+    {
+      "tag": "nowin",
+      "phase": "startup",
+      "ws_mb": "42.5",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "nowin",
+      "phase": "nowin",
+      "ws_mb": "43.3",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "nowin",
+      "phase": "trimmed",
+      "ws_mb": "8.9",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "nowin+notray",
+      "phase": "startup",
+      "ws_mb": "38.8",
+      "private_mb": "11.6",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "nowin+notray",
+      "phase": "nowin",
+      "ws_mb": "39.6",
+      "private_mb": "11.8",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "nowin+notray",
+      "phase": "trimmed",
+      "ws_mb": "8.7",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "startup",
+      "ws_mb": "59.4",
+      "private_mb": "18.0",
+      "gc_heap_mb": "5.5",
+      "gc_committed_mb": "3.0",
+      "threads": "8"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "startup_ms",
+      "ws_mb": "2125",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "wpfui",
+      "phase": "shown",
+      "ws_mb": "129.9",
+      "private_mb": "71.7",
+      "gc_heap_mb": "6.5",
+      "gc_committed_mb": "11.0",
+      "threads": "25"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "hidden",
+      "ws_mb": "131.3",
+      "private_mb": "67.7",
+      "gc_heap_mb": "5.9",
+      "gc_committed_mb": "11.8",
+      "threads": "27"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "closed",
+      "ws_mb": "127.9",
+      "private_mb": "64.2",
+      "gc_heap_mb": "5.7",
+      "gc_committed_mb": "8.3",
+      "threads": "27"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "trimmed",
+      "ws_mb": "6.8",
+      "private_mb": "61.0",
+      "gc_heap_mb": "5.7",
+      "gc_committed_mb": "8.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "startup",
+      "ws_mb": "42.5",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "startup_ms",
+      "ws_mb": "601",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "shown",
+      "ws_mb": "91.9",
+      "private_mb": "44.9",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "hidden",
+      "ws_mb": "94.2",
+      "private_mb": "45.8",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "closed",
+      "ws_mb": "89.8",
+      "private_mb": "41.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "trimmed",
+      "ws_mb": "7.7",
+      "private_mb": "40.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "startup",
+      "ws_mb": "42.4",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "startup_ms",
+      "ws_mb": "626",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "shown",
+      "ws_mb": "91.7",
+      "private_mb": "44.5",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "hidden",
+      "ws_mb": "93.9",
+      "private_mb": "45.6",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "closed",
+      "ws_mb": "89.6",
+      "private_mb": "40.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "trimmed",
+      "ws_mb": "7.6",
+      "private_mb": "39.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "startup",
+      "ws_mb": "42.5",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "startup_ms",
+      "ws_mb": "598",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "shown",
+      "ws_mb": "91.9",
+      "private_mb": "45.3",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "hidden",
+      "ws_mb": "94.1",
+      "private_mb": "46.3",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "closed",
+      "ws_mb": "89.4",
+      "private_mb": "40.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "trimmed",
+      "ws_mb": "6.3",
+      "private_mb": "40.3",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "startup",
+      "ws_mb": "42.4",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "startup_ms",
+      "ws_mb": "679",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "shown",
+      "ws_mb": "94.8",
+      "private_mb": "45.3",
+      "gc_heap_mb": "3.1",
+      "gc_committed_mb": "1.6",
+      "threads": "25"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "hidden",
+      "ws_mb": "96.4",
+      "private_mb": "41.8",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.5",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "closed",
+      "ws_mb": "92.0",
+      "private_mb": "36.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "36.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default",
+      "phase": "startup",
+      "ws_mb": "42.5",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default",
+      "phase": "startup_ms",
+      "ws_mb": "613",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default",
+      "phase": "shown",
+      "ws_mb": "91.8",
+      "private_mb": "44.8",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default",
+      "phase": "hidden",
+      "ws_mb": "94.1",
+      "private_mb": "45.7",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default",
+      "phase": "closed",
+      "ws_mb": "89.7",
+      "private_mb": "41.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default",
+      "phase": "trimmed",
+      "ws_mb": "7.1",
+      "private_mb": "40.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fluent",
+      "phase": "startup",
+      "ws_mb": "55.2",
+      "private_mb": "15.5",
+      "gc_heap_mb": "2.1",
+      "gc_committed_mb": "3.3",
+      "threads": "8"
+    },
+    {
+      "tag": "fluent",
+      "phase": "startup_ms",
+      "ws_mb": "640",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fluent",
+      "phase": "shown",
+      "ws_mb": "96.2",
+      "private_mb": "41.8",
+      "gc_heap_mb": "4.3",
+      "gc_committed_mb": "3.3",
+      "threads": "25"
+    },
+    {
+      "tag": "fluent",
+      "phase": "hidden",
+      "ws_mb": "99.1",
+      "private_mb": "43.4",
+      "gc_heap_mb": "2.8",
+      "gc_committed_mb": "6.0",
+      "threads": "27"
+    },
+    {
+      "tag": "fluent",
+      "phase": "closed",
+      "ws_mb": "93.9",
+      "private_mb": "37.5",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fluent",
+      "phase": "trimmed",
+      "ws_mb": "7.5",
+      "private_mb": "36.8",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "27"
+    },
+    {
+      "tag": "sw",
+      "phase": "startup",
+      "ws_mb": "43.5",
+      "private_mb": "12.4",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sw",
+      "phase": "startup_ms",
+      "ws_mb": "582",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sw",
+      "phase": "shown",
+      "ws_mb": "82.8",
+      "private_mb": "32.1",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "18"
+    },
+    {
+      "tag": "sw",
+      "phase": "hidden",
+      "ws_mb": "85.2",
+      "private_mb": "33.2",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "20"
+    },
+    {
+      "tag": "sw",
+      "phase": "closed",
+      "ws_mb": "80.8",
+      "private_mb": "28.3",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "20"
+    },
+    {
+      "tag": "sw",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "28.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "20"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "startup",
+      "ws_mb": "56.1",
+      "private_mb": "15.7",
+      "gc_heap_mb": "2.1",
+      "gc_committed_mb": "3.3",
+      "threads": "8"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "startup_ms",
+      "ws_mb": "695",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "shown",
+      "ws_mb": "86.9",
+      "private_mb": "33.7",
+      "gc_heap_mb": "4.3",
+      "gc_committed_mb": "3.3",
+      "threads": "18"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "hidden",
+      "ws_mb": "89.8",
+      "private_mb": "35.3",
+      "gc_heap_mb": "2.8",
+      "gc_committed_mb": "6.0",
+      "threads": "20"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "closed",
+      "ws_mb": "84.5",
+      "private_mb": "29.3",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "20"
+    },
+    {
+      "tag": "fluent+sw",
+      "phase": "trimmed",
+      "ws_mb": "7.1",
+      "private_mb": "29.1",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.2",
+      "threads": "20"
+    },
+    {
+      "tag": "nowin",
+      "phase": "startup",
+      "ws_mb": "42.7",
+      "private_mb": "12.2",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "nowin",
+      "phase": "nowin",
+      "ws_mb": "43.4",
+      "private_mb": "12.2",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "nowin",
+      "phase": "trimmed",
+      "ws_mb": "8.8",
+      "private_mb": "12.3",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "nowin+notray",
+      "phase": "startup",
+      "ws_mb": "38.6",
+      "private_mb": "11.3",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "nowin+notray",
+      "phase": "nowin",
+      "ws_mb": "39.2",
+      "private_mb": "11.5",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "nowin+notray",
+      "phase": "trimmed",
+      "ws_mb": "8.7",
+      "private_mb": "11.3",
+      "gc_heap_mb": "0.9",
+      "gc_committed_mb": "0.0",
+      "threads": "12"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "startup",
+      "ws_mb": "58.7",
+      "private_mb": "18.0",
+      "gc_heap_mb": "5.5",
+      "gc_committed_mb": "3.0",
+      "threads": "8"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "startup_ms",
+      "ws_mb": "775",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "wpfui",
+      "phase": "shown",
+      "ws_mb": "106.4",
+      "private_mb": "53.6",
+      "gc_heap_mb": "6.3",
+      "gc_committed_mb": "11.0",
+      "threads": "25"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "hidden",
+      "ws_mb": "108.2",
+      "private_mb": "54.3",
+      "gc_heap_mb": "5.9",
+      "gc_committed_mb": "11.8",
+      "threads": "27"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "closed",
+      "ws_mb": "102.7",
+      "private_mb": "48.1",
+      "gc_heap_mb": "5.7",
+      "gc_committed_mb": "8.3",
+      "threads": "27"
+    },
+    {
+      "tag": "wpfui",
+      "phase": "trimmed",
+      "ws_mb": "9.5",
+      "private_mb": "47.6",
+      "gc_heap_mb": "5.7",
+      "gc_committed_mb": "8.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "startup",
+      "ws_mb": "42.4",
+      "private_mb": "11.8",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "startup_ms",
+      "ws_mb": "602",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "shown",
+      "ws_mb": "91.8",
+      "private_mb": "44.8",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "hidden",
+      "ws_mb": "94.2",
+      "private_mb": "46.0",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "closed",
+      "ws_mb": "89.6",
+      "private_mb": "40.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gcConc0",
+      "phase": "trimmed",
+      "ws_mb": "7.3",
+      "private_mb": "40.3",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "startup",
+      "ws_mb": "42.4",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "startup_ms",
+      "ws_mb": "596",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "shown",
+      "ws_mb": "91.7",
+      "private_mb": "44.5",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "hidden",
+      "ws_mb": "94.0",
+      "private_mb": "45.5",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "closed",
+      "ws_mb": "89.7",
+      "private_mb": "40.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+conserve7",
+      "phase": "trimmed",
+      "ws_mb": "7.6",
+      "private_mb": "40.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "startup",
+      "ws_mb": "42.7",
+      "private_mb": "12.2",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "startup_ms",
+      "ws_mb": "594",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "shown",
+      "ws_mb": "92.0",
+      "private_mb": "45.0",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "hidden",
+      "ws_mb": "94.2",
+      "private_mb": "46.1",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "closed",
+      "ws_mb": "89.8",
+      "private_mb": "41.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+pgo0",
+      "phase": "trimmed",
+      "ws_mb": "6.3",
+      "private_mb": "40.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "startup",
+      "ws_mb": "42.4",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "startup_ms",
+      "ws_mb": "618",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "shown",
+      "ws_mb": "91.5",
+      "private_mb": "44.6",
+      "gc_heap_mb": "3.0",
+      "gc_committed_mb": "1.6",
+      "threads": "25"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "hidden",
+      "ws_mb": "94.0",
+      "private_mb": "45.7",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "closed",
+      "ws_mb": "89.7",
+      "private_mb": "41.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "default+gen0_1mb",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "40.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    }
+  ],
+  "publish_runs": [
+    {
+      "tag": "fd",
+      "phase": "startup",
+      "ws_mb": "43.2",
+      "private_mb": "11.9",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "fd",
+      "phase": "startup_ms",
+      "ws_mb": "658",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fd",
+      "phase": "shown",
+      "ws_mb": "113.6",
+      "private_mb": "62.2",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "fd",
+      "phase": "hidden",
+      "ws_mb": "112.6",
+      "private_mb": "60.0",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "closed",
+      "ws_mb": "111.0",
+      "private_mb": "58.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "trimmed",
+      "ws_mb": "6.2",
+      "private_mb": "58.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "startup",
+      "ws_mb": "42.6",
+      "private_mb": "12.1",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "652",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "shown",
+      "ws_mb": "94.4",
+      "private_mb": "45.2",
+      "gc_heap_mb": "2.7",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "95.7",
+      "private_mb": "41.4",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "closed",
+      "ws_mb": "92.0",
+      "private_mb": "37.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "9.7",
+      "private_mb": "36.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "startup",
+      "ws_mb": "46.9",
+      "private_mb": "13.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "startup_ms",
+      "ws_mb": "729",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "shown",
+      "ws_mb": "117.0",
+      "private_mb": "63.6",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "hidden",
+      "ws_mb": "119.3",
+      "private_mb": "64.7",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "closed",
+      "ws_mb": "114.9",
+      "private_mb": "61.0",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "trimmed",
+      "ws_mb": "7.4",
+      "private_mb": "59.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "startup",
+      "ws_mb": "46.4",
+      "private_mb": "13.1",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "574",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "shown",
+      "ws_mb": "95.1",
+      "private_mb": "46.1",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "97.3",
+      "private_mb": "47.1",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "closed",
+      "ws_mb": "93.0",
+      "private_mb": "42.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.5",
+      "private_mb": "42.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "startup",
+      "ws_mb": "175.0",
+      "private_mb": "83.5",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "startup_ms",
+      "ws_mb": "769",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "shown",
+      "ws_mb": "242.2",
+      "private_mb": "137.2",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "hidden",
+      "ws_mb": "244.0",
+      "private_mb": "138.4",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "closed",
+      "ws_mb": "239.3",
+      "private_mb": "133.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "trimmed",
+      "ws_mb": "7.9",
+      "private_mb": "132.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "startup",
+      "ws_mb": "174.3",
+      "private_mb": "83.2",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "709",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "shown",
+      "ws_mb": "217.0",
+      "private_mb": "118.4",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "218.9",
+      "private_mb": "119.8",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "closed",
+      "ws_mb": "214.6",
+      "private_mb": "114.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "10.3",
+      "private_mb": "114.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "startup",
+      "ws_mb": "52.0",
+      "private_mb": "17.4",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "startup_ms",
+      "ws_mb": "630",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "shown",
+      "ws_mb": "120.8",
+      "private_mb": "68.2",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "hidden",
+      "ws_mb": "122.9",
+      "private_mb": "69.3",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "closed",
+      "ws_mb": "118.5",
+      "private_mb": "64.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "trimmed",
+      "ws_mb": "6.9",
+      "private_mb": "63.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "startup",
+      "ws_mb": "51.1",
+      "private_mb": "17.5",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "491",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "shown",
+      "ws_mb": "97.5",
+      "private_mb": "49.1",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "99.9",
+      "private_mb": "50.4",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "closed",
+      "ws_mb": "95.2",
+      "private_mb": "45.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.5",
+      "private_mb": "44.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "startup",
+      "ws_mb": "149.6",
+      "private_mb": "99.7",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "startup_ms",
+      "ws_mb": "768",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "shown",
+      "ws_mb": "209.4",
+      "private_mb": "150.1",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "hidden",
+      "ws_mb": "211.0",
+      "private_mb": "151.2",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "closed",
+      "ws_mb": "206.5",
+      "private_mb": "146.3",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "145.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "startup",
+      "ws_mb": "148.9",
+      "private_mb": "99.6",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "819",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "shown",
+      "ws_mb": "190.0",
+      "private_mb": "132.8",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "191.8",
+      "private_mb": "134.0",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "closed",
+      "ws_mb": "186.8",
+      "private_mb": "128.6",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.5",
+      "private_mb": "128.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "startup",
+      "ws_mb": "42.5",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "fd",
+      "phase": "startup_ms",
+      "ws_mb": "618",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fd",
+      "phase": "shown",
+      "ws_mb": "91.8",
+      "private_mb": "44.6",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "fd",
+      "phase": "hidden",
+      "ws_mb": "94.1",
+      "private_mb": "45.7",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "closed",
+      "ws_mb": "89.7",
+      "private_mb": "40.6",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "trimmed",
+      "ws_mb": "7.6",
+      "private_mb": "40.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "startup",
+      "ws_mb": "42.6",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "633",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "shown",
+      "ws_mb": "91.9",
+      "private_mb": "44.9",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "94.4",
+      "private_mb": "46.1",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "closed",
+      "ws_mb": "89.9",
+      "private_mb": "41.3",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.7",
+      "private_mb": "41.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "startup",
+      "ws_mb": "46.2",
+      "private_mb": "13.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "startup_ms",
+      "ws_mb": "653",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "shown",
+      "ws_mb": "92.7",
+      "private_mb": "45.9",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "hidden",
+      "ws_mb": "95.2",
+      "private_mb": "47.3",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "closed",
+      "ws_mb": "90.6",
+      "private_mb": "42.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "trimmed",
+      "ws_mb": "7.6",
+      "private_mb": "41.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "startup",
+      "ws_mb": "46.2",
+      "private_mb": "12.9",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "573",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "shown",
+      "ws_mb": "92.7",
+      "private_mb": "45.8",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "95.1",
+      "private_mb": "46.9",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "closed",
+      "ws_mb": "90.7",
+      "private_mb": "42.3",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.8",
+      "private_mb": "41.6",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "startup",
+      "ws_mb": "174.3",
+      "private_mb": "83.5",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "startup_ms",
+      "ws_mb": "733",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "shown",
+      "ws_mb": "217.4",
+      "private_mb": "118.5",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "hidden",
+      "ws_mb": "219.1",
+      "private_mb": "119.5",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "closed",
+      "ws_mb": "214.7",
+      "private_mb": "115.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "trimmed",
+      "ws_mb": "7.4",
+      "private_mb": "114.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "startup",
+      "ws_mb": "174.3",
+      "private_mb": "83.2",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "703",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "shown",
+      "ws_mb": "217.2",
+      "private_mb": "118.4",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "219.1",
+      "private_mb": "119.6",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "closed",
+      "ws_mb": "214.2",
+      "private_mb": "114.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "8.0",
+      "private_mb": "113.6",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "startup",
+      "ws_mb": "51.2",
+      "private_mb": "17.3",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "startup_ms",
+      "ws_mb": "475",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "shown",
+      "ws_mb": "97.6",
+      "private_mb": "49.2",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "hidden",
+      "ws_mb": "99.9",
+      "private_mb": "50.2",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "closed",
+      "ws_mb": "95.4",
+      "private_mb": "45.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "trimmed",
+      "ws_mb": "7.3",
+      "private_mb": "44.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "startup",
+      "ws_mb": "51.0",
+      "private_mb": "17.6",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "473",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "shown",
+      "ws_mb": "97.5",
+      "private_mb": "49.0",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "99.8",
+      "private_mb": "50.2",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "closed",
+      "ws_mb": "95.8",
+      "private_mb": "45.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "44.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "startup",
+      "ws_mb": "148.8",
+      "private_mb": "99.6",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "startup_ms",
+      "ws_mb": "807",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "shown",
+      "ws_mb": "186.6",
+      "private_mb": "131.8",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "hidden",
+      "ws_mb": "188.4",
+      "private_mb": "132.9",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "closed",
+      "ws_mb": "184.8",
+      "private_mb": "129.0",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "128.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "startup",
+      "ws_mb": "148.8",
+      "private_mb": "99.6",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "762",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "shown",
+      "ws_mb": "187.5",
+      "private_mb": "132.5",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "189.2",
+      "private_mb": "133.6",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "closed",
+      "ws_mb": "184.6",
+      "private_mb": "128.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.2",
+      "private_mb": "128.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "startup",
+      "ws_mb": "42.5",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "fd",
+      "phase": "startup_ms",
+      "ws_mb": "557",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fd",
+      "phase": "shown",
+      "ws_mb": "89.6",
+      "private_mb": "44.6",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "fd",
+      "phase": "hidden",
+      "ws_mb": "91.9",
+      "private_mb": "45.6",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "closed",
+      "ws_mb": "87.7",
+      "private_mb": "41.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd",
+      "phase": "trimmed",
+      "ws_mb": "7.4",
+      "private_mb": "40.0",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "startup",
+      "ws_mb": "42.6",
+      "private_mb": "12.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "548",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "shown",
+      "ws_mb": "89.7",
+      "private_mb": "45.0",
+      "gc_heap_mb": "2.6",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "92.1",
+      "private_mb": "46.1",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "closed",
+      "ws_mb": "87.8",
+      "private_mb": "41.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "fd-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.8",
+      "private_mb": "40.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.2",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "startup",
+      "ws_mb": "46.4",
+      "private_mb": "13.4",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "startup_ms",
+      "ws_mb": "665",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "shown",
+      "ws_mb": "92.7",
+      "private_mb": "45.7",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "hidden",
+      "ws_mb": "95.2",
+      "private_mb": "46.9",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "closed",
+      "ws_mb": "90.5",
+      "private_mb": "41.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat",
+      "phase": "trimmed",
+      "ws_mb": "7.4",
+      "private_mb": "41.0",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "startup",
+      "ws_mb": "46.3",
+      "private_mb": "13.1",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "557",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "shown",
+      "ws_mb": "92.7",
+      "private_mb": "46.0",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "94.9",
+      "private_mb": "47.0",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "closed",
+      "ws_mb": "90.8",
+      "private_mb": "42.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_sat-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.7",
+      "private_mb": "41.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "startup",
+      "ws_mb": "174.3",
+      "private_mb": "83.0",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "startup_ms",
+      "ws_mb": "705",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "shown",
+      "ws_mb": "217.3",
+      "private_mb": "118.4",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "hidden",
+      "ws_mb": "218.9",
+      "private_mb": "119.5",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "closed",
+      "ws_mb": "214.3",
+      "private_mb": "114.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp",
+      "phase": "trimmed",
+      "ws_mb": "7.3",
+      "private_mb": "114.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "startup",
+      "ws_mb": "174.4",
+      "private_mb": "83.2",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "701",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "shown",
+      "ws_mb": "217.3",
+      "private_mb": "118.7",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "218.9",
+      "private_mb": "119.7",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "closed",
+      "ws_mb": "214.6",
+      "private_mb": "115.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_comp-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.7",
+      "private_mb": "113.9",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.5",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "startup",
+      "ws_mb": "51.1",
+      "private_mb": "17.1",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "startup_ms",
+      "ws_mb": "483",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "shown",
+      "ws_mb": "97.5",
+      "private_mb": "48.9",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "hidden",
+      "ws_mb": "99.8",
+      "private_mb": "50.0",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "closed",
+      "ws_mb": "95.4",
+      "private_mb": "45.2",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r",
+      "phase": "trimmed",
+      "ws_mb": "7.2",
+      "private_mb": "44.6",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "startup",
+      "ws_mb": "51.1",
+      "private_mb": "17.1",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "467",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "shown",
+      "ws_mb": "98.5",
+      "private_mb": "49.9",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "100.9",
+      "private_mb": "51.1",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "closed",
+      "ws_mb": "96.0",
+      "private_mb": "45.7",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "6.9",
+      "private_mb": "45.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "startup",
+      "ws_mb": "148.9",
+      "private_mb": "99.7",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "startup_ms",
+      "ws_mb": "810",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "shown",
+      "ws_mb": "186.5",
+      "private_mb": "131.8",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "hidden",
+      "ws_mb": "188.3",
+      "private_mb": "133.3",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "closed",
+      "ws_mb": "183.9",
+      "private_mb": "128.8",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp",
+      "phase": "trimmed",
+      "ws_mb": "6.9",
+      "private_mb": "128.1",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "startup",
+      "ws_mb": "148.9",
+      "private_mb": "100.3",
+      "gc_heap_mb": "0.8",
+      "gc_committed_mb": "0.0",
+      "threads": "8"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "startup_ms",
+      "ws_mb": "752",
+      "private_mb": "",
+      "gc_heap_mb": "",
+      "gc_committed_mb": "",
+      "threads": ""
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "shown",
+      "ws_mb": "187.2",
+      "private_mb": "132.2",
+      "gc_heap_mb": "2.5",
+      "gc_committed_mb": "3.1",
+      "threads": "25"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "hidden",
+      "ws_mb": "189.0",
+      "private_mb": "133.3",
+      "gc_heap_mb": "1.7",
+      "gc_committed_mb": "4.3",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "closed",
+      "ws_mb": "184.5",
+      "private_mb": "128.4",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    },
+    {
+      "tag": "sc_r2r_comp-nowin+x",
+      "phase": "trimmed",
+      "ws_mb": "7.0",
+      "private_mb": "127.5",
+      "gc_heap_mb": "1.5",
+      "gc_committed_mb": "2.4",
+      "threads": "27"
+    }
+  ]
+}
