@@ -29,6 +29,7 @@ public sealed class ControlService : IDisposable
     private string? cachedCapabilities;
     private bool liveCapabilities;
     private MonitorStatus status = MonitorStatus.Connecting;
+    private LinkFailure reason;
     private bool disposed;
 
     public ControlService(DdcQueue queue, ProfileStore profiles, BackupStore backups, CapabilitiesCache cache)
@@ -47,6 +48,9 @@ public sealed class ControlService : IDisposable
     public event Action<MonitorStatus>? StatusChanged;
 
     public MonitorStatus Status { get { lock (gate) return status; } }
+
+    /// <summary>Why the monitor isn't connected, when the link knows (set together with <see cref="Status"/>).</summary>
+    public LinkFailure StatusReason { get { lock (gate) return reason; } }
     public bool IsResponding => Status == MonitorStatus.Connected;
     public MonitorCapabilities Capabilities { get; private set; }
     public IReadOnlyDictionary<byte, ControlDefinition> Controls { get; private set; }
@@ -430,9 +434,11 @@ public sealed class ControlService : IDisposable
         lock (gate)
         {
             if (disposed) return;
-            statusChanged = status != value;
+            var newReason = value == MonitorStatus.Connected ? LinkFailure.None : queue.Link.LastFailure;
+            statusChanged = status != value || reason != newReason;
             respondingChanged = (status == MonitorStatus.Connected) != (value == MonitorStatus.Connected);
             status = value;
+            reason = newReason;
         }
         if (statusChanged) StatusChanged?.Invoke(value);
         if (respondingChanged) RespondingChanged?.Invoke(value == MonitorStatus.Connected);

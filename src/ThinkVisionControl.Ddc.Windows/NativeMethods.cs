@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace ThinkVisionControl.Core.Ddc;
+namespace ThinkVisionControl.Ddc.Windows;
 
 internal static class NativeMethods
 {

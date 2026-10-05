@@ -8,6 +8,9 @@ public interface IMonitorLink : IDisposable
 
     bool IsConnected { get; }
 
+    /// <summary>Why the last connect or command failed; <see cref="LinkFailure.None"/> when working.</summary>
+    LinkFailure LastFailure => LinkFailure.None;
+
     /// <exception cref="DdcException">The monitor did not answer.</exception>
     string ReadCapabilities();
 

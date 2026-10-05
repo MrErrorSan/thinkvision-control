@@ -91,6 +91,7 @@ public sealed class DdcQueue : IDisposable
         public bool Wrote { get; private set; }
 
         public bool IsConnected => inner.IsConnected;
+        public LinkFailure LastFailure => inner.LastFailure;
         public bool TryConnect() => inner.TryConnect();
         public string ReadCapabilities() => inner.ReadCapabilities();
         public VcpReading Read(byte code) => inner.Read(code);

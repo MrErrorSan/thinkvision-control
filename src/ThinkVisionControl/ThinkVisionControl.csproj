@@ -31,6 +31,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ThinkVisionControl.Core\ThinkVisionControl.Core.csproj" />
+    <ProjectReference Include="..\ThinkVisionControl.Ddc.Windows\ThinkVisionControl.Ddc.Windows.csproj" />
   </ItemGroup>
 
 </Project>

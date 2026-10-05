@@ -1,8 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using static ThinkVisionControl.Core.Ddc.NativeMethods;
+using ThinkVisionControl.Core.Ddc;
+using static ThinkVisionControl.Ddc.Windows.NativeMethods;
 
-namespace ThinkVisionControl.Core.Ddc;
+namespace ThinkVisionControl.Ddc.Windows;
 
 /// <summary>DDC/CI over dxva2. Finds the target by EDID id in the display device ID, falling back to the dxva2 description.</summary>
 public sealed class Dxva2MonitorLink(string edidId = "LEN62A2", string descriptionFallback = "P32p-20") : IMonitorLink
@@ -10,6 +11,9 @@ public sealed class Dxva2MonitorLink(string edidId = "LEN62A2", string descripti
     private PHYSICAL_MONITOR[] _held = [];
 
     public bool IsConnected => _held.Length > 0;
+
+    // dxva2 has no permission or driver failure modes worth surfacing: either the monitor is there or it isn't.
+    public LinkFailure LastFailure => IsConnected ? LinkFailure.None : LinkFailure.NotFound;
 
     public bool TryConnect()
     {

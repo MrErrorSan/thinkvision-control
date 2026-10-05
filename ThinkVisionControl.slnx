@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/ThinkVisionControl.Core/ThinkVisionControl.Core.csproj" />
+    <Project Path="src/ThinkVisionControl.Ddc.Windows/ThinkVisionControl.Ddc.Windows.csproj" />
     <Project Path="src/ThinkVisionControl/ThinkVisionControl.csproj" />
   </Folder>
   <Folder Name="/tests/">

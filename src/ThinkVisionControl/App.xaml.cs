@@ -7,6 +7,7 @@ using ThinkVisionControl.Core.Ddc;
 using ThinkVisionControl.Core.Logging;
 using ThinkVisionControl.Core.Profile;
 using ThinkVisionControl.Core.Settings;
+using ThinkVisionControl.Ddc.Windows;
 using ThinkVisionControl.Hotkeys;
 using ThinkVisionControl.Platform;
 using ThinkVisionControl.Tray;
