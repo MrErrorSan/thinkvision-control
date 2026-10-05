@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=ThinkVision Control
+GenericName=Monitor Settings
+Comment=Brightness, contrast, input and colour mode for the Lenovo ThinkVision P32p-20
+Exec=thinkvision-control
+Icon=thinkvision-control
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=monitor;display;brightness;contrast;input;DDC;ThinkVision;
+Actions=Day;Night;SwitchToMe;
+
+[Desktop Action Day]
+Name=Day preset
+Exec=thinkvision-control --preset day
+
+[Desktop Action Night]
+Name=Night preset
+Exec=thinkvision-control --preset night
+
+[Desktop Action SwitchToMe]
+Name=Switch monitor to this computer
+Exec=thinkvision-control --input this
