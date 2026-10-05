@@ -1,0 +1,17 @@
+# ThinkVision Control: let the logged-in desktop user read and write the I2C buses
+# that graphics cards expose for their display connectors (DDC/CI).
+#
+# Install:  sudo cp packaging/linux/60-thinkvision-i2c.rules /etc/udev/rules.d/
+#           sudo udevadm control --reload && sudo udevadm trigger
+# Needs the i2c-dev kernel module (see README). The ddcutil package ships an
+# equivalent rule (60-ddcutil-i2c.rules); you only need one of the two.
+#
+# "uaccess" gives the user with the active local session an ACL on the device
+# node; no group membership is needed. The ATTRS{class} match limits this to
+# buses that hang off a PCI display controller (class 0x03xxxx), so SMBus
+# adapters (RAM SPD, sensors) stay root-only.
+KERNEL=="i2c-[0-9]*", SUBSYSTEM=="i2c-dev", ATTRS{class}=="0x03*", TAG+="uaccess"
+
+# If your monitor still reports "permission denied" (e.g. a GPU that is not a
+# PCI device), comment out the line above and use this broader one instead:
+# KERNEL=="i2c-[0-9]*", SUBSYSTEM=="i2c-dev", TAG+="uaccess"

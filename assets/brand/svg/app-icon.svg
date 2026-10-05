@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <mask id="gap" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48"><rect width="48" height="48" fill="#fff"/><circle cx="30" cy="34.5" r="6" fill="#000"/></mask>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EEF1F5"/><stop offset="1" stop-color="#BFC6D0"/></linearGradient>
+    <linearGradient id="scr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2B3038"/><stop offset="1" stop-color="#16191E"/></linearGradient>
+    <!-- external: soft drop shadow below the object -->
+    <filter id="drop" x="-25%" y="-25%" width="150%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.9"/><feOffset dy="0.9" result="b"/>
+      <feFlood flood-color="#000000" flood-opacity="0.85"/><feComposite in2="b" operator="in" result="s"/>
+      <feMerge><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <!-- internal: shadow cast by the bezel onto the screen (top/left edges darker) -->
+    <filter id="inner" x="-10%" y="-10%" width="120%" height="120%">
+      <feFlood flood-color="#000000" flood-opacity="0.9"/><feComposite in2="SourceAlpha" operator="out" result="inv"/>
+      <feGaussianBlur in="inv" stdDeviation="0.7"/><feOffset dx="0.25" dy="0.6" result="sh"/>
+      <feComposite in="sh" in2="SourceAlpha" operator="in" result="clip"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="clip"/></feMerge>
+    </filter>
+    <filter id="knob" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.45"/><feOffset dy="0.4" result="b"/>
+      <feFlood flood-color="#000" flood-opacity="0.45"/><feComposite in2="b" operator="in" result="s"/>
+      <feMerge><feMergeNode in="s"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g transform="translate(-88 -110) scale(25)">
+    <g filter="url(#drop)">
+      <rect x="9" y="13" width="30" height="20" rx="1" fill="url(#scr)" filter="url(#inner)"/>
+      <path fill="url(#frame)" fill-rule="evenodd" mask="url(#gap)" d="M8 10H40A2 2 0 0 1 42 12V34A2 2 0 0 1 40 36H8A2 2 0 0 1 6 34V12A2 2 0 0 1 8 10ZM10 13H38A1 1 0 0 1 39 14V32A1 1 0 0 1 38 33H10A1 1 0 0 1 9 32V14A1 1 0 0 1 10 13Z"/>
+    </g>
+    <circle cx="30" cy="34.5" r="4" fill="#F05A28" filter="url(#knob)"/>
+  </g>
+</svg>

@@ -1,0 +1,133 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:ThinkVisionControl.Avalonia.ViewModels"
+             xmlns:v="using:ThinkVisionControl.Avalonia.Views"
+             xmlns:p="using:ThinkVisionControl.Avalonia.Platform"
+             x:Class="ThinkVisionControl.Avalonia.Views.Pages.AppSettingsPage"
+             x:DataType="vm:MainViewModel">
+  <!-- Mockup A, page "App settings". Always enabled, whatever the monitor state. -->
+  <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Classes="Page">
+      <TextBlock Classes="PageTitle" Text="App settings" />
+
+      <ui:FAInfoBar Margin="0,16,0,0" Severity="Error" IsClosable="False" IsOpen="{Binding HasSettingsError}"
+                    IsVisible="{Binding HasSettingsError}" Message="{Binding SettingsError}" />
+
+      <!-- What this machine still needs (permissions, extensions, conflicts); hidden when nothing applies. -->
+      <StackPanel IsVisible="{Binding HasSetupHints}">
+        <TextBlock Classes="SectionHeader" Text="System setup" />
+        <ItemsControl ItemsSource="{Binding SetupHints}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Classes="Cards" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="p:SetupHint">
+              <ui:FASettingsExpander Header="{Binding Title}" Description="{Binding Message}"
+                                     IconSource="{v:Glyph {x:Static vm:Glyphs.Setup}}"
+                                     ItemsSource="{Binding CopyText, Converter={x:Static v:Converters.SingleItem}}">
+                <ui:FASettingsExpander.Footer>
+                  <Button Click="CopySetup_Click" IsVisible="{Binding CopyText, Converter={x:Static ObjectConverters.IsNotNull}}"
+                          AutomationProperties.Name="{Binding Title, StringFormat='Copy the command for: {0}'}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Classes="Icon" Text="{x:Static vm:Glyphs.Copy}" />
+                      <TextBlock Text="Copy" />
+                    </StackPanel>
+                  </Button>
+                </ui:FASettingsExpander.Footer>
+                <ui:FASettingsExpander.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <SelectableTextBlock Classes="Command" Text="{Binding}" />
+                  </DataTemplate>
+                </ui:FASettingsExpander.ItemTemplate>
+              </ui:FASettingsExpander>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <TextBlock Classes="SectionHeader" Text="Startup" />
+      <ui:FASettingsExpander Header="Run in background" Description="{Binding BackgroundDescription}" IsExpanded="True"
+                             IconSource="{v:Glyph {x:Static vm:Glyphs.Background}}">
+        <ui:FASettingsExpander.Footer>
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="{Binding #BackgroundSwitch.IsChecked, Converter={x:Static v:Converters.OnOff}}" VerticalAlignment="Center" />
+            <ToggleSwitch x:Name="BackgroundSwitch" Classes="Bare" IsChecked="{Binding BackgroundMode}"
+                          AutomationProperties.Name="Run in background" />
+          </StackPanel>
+        </ui:FASettingsExpander.Footer>
+        <ui:FASettingsExpanderItem Content="{Binding StartWithWindowsLabel}" Description="{Binding StartWithWindowsDescription}">
+          <ui:FASettingsExpanderItem.Footer>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <TextBlock Text="{Binding #StartSwitch.IsChecked, Converter={x:Static v:Converters.OnOff}}" VerticalAlignment="Center" />
+              <ToggleSwitch x:Name="StartSwitch" Classes="Bare" IsChecked="{Binding StartWithWindows}"
+                            AutomationProperties.Name="{Binding StartWithWindowsLabel}" />
+            </StackPanel>
+          </ui:FASettingsExpanderItem.Footer>
+        </ui:FASettingsExpanderItem>
+      </ui:FASettingsExpander>
+
+      <TextBlock Classes="SectionHeader" Text="This PC" />
+      <ui:FASettingsExpander Header="This PC's input" Description="We ask before you switch the monitor away from it"
+                             IconSource="{v:Glyph {x:Static vm:Glyphs.Display}}">
+        <ui:FASettingsExpander.Footer>
+          <ComboBox MinWidth="155" ItemsSource="{Binding InputChoices}" SelectedItem="{Binding ThisMachineChoice}"
+                    AutomationProperties.Name="This PC's input">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:InputChoice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FASettingsExpander.Footer>
+      </ui:FASettingsExpander>
+
+      <TextBlock Classes="SectionHeader" Text="Keyboard shortcuts" />
+      <TextBlock Classes="Caption Secondary" Text="{Binding ShortcutsDescription}" TextWrapping="Wrap" Margin="1,-2,0,8" />
+      <ItemsControl ItemsSource="{Binding Hotkeys}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Classes="Cards" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HotkeyItem">
+            <ui:FASettingsExpander Header="{Binding Label}" Description="{Binding Warning}">
+              <ui:FASettingsExpander.Footer>
+                <Button Theme="{DynamicResource TransparentButton}" Padding="4" Click="EditHotkey_Click"
+                        AutomationProperties.Name="{Binding EditName}" ToolTip.Tip="Edit shortcut">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ItemsControl ItemsSource="{Binding Keys}" VerticalAlignment="Center">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="4" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                          <Border Classes="Keycap">
+                            <TextBlock Text="{Binding}" />
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="Caption Secondary" Text="Not set" VerticalAlignment="Center" IsVisible="{Binding IsNotSet}" />
+                    <TextBlock Classes="Icon" Text="{x:Static vm:Glyphs.Edit}" Width="32" TextAlignment="Center" />
+                  </StackPanel>
+                </Button>
+              </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Classes="SectionHeader" Text="About" />
+      <ui:FASettingsExpander Header="ThinkVision Control" Description="{Binding AppVersion}"
+                             IconSource="{v:Glyph {x:Static vm:Glyphs.About}}">
+        <ui:FASettingsExpanderItem Content="Monitor profile" Description="{Binding AboutMonitorText}" />
+      </ui:FASettingsExpander>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

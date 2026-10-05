@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:ThinkVisionControl.Avalonia.ViewModels"
+             x:Class="ThinkVisionControl.Avalonia.Views.StateBar"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding IsInfoBarOpen}">
+  <!-- The one InfoBar that explains any state other than Connected (Connecting, Not found, Not responding, setup needed). Not closable. -->
+  <ui:FAInfoBar IsClosable="False" IsOpen="{Binding IsInfoBarOpen}" Severity="{Binding InfoBarSeverity}"
+                Title="{Binding InfoBarTitle}" Message="{Binding InfoBarMessage}">
+    <ui:FAInfoBar.ActionButton>
+      <Button Content="{Binding InfoBarAction}" Command="{Binding InfoBarCommand}" IsVisible="{Binding HasInfoBarAction}" />
+    </ui:FAInfoBar.ActionButton>
+    <ProgressBar IsIndeterminate="True" IsVisible="{Binding InfoBarProgress}" Margin="0,0,0,12" MinWidth="0" />
+  </ui:FAInfoBar>
+</UserControl>

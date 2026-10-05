@@ -1,0 +1,108 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:FluentAvalonia.UI.Controls">
+  <!-- Layout A page styles, shared by MainWindow, the flyout, the finder and dialog contents. Each of those includes this
+       file itself, so it works without being merged into App.axaml. Type ramp classes (Title, Body, ...) and IconFont
+       come from Styles/Theme.axaml. -->
+
+  <!-- Page column: 36 px side padding, 1000 px max width. -->
+  <Style Selector="StackPanel.Page">
+    <Setter Property="Margin" Value="36,0,36,36" />
+    <Setter Property="MaxWidth" Value="1000" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+
+  <Style Selector="TextBlock.PageTitle">
+    <Setter Property="FontSize" Value="28" />
+    <Setter Property="LineHeight" Value="36" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,26,0,0" />
+  </Style>
+
+  <!-- Section header: BodyStrong, margin 1,30,0,6. -->
+  <Style Selector="TextBlock.SectionHeader">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="LineHeight" Value="20" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="1,30,0,6" />
+  </Style>
+
+  <Style Selector="TextBlock.Secondary">
+    <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.Secondary:disabled">
+    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+  </Style>
+
+  <!-- Loose text in card footers (slider values, On/Off labels) greys out with its disabled card. -->
+  <Style Selector="ui|FASettingsExpander TextBlock:disabled">
+    <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
+  </Style>
+
+  <!-- 4 px between cards. -->
+  <Style Selector="StackPanel.Cards">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+
+  <!-- Value text beside a slider ("40", or "—" while unknown). -->
+  <Style Selector="TextBlock.SliderValue">
+    <Setter Property="MinWidth" Value="32" />
+    <Setter Property="TextAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Card sliders: whole steps, no tick marks. -->
+  <Style Selector="Slider.Live">
+    <Setter Property="Minimum" Value="0" />
+    <Setter Property="SmallChange" Value="1" />
+    <Setter Property="LargeChange" Value="10" />
+    <Setter Property="TickFrequency" Value="1" />
+    <Setter Property="IsSnapToTickEnabled" Value="True" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <!-- The Fluent slider reserves touch height; 32 px keeps slider cards as tall as the others (mockup: 66 px). -->
+    <Setter Property="Height" Value="32" />
+  </Style>
+
+  <!-- Windows Settings puts "On"/"Off" left of the switch: the label is a separate TextBlock, the switch has none. -->
+  <Style Selector="ToggleSwitch.Bare">
+    <Setter Property="OnContent" Value="{x:Null}" />
+    <Setter Property="OffContent" Value="{x:Null}" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Margin" Value="0,0,-12,0" />
+  </Style>
+
+  <!-- A square transparent button holding one glyph (More, Edit). -->
+  <Style Selector="Button.Icon">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="FontFamily" Value="{DynamicResource IconFont}" />
+    <Setter Property="FontSize" Value="16" />
+  </Style>
+
+  <!-- Small bordered key label, e.g. Ctrl. -->
+  <Style Selector="Border.Keycap">
+    <Setter Property="MinWidth" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+  </Style>
+  <Style Selector="Border.Keycap > TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- A multi-line command shown in a setup card (a SelectableTextBlock, hence :is). -->
+  <Style Selector=":is(TextBlock).Command">
+    <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+</Styles>

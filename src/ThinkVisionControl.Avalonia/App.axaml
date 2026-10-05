@@ -1,0 +1,11 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sty="using:FluentAvalonia.Styling"
+             x:Class="ThinkVisionControl.Avalonia.App"
+             Name="ThinkVision Control">
+  <Application.Styles>
+    <!-- Follows the system light/dark mode; the accent is set in App.axaml.cs (system accent, else ember). -->
+    <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
+    <StyleInclude Source="/Styles/Theme.axaml" />
+  </Application.Styles>
+</Application>

@@ -1,0 +1,46 @@
+<Window x:Class="ThinkVisionControl.Ui.OsdWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ThinkVision Control OSD"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        Topmost="True" ShowInTaskbar="False" ShowActivated="False" Focusable="False" IsHitTestVisible="False"
+        SizeToContent="WidthAndHeight" WindowStartupLocation="Manual" UseLayoutRounding="True">
+    <!-- Plain local styles: a layered window gets no DWM backdrop, so this is the acrylic fallback look
+         (solid base fill at 95 %, 1 px surface stroke, 8 px corners). The outer margin leaves room for the shadow. -->
+    <Grid x:Name="Root" Margin="24">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="Slide" />
+        </Grid.RenderTransform>
+        <Border CornerRadius="8" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" Opacity="0.95">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270" Opacity="0.28" />
+            </Border.Effect>
+        </Border>
+        <Border CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
+                Padding="16,12" MinWidth="240" MaxWidth="420">
+            <StackPanel>
+                <TextBlock x:Name="Message" Style="{StaticResource BodyLargeTextStyle}" TextWrapping="Wrap"
+                           TextAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                <StackPanel x:Name="Level">
+                    <DockPanel>
+                        <TextBlock x:Name="LevelIcon" DockPanel.Dock="Left" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock x:Name="LevelValue" DockPanel.Dock="Right" Style="{StaticResource BodyLargeTextStyle}"
+                                   FontWeight="SemiBold" VerticalAlignment="Center" Margin="16,0,0,0"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                        <TextBlock x:Name="LevelLabel" Style="{StaticResource BodyTextStyle}" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </DockPanel>
+                    <Grid Height="4" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition x:Name="LevelFilled" />
+                            <ColumnDefinition x:Name="LevelRest" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.ColumnSpan="2" CornerRadius="2" Background="{DynamicResource ControlStrongStrokeColorDefaultBrush}" />
+                        <Border CornerRadius="2" Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

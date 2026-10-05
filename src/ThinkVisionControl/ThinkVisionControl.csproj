@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ApplicationIcon>Assets\ThinkVisionControl.ico</ApplicationIcon>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <!-- Publish: English-only satellites, R2R for startup,
+       and no single-file compression (it costs ~73 MB private memory for the process lifetime). -->
+  <PropertyGroup>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <!-- Bundle WPF's native DLLs into the single exe (extracted on first run) so it can be copied as one file. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\ThinkVisionControl.ico" />
+    <Resource Include="Assets\Tray.OnDark.ico" />
+    <Resource Include="Assets\Tray.OnLight.ico" />
+    <!-- WinForms is only used for NotifyIcon; keep its namespaces out of implicit usings to avoid WPF type clashes. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ThinkVisionControl.Core\ThinkVisionControl.Core.csproj" />
+    <ProjectReference Include="..\ThinkVisionControl.Ddc.Windows\ThinkVisionControl.Ddc.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:ThinkVisionControl.Avalonia.ViewModels"
+             x:Class="ThinkVisionControl.Avalonia.Views.ShortcutEditor"
+             MinWidth="420" MaxWidth="480">
+  <!-- Content of the "Edit shortcut" ContentDialog (PowerToys pattern): keys are captured live into large keycaps. -->
+  <UserControl.Styles>
+    <StyleInclude Source="/Views/ViewStyles.axaml" />
+    <Style Selector="Border#CaptureArea:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel>
+    <TextBlock TextWrapping="Wrap">
+      <Run Text="Press a combination of keys to change the shortcut for" />
+      <Run x:Name="ActionRun" FontWeight="SemiBold" /><Run Text="." />
+    </TextBlock>
+
+    <Border x:Name="CaptureArea" Margin="0,16,0,12" MinHeight="96" CornerRadius="4" BorderThickness="1" Focusable="True"
+            Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            AutomationProperties.Name="Shortcut keys. Press keys to record">
+      <Panel>
+        <TextBlock x:Name="Placeholder" Classes="Secondary" Text="Press keys" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <ItemsControl x:Name="KeysView" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="8" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <Border MinWidth="56" Padding="18,14" CornerRadius="4" Background="{DynamicResource AccentFillColorDefaultBrush}">
+                <TextBlock Text="{Binding}" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Panel>
+    </Border>
+
+    <ui:FAInfoBar x:Name="Problem" IsClosable="False" IsOpen="False" IsVisible="False" Margin="0,0,0,12" />
+
+    <TextBlock x:Name="Hint" Classes="Caption Secondary" TextWrapping="Wrap" />
+
+    <Button x:Name="ClearButton" Margin="0,12,0,0" Click="Clear_Click">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Classes="Icon" Text="{x:Static vm:Glyphs.Clear}" FontSize="14" />
+        <TextBlock Text="Clear" />
+      </StackPanel>
+    </Button>
+  </StackPanel>
+</UserControl>

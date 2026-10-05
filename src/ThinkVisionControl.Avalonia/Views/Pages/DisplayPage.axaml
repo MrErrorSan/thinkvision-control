@@ -1,0 +1,100 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:ThinkVisionControl.Avalonia.ViewModels"
+             xmlns:v="using:ThinkVisionControl.Avalonia.Views"
+             x:Class="ThinkVisionControl.Avalonia.Views.Pages.DisplayPage"
+             x:DataType="vm:MainViewModel">
+  <!-- Mockup A, page "Display". Card templates for the items: MainWindow.DataTemplates. -->
+  <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Classes="Page">
+      <TextBlock Classes="PageTitle" Text="Display" />
+
+      <!-- Device header: monitor glyph, name, and the status as icon + text. -->
+      <StackPanel Orientation="Horizontal" Margin="0,16,0,0" Spacing="16">
+        <TextBlock Classes="Icon" Text="{x:Static vm:Glyphs.Display}" FontSize="48" />
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Classes="Subtitle" Text="{Binding MonitorTitle}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Classes="Icon Secondary" Text="{Binding StatusGlyph}" FontSize="14" />
+            <TextBlock Classes="Body Secondary" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+
+      <v:StateBar Margin="0,16,0,0" />
+
+      <StackPanel IsEnabled="{Binding IsConnected}">
+        <TextBlock Classes="SectionHeader" Text="Brightness and contrast" />
+        <StackPanel Classes="Cards">
+          <ContentControl Content="{Binding BrightnessItem}" Focusable="False" />
+          <ContentControl Content="{Binding ContrastItem}" Focusable="False" />
+        </StackPanel>
+
+        <TextBlock Classes="SectionHeader" Text="Colour" />
+        <StackPanel Classes="Cards">
+          <ContentControl Content="{Binding ColourModeItem}" Focusable="False" />
+          <ui:FASettingsExpander Header="Custom colour" Description="{Binding CustomColourDescription}"
+                                 IconSource="{v:Glyph {x:Static vm:Glyphs.Options}}"
+                                 ItemsSource="{Binding RgbItems}">
+            <ui:FASettingsExpander.Styles>
+              <!-- One row per gain: name on the left, live slider and value as the row's footer. -->
+              <Style Selector="ui|FASettingsExpander > ui|FASettingsExpanderItem" x:DataType="vm:RangeItem">
+                <Setter Property="Footer" Value="{Binding}" />
+                <Setter Property="Description" Value="{Binding Description}" />
+                <Setter Property="IsEnabled" Value="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).IsCustomColour, FallbackValue=False}" />
+                <Setter Property="FooterTemplate">
+                  <DataTemplate x:DataType="vm:RangeItem">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                      <Slider Classes="Live" Width="200" v:LiveSlider.IsLive="True" AutomationProperties.Name="{Binding Name}"
+                              Maximum="{Binding Max}" Value="{Binding Value, Mode=TwoWay}" />
+                      <TextBlock Classes="SliderValue" Text="{Binding ValueText}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </Setter>
+              </Style>
+            </ui:FASettingsExpander.Styles>
+            <ui:FASettingsExpander.ItemTemplate>
+              <DataTemplate x:DataType="vm:RangeItem">
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ui:FASettingsExpander.ItemTemplate>
+          </ui:FASettingsExpander>
+        </StackPanel>
+
+        <StackPanel IsVisible="{Binding HasInput}">
+          <TextBlock Classes="SectionHeader" Text="Input" />
+          <ui:FASettingsExpander Header="Input" Description="{Binding InputDescription}"
+                                 IconSource="{v:Glyph {x:Static vm:Glyphs.Input}}">
+            <ui:FASettingsExpander.Footer>
+              <ItemsControl ItemsSource="{Binding InputItem.Options, FallbackValue={x:Null}}" AutomationProperties.Name="Input">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="20" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:EnumOption">
+                    <RadioButton MinWidth="100" IsChecked="{Binding IsActive, Mode=OneWay}" Click="Input_Click"
+                                 AutomationProperties.Name="{Binding Label}">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Label}" />
+                        <TextBlock Classes="Caption Secondary" Text="This PC" IsVisible="{Binding IsThisPc}" />
+                      </StackPanel>
+                    </RadioButton>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ui:FASettingsExpander.Footer>
+          </ui:FASettingsExpander>
+        </StackPanel>
+
+        <TextBlock Classes="SectionHeader" Text="Presets" />
+        <StackPanel Classes="Cards">
+          <ContentControl Content="{Binding Day}" Focusable="False" />
+          <ContentControl Content="{Binding Night}" Focusable="False" />
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

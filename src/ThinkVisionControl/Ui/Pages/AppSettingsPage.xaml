@@ -1,0 +1,93 @@
+<UserControl x:Class="ThinkVisionControl.Ui.Pages.AppSettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:ThinkVisionControl.Ui.Controls"
+             Focusable="False">
+    <UserControl.Resources>
+        <ResourceDictionary Source="PageResources.xaml" />
+    </UserControl.Resources>
+    <!-- DataContext: PanelViewModel. Mockup A, page "App settings". Always enabled, whatever the monitor state. -->
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <Grid Margin="36,0,36,36">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="1000" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="App settings" Style="{StaticResource PageTitleStyle}" />
+
+                <c:InfoBar Margin="0,16,0,0" Severity="Error" IsOpen="{Binding HasSettingsError, Mode=OneWay}" Message="{Binding SettingsError}" />
+
+                <TextBlock Text="Startup" Style="{StaticResource SectionHeaderStyle}" />
+                <c:SettingsExpander Header="Run in background" Icon="&#xE9F5;" IsExpanded="True"
+                                    Description="Keep the tray icon and keyboard shortcuts running after you close the window">
+                    <c:SettingsExpander.HeaderContent>
+                        <c:ToggleSwitch IsChecked="{Binding BackgroundMode}" AutomationProperties.Name="Run in background" />
+                    </c:SettingsExpander.HeaderContent>
+                    <StackPanel>
+                        <c:SettingsCard Header="Start with Windows" Description="{Binding StartWithWindowsDescription}">
+                            <c:ToggleSwitch IsChecked="{Binding StartWithWindows}" AutomationProperties.Name="Start with Windows" />
+                        </c:SettingsCard>
+                    </StackPanel>
+                </c:SettingsExpander>
+
+                <TextBlock Text="This PC" Style="{StaticResource SectionHeaderStyle}" />
+                <c:SettingsCard Header="This PC's input" Icon="&#xE7F4;" Description="We ask before you switch the monitor away from it">
+                    <ComboBox MinWidth="140" ItemsSource="{Binding InputChoices}" SelectedValuePath="Value"
+                              SelectedValue="{Binding ThisMachineInput}" AutomationProperties.Name="This PC's input" />
+                </c:SettingsCard>
+
+                <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SectionHeaderStyle}" />
+                <TextBlock Text="{Binding ShortcutsDescription}" Style="{StaticResource SecondaryCaptionStyle}" Margin="1,-2,0,8" />
+                <ItemsControl ItemsSource="{Binding Hotkeys}" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <c:SettingsCard Header="{Binding Label}" Description="{Binding Warning}">
+                                <Button Style="{StaticResource SubtleButtonStyle}" Padding="4" Click="EditHotkey_Click"
+                                        AutomationProperties.Name="{Binding EditName}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ItemsControl ItemsSource="{Binding Keys}" Focusable="False" VerticalAlignment="Center">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource KeycapStyle}">
+                                                        <TextBlock Text="{Binding}" Style="{StaticResource CaptionTextStyle}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="Not set" VerticalAlignment="Center" Margin="4,0,0,0">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryCaptionStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSet}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="&#xE70F;" FontFamily="{StaticResource IconFont}" FontSize="16" Width="32"
+                                                   TextAlignment="Center" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </c:SettingsCard>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="About" Style="{StaticResource SectionHeaderStyle}" />
+                <c:SettingsExpander Header="ThinkVision Control" Icon="&#xE946;" Description="{Binding AppVersion}">
+                    <StackPanel>
+                        <c:SettingsCard Header="Monitor profile" Description="{Binding AboutMonitorText}" />
+                    </StackPanel>
+                </c:SettingsExpander>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>
