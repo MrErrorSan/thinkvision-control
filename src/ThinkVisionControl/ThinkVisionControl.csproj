@@ -10,6 +10,14 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
+  <!-- Publish (see research_notes/.../resource_footprint.md §6): English-only satellites, R2R for startup,
+       and no single-file compression (it costs ~73 MB private memory for the process lifetime). -->
+  <PropertyGroup>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
   <ItemGroup>
     <Resource Include="Assets\ThinkVisionControl.ico" />
     <!-- WinForms is only used for NotifyIcon; keep its namespaces out of implicit usings to avoid WPF type clashes. -->
