@@ -14,4 +14,4 @@ public sealed record AppSettings(
     Preset Night,
     byte ThisMachineInput,
     bool StartWithWindows,
-    bool BackgroundMode = true);
+    bool BackgroundMode = true); // a file saved before this field existed loads as true; new installs get SettingsStore.Defaults (false)
