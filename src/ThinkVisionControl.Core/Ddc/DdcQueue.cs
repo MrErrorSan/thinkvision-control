@@ -4,8 +4,9 @@ using System.Threading.Channels;
 namespace ThinkVisionControl.Core.Ddc;
 
 /// <summary>
-/// Serialises all DDC traffic: one command at a time, spaced, with retries.
-/// After a write the next command waits at least 400 ms (measured settle time on the P32p-20).
+/// Serialises all DDC traffic: one command at a time, 50 ms apart, with retries.
+/// A read waits until 400 ms after the last write: measured on the P32p-20, reads fail while a change settles,
+/// but back-to-back writes 50 ms apart all apply, so writes (e.g. a slider drag) are not held back.
 /// </summary>
 public sealed class DdcQueue : IDisposable
 {
@@ -18,6 +19,7 @@ public sealed class DdcQueue : IDisposable
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Task _worker;
     private TimeSpan _readyAt;
+    private TimeSpan _lastWriteAt = TimeSpan.MinValue;
 
     public DdcQueue(IMonitorLink link)
     {
@@ -49,7 +51,7 @@ public sealed class DdcQueue : IDisposable
 
     private async Task ExecuteAsync<T>(Func<IMonitorLink, T> op, TaskCompletionSource<T> tcs, CancellationToken ct)
     {
-        var link = new RecordingLink(Link);
+        var link = new RecordingLink(this);
         try
         {
             var wait = _readyAt - _clock.Elapsed;
@@ -80,26 +82,48 @@ public sealed class DdcQueue : IDisposable
         }
         finally
         {
-            var next = _clock.Elapsed + (link.Wrote ? WriteSettle : CommandGap);
+            if (link.Wrote) _lastWriteAt = _clock.Elapsed;
+            var next = _clock.Elapsed + CommandGap;
             if (next > _readyAt)
                 _readyAt = next;
         }
     }
 
-    private sealed class RecordingLink(IMonitorLink inner) : IMonitorLink
+    private sealed class RecordingLink(DdcQueue queue) : IMonitorLink
     {
+        readonly IMonitorLink inner = queue.Link;
+
         public bool Wrote { get; private set; }
 
         public bool IsConnected => inner.IsConnected;
         public LinkFailure LastFailure => inner.LastFailure;
         public bool TryConnect() => inner.TryConnect();
-        public string ReadCapabilities() => inner.ReadCapabilities();
-        public VcpReading Read(byte code) => inner.Read(code);
+
+        public string ReadCapabilities()
+        {
+            SettleAfterWrite();
+            return inner.ReadCapabilities();
+        }
+
+        public VcpReading Read(byte code)
+        {
+            SettleAfterWrite();
+            return inner.Read(code);
+        }
 
         public void Write(byte code, uint value)
         {
             Wrote = true;
+            queue._lastWriteAt = queue._clock.Elapsed;
             inner.Write(code, value);
+        }
+
+        // Runs on the queue's worker, inside the op, so blocking here just delays this one command.
+        void SettleAfterWrite()
+        {
+            if (queue._lastWriteAt == TimeSpan.MinValue) return;
+            var wait = queue._lastWriteAt + WriteSettle - queue._clock.Elapsed;
+            if (wait > TimeSpan.Zero) Thread.Sleep(wait);
         }
 
         public void Dispose() { }

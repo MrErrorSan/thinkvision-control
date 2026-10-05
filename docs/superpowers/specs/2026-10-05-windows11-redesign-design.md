@@ -96,6 +96,20 @@ Each has a question as the title, a verb on the action button, and Cancel as the
 - **If the monitor kept a different value:** the slider snaps to it, and the card description says why (for example "Your monitor keeps brightness fixed in sRGB mode").
 - **Hotkey steps:** unchanged (single write + verify).
 
+**Hardware result (P32p-20, 2026-10-05): hypothesis confirmed.**
+
+A 0.75 s drag, 10 → 80 in steps of 5 every 50 ms, run both ways:
+
+| Path | Finished after | Writes / reads | False "did not apply" | Final value |
+|---|---|---|---|---|
+| Old: write + verify per step | 8.9 s | 15 / 15 | 14 | 80 |
+| Coalesced, 400 ms after every write | 1.9 s | 4 / 1 | 0 | 80 |
+| Coalesced, settle only before reads | **1.5 s** | 9 / 1 | 0 | 80 |
+
+- The old path's verify reads queued behind later writes. Each read therefore returned a newer value, which the app reported as a mismatch and pushed back onto the slider: this was the jitter.
+- Raw writes 50 ms apart all apply (8/8 at gaps of 50, 100, 150 and 250 ms). Only reads fail while a change settles.
+- `DdcQueue` now holds a read until 400 ms after the last write, and spaces everything else 50 ms apart. A drag therefore updates the monitor about every 110 ms.
+
 ## 7. States: the full UI is always visible
 
 `ControlService` exposes `Controls` built from the embedded profile **plus the last known capabilities**, cached as `%AppData%\ThinkVisionControl\capabilities.txt`. With no cache yet, the profile's value labels give the allowed values. This lets every card render before the monitor answers.

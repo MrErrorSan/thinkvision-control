@@ -123,7 +123,8 @@ public sealed class OfflineAndReconnectTests : IDisposable
         var result = await control.EndDragAsync(0x10, 20);
 
         Assert.Equal(WriteOutcome.Ok, result.Outcome);
-        Assert.True(_link.Writes.Count <= 5, $"{_link.Writes.Count} writes");
+        // Writes are 50 ms apart (measured on the P32p-20: back-to-back writes apply), so 20 steps every 10 ms coalesce to well under 20.
+        Assert.True(_link.Writes.Count <= 12, $"{_link.Writes.Count} writes");
         Assert.Equal(((byte)0x10, 20u), _link.Writes[^1]);
         Assert.Equal(readsBefore + 1, _link.ReadCount);
         Assert.Equal([20u], changes);
