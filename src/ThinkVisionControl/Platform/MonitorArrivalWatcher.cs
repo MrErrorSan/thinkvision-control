@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Windows.Interop;
 using System.Windows.Threading;
 using ThinkVisionControl.Core.Logging;
 
@@ -20,7 +19,7 @@ public sealed class MonitorArrivalWatcher : IDisposable
     static readonly Guid MonitorInterface = new("E6F07B5F-EE97-4a90-B076-33F57BF4EAA7");
 
     readonly Action _arrived;
-    readonly HwndSource _source;
+    readonly MessageWindow _window;
     readonly DispatcherTimer _debounce;
     IntPtr _notification;
 
@@ -31,8 +30,7 @@ public sealed class MonitorArrivalWatcher : IDisposable
         _debounce.Tick += OnDebounced;
 
         // Message-only windows miss broadcast WM_DEVICECHANGE, but RegisterDeviceNotification sends directed messages.
-        _source = new HwndSource(new HwndSourceParameters("ThinkVisionControl.MonitorArrival") { ParentWindow = new IntPtr(-3) });
-        _source.AddHook(WndProc);
+        _window = new MessageWindow(WndProc);
 
         var filter = new DevBroadcastDeviceInterface
         {
@@ -40,7 +38,7 @@ public sealed class MonitorArrivalWatcher : IDisposable
             DeviceType = DbtDevtypDeviceInterface,
             ClassGuid = MonitorInterface,
         };
-        _notification = RegisterDeviceNotification(_source.Handle, ref filter, DeviceNotifyWindowHandle);
+        _notification = RegisterDeviceNotification(_window.Handle, ref filter, DeviceNotifyWindowHandle);
         if (_notification == IntPtr.Zero)
             FileLog.Write($"RegisterDeviceNotification failed: {Marshal.GetLastWin32Error()}");
     }
@@ -53,8 +51,7 @@ public sealed class MonitorArrivalWatcher : IDisposable
             UnregisterDeviceNotification(_notification);
             _notification = IntPtr.Zero;
         }
-        _source.RemoveHook(WndProc);
-        _source.Dispose();
+        _window.Dispose();
     }
 
     void OnDebounced(object? sender, EventArgs e)
@@ -63,19 +60,18 @@ public sealed class MonitorArrivalWatcher : IDisposable
         _arrived();
     }
 
-    IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    IntPtr? WndProc(int msg, IntPtr wParam, IntPtr lParam)
     {
-        if (msg != WmDeviceChange || lParam == IntPtr.Zero) return IntPtr.Zero;
+        if (msg != WmDeviceChange || lParam == IntPtr.Zero) return null;
         var evt = (int)wParam.ToInt64();
-        if (evt != DbtDeviceArrival && evt != DbtDeviceRemoveComplete) return IntPtr.Zero;
+        if (evt != DbtDeviceArrival && evt != DbtDeviceRemoveComplete) return null;
 
         // lParam is a DEV_BROADCAST_HDR; for device interfaces the class GUID follows the 12-byte header.
-        if (Marshal.ReadInt32(lParam, 4) != DbtDevtypDeviceInterface) return IntPtr.Zero;
-        if (Marshal.PtrToStructure<Guid>(lParam + 12) != MonitorInterface) return IntPtr.Zero;
+        if (Marshal.ReadInt32(lParam, 4) != DbtDevtypDeviceInterface) return null;
+        if (Marshal.PtrToStructure<Guid>(lParam + 12) != MonitorInterface) return null;
 
         _debounce.Stop();
         _debounce.Start();
-        handled = true;
         return new IntPtr(1); // TRUE
     }
 

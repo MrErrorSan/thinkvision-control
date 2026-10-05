@@ -16,6 +16,8 @@
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <PublishReadyToRun>true</PublishReadyToRun>
     <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <!-- Bundle WPF's native DLLs into the single exe (extracted on first run) so it can be copied as one file. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>

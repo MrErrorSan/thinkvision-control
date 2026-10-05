@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
-using System.Windows.Interop;
 using ThinkVisionControl.Core.Settings;
+using ThinkVisionControl.Platform;
 
 namespace ThinkVisionControl.Hotkeys;
 
@@ -10,7 +10,7 @@ public sealed class HotkeyManager : IDisposable
     const int WmHotkey = 0x0312;
     const uint ModNoRepeat = 0x4000;
 
-    readonly HwndSource _source;
+    readonly MessageWindow _window;
     readonly Action<HotkeyAction> _onHotkey;
     readonly List<int> _registered = [];
     readonly List<HotkeyAction> _failed = [];
@@ -18,8 +18,7 @@ public sealed class HotkeyManager : IDisposable
     public HotkeyManager(Action<HotkeyAction> onHotkey)
     {
         _onHotkey = onHotkey;
-        _source = new HwndSource(new HwndSourceParameters("ThinkVisionControl.Hotkeys") { ParentWindow = new IntPtr(-3) });
-        _source.AddHook(WndProc);
+        _window = new MessageWindow(WndProc);
     }
 
     public IReadOnlyCollection<HotkeyAction> Failed => _failed;
@@ -34,7 +33,7 @@ public sealed class HotkeyManager : IDisposable
         {
             if (!hotkeys.TryGetValue(action, out var text) || !HotkeyGesture.TryParse(text, out var gesture)) continue;
             var id = (int)action + 1;
-            if (RegisterHotKey(_source.Handle, id, gesture.Modifiers | ModNoRepeat, gesture.VirtualKey))
+            if (RegisterHotKey(_window.Handle, id, gesture.Modifiers | ModNoRepeat, gesture.VirtualKey))
                 _registered.Add(id);
             else
                 _failed.Add(action);
@@ -44,22 +43,19 @@ public sealed class HotkeyManager : IDisposable
     public void Dispose()
     {
         UnregisterAll();
-        _source.Dispose();
+        _window.Dispose();
     }
 
     void UnregisterAll()
     {
-        foreach (var id in _registered) UnregisterHotKey(_source.Handle, id);
+        foreach (var id in _registered) UnregisterHotKey(_window.Handle, id);
         _registered.Clear();
     }
 
-    IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    IntPtr? WndProc(int msg, IntPtr wParam, IntPtr lParam)
     {
-        if (msg == WmHotkey)
-        {
-            _onHotkey((HotkeyAction)(wParam.ToInt32() - 1));
-            handled = true;
-        }
+        if (msg != WmHotkey) return null;
+        _onHotkey((HotkeyAction)(wParam.ToInt32() - 1));
         return IntPtr.Zero;
     }
 
