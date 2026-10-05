@@ -1,18 +1,23 @@
 using System.Drawing;
-using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace ThinkVisionControl.Tray;
 
-/// <summary>Tray icon: left-click opens the panel, right-click menu has Open and Exit. Grey when the monitor is not responding.</summary>
+/// <summary>
+/// Tray icon: left-click opens the panel, right-click menu has Open and Exit.
+/// Uses the brand glyph for the taskbar's theme and dims it while the monitor is not responding.
+/// </summary>
 public sealed class TrayIcon : IDisposable
 {
     const string NormalText = "ThinkVision Control";
     const string NotRespondingText = "Monitor not responding — DDC/CI may be off (hold Exit for 10 s)";
 
     readonly NotifyIcon _icon;
-    readonly Icon _normal = CreateIcon(Color.FromArgb(230, 230, 230));
-    readonly Icon _grey = CreateIcon(Color.FromArgb(110, 110, 110));
+    Icon? _normal;
+    Icon? _dimmed;
+    bool _responding;
 
     public TrayIcon(Action open, Action exit)
     {
@@ -20,36 +25,61 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add("Open panel", null, (_, _) => open());
         menu.Items.Add("Exit", null, (_, _) => exit());
 
-        _icon = new NotifyIcon { Icon = _grey, Text = NotRespondingText, ContextMenuStrip = menu, Visible = true };
+        _icon = new NotifyIcon { Text = NotRespondingText, ContextMenuStrip = menu };
         _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) open(); };
+        LoadIcons();
+        _icon.Visible = true;
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
     public void SetResponding(bool responding)
     {
-        _icon.Icon = responding ? _normal : _grey;
+        _responding = responding;
+        _icon.Icon = responding ? _normal : _dimmed;
         _icon.Text = responding ? NormalText : NotRespondingText;
     }
 
     public void Dispose()
     {
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _icon.Visible = false;
         _icon.Dispose();
-        _normal.Dispose();
-        _grey.Dispose();
+        _normal?.Dispose();
+        _dimmed?.Dispose();
     }
 
-    // A simple monitor glyph: screen outline plus stand.
-    static Icon CreateIcon(Color color)
+    void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
-        using var bmp = new Bitmap(32, 32);
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color) LoadIcons();
+    }
+
+    // The taskbar follows "Windows mode" (SystemUsesLightTheme), not the app mode.
+    void LoadIcons()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+        var lightTaskbar = key?.GetValue("SystemUsesLightTheme") is int value && value != 0;
+        var uri = new Uri($"pack://application:,,,/Assets/Tray.{(lightTaskbar ? "OnLight" : "OnDark")}.ico");
+
+        var oldNormal = _normal;
+        var oldDimmed = _dimmed;
+        using (var stream = System.Windows.Application.GetResourceStream(uri).Stream)
+            _normal = new Icon(stream, SystemInformation.SmallIconSize);
+        _dimmed = Dim(_normal, 0.45f);
+        SetResponding(_responding);
+        oldNormal?.Dispose();
+        oldDimmed?.Dispose();
+    }
+
+    static Icon Dim(Icon source, float opacity)
+    {
+        using var original = source.ToBitmap();
+        using var bmp = new Bitmap(original.Width, original.Height);
         using (var g = Graphics.FromImage(bmp))
+        using (var attributes = new ImageAttributes())
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var pen = new Pen(color, 3);
-            using var brush = new SolidBrush(color);
-            g.DrawRectangle(pen, 3, 4, 26, 18);
-            g.FillRectangle(brush, 14, 22, 4, 4);
-            g.FillRectangle(brush, 9, 26, 14, 3);
+            attributes.SetColorMatrix(new ColorMatrix { Matrix33 = opacity });
+            g.DrawImage(original, new Rectangle(0, 0, bmp.Width, bmp.Height), 0, 0, original.Width, original.Height,
+                GraphicsUnit.Pixel, attributes);
         }
         var handle = bmp.GetHicon();
         try { return (Icon)Icon.FromHandle(handle).Clone(); }

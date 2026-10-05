@@ -19,7 +19,7 @@ public class SettingsStoreTests
         Assert.Equal(Enum.GetValues<HotkeyAction>().Length, s.Hotkeys.Count);
         Assert.Equal(new Preset("Night", 0, 70, null), s.Night);
         Assert.Equal(0x11, s.ThisMachineInput);
-        Assert.True(s.BackgroundMode);
+        Assert.False(s.BackgroundMode); // new installs exit on close
     }
 
     [Fact]

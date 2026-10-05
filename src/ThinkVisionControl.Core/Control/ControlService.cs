@@ -134,7 +134,9 @@ public sealed class ControlService : IDisposable
         }
     }
 
-    public Task RefreshAsync(IEnumerable<byte> codes) => RefreshCoreAsync(codes, recover: true);
+    /// <summary>Re-reads the given codes. Does nothing unless connected, so an absent monitor costs no DDC traffic.</summary>
+    public Task RefreshAsync(IEnumerable<byte> codes) =>
+        Status == MonitorStatus.Connected ? RefreshCoreAsync(codes, recover: true) : Task.CompletedTask;
 
     /// <returns>False if every requested code failed.</returns>
     private async Task<bool> RefreshCoreAsync(IEnumerable<byte> codes, bool recover)

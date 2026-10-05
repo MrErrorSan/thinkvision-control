@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <Resource Include="Assets\ThinkVisionControl.ico" />
+    <Resource Include="Assets\Tray.OnDark.ico" />
+    <Resource Include="Assets\Tray.OnLight.ico" />
     <!-- WinForms is only used for NotifyIcon; keep its namespaces out of implicit usings to avoid WPF type clashes. -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
