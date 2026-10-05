@@ -582,7 +582,8 @@
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
                         <DockPanel>
-                            <Button x:Name="PART_PaneToggle" DockPanel.Dock="Top" Style="{StaticResource NavigationPaneToggleButtonStyle}" />
+                            <Button x:Name="PART_PaneToggle" DockPanel.Dock="Top" Style="{StaticResource NavigationPaneToggleButtonStyle}"
+                                    AutomationProperties.Name="Navigation" ToolTip="Navigation" />
                             <StackPanel DockPanel.Dock="Bottom">
                                 <Border x:Name="FooterDivider" Height="1" Margin="0,4" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
                                 <ListBox x:Name="PART_FooterList" ItemsSource="{TemplateBinding FooterItems}" Background="Transparent"

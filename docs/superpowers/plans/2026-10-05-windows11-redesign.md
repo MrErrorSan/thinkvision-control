@@ -8,43 +8,52 @@ todos:
     parallel: true
   - id: core-service
     content: ControlService — capabilities cache + offline Controls, retry-burst reconnect replacing the 5 s timer, drag write coalescer
-    status: pending
+    status: completed
     depends-on: jitter-probe
   - id: core-commands
     content: CommandLine parser + BackgroundMode default false for new installs
-    status: pending
+    status: completed
     parallel: true
   - id: theme-controls
     content: App.xaml ThemeMode=System, Theme.xaml rewrite (type ramp, Fluent keys), SettingsCard/Expander, ToggleSwitch, InfoBar, ContentDialog host, NavigationPane
-    status: pending
+    status: completed
     parallel: true
   - id: platform
     content: MonitorArrivalWatcher (RegisterDeviceNotification), EcoQoS helper, tray-rect/flyout positioning helper, publish properties
-    status: pending
+    status: completed
     parallel: true
   - id: pages
     content: PanelWindow layout A (nav + 3 pages), PanelViewModel states/InfoBar/live sliders/dialogs, restyle FinderWindow and HotkeyCaptureWindow
-    status: pending
+    status: completed
     depends-on: core-service, theme-controls
   - id: tray-flyout
     content: FlyoutWindow, theme-adaptive TrayIcon with state overlay and new menu, OSD restyle
-    status: pending
+    status: completed
     depends-on: core-service, theme-controls, platform
   - id: app-shell
     content: App startup modes (headless command / startup / normal), named-pipe single instance, jump list, lazy window, close-not-hide, EcoQoS + arrival wiring
-    status: pending
+    status: completed
     depends-on: pages, tray-flyout, core-commands, platform
   - id: tests
     content: Focused tests for cache, offline Controls, retry burst, coalescer, CommandLine, settings default
-    status: pending
+    status: completed
     depends-on: app-shell
   - id: verify
     content: Build/test, UI walkthrough vs mockup A in light+dark and all four states, flyout, jump list (closed + running), memory measurements, publish
-    status: pending
+    status: in_progress
     depends-on: tests
 ---
 
 # Windows 11 redesign — implementation plan
+
+> **Status 2026-10-05:** everything except the hardware work is built and verified. The build is clean, 76 tests pass, and all three pages were checked live in the Not found state. Jump-list commands run headless and exit by themselves. Hotkeys register. Measured on the Release single-file build:
+> - **Login launch in background mode:** 24 MB private (was 61). WPF `HwndSource` message windows were starting the render stack; they are now plain Win32 `NativeWindow`s.
+> - **Window open:** 77 MB.
+>
+> **Pending, needs the monitor connected:**
+> - `jitter-probe`: confirm the spec §6 hypothesis on hardware;
+> - the hardware parts of `verify`: live drag, the Connected state, flyout anchoring;
+> - the aspect-ratio labels.
 
 Spec: [2026-10-05-windows11-redesign-design.md](../specs/2026-10-05-windows11-redesign-design.md) (§n below). Mockup: [thinkvision-control-ui.html](../../mockups/thinkvision-control-ui.html) variant A. **Tier 2.**
 

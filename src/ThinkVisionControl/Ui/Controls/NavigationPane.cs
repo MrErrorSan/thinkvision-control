@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 
@@ -57,6 +58,24 @@ public class NavigationPane : ListBox
     public NavigationItem? SelectedNavigationItem { get => (NavigationItem?)GetValue(SelectedNavigationItemProperty); set => SetValue(SelectedNavigationItemProperty, value); }
 
     public event RoutedEventHandler PaneToggleRequested { add => AddHandler(PaneToggleRequestedEvent, value); remove => RemoveHandler(PaneToggleRequestedEvent, value); }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new NavigationPaneAutomationPeer(this);
+
+    // A ListBox peer only reports its own items, so the menu button and the pinned footer list (template parts)
+    // would be invisible to screen readers and UI Automation. Report them as children too.
+    sealed class NavigationPaneAutomationPeer(NavigationPane owner) : ListBoxAutomationPeer(owner)
+    {
+        protected override List<AutomationPeer> GetChildrenCore()
+        {
+            var pane = (NavigationPane)Owner;
+            var children = base.GetChildrenCore() ?? [];
+            if (pane._toggle is { } toggle && UIElementAutomationPeer.CreatePeerForElement(toggle) is { } togglePeer)
+                children.Insert(0, togglePeer);
+            if (pane._footer is { } footer && UIElementAutomationPeer.CreatePeerForElement(footer) is { } footerPeer)
+                children.Add(footerPeer);
+            return children;
+        }
+    }
 
     protected override bool IsItemItsOwnContainerOverride(object item) => item is NavigationItem;
     protected override DependencyObject GetContainerForItemOverride() => new NavigationItem();
