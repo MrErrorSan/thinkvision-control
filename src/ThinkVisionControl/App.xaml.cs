@@ -68,7 +68,7 @@ public partial class App : Application
 
         var profiles = new ProfileStore(dataDir);
         _link = new Dxva2MonitorLink(profiles.EdidId);
-        _control = new ControlService(new DdcQueue(_link), profiles, new BackupStore(dataDir));
+        _control = new ControlService(new DdcQueue(_link), profiles, new BackupStore(dataDir), new CapabilitiesCache(dataDir));
 
         _panel = new PanelWindow(new PanelViewModel(_control, settingsStore, profiles,
             () => _hotkeys?.Failed ?? [], ApplySettings),

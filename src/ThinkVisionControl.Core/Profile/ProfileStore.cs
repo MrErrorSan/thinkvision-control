@@ -39,6 +39,25 @@ public sealed class ProfileStore(string userDirectory)
                 new Dictionary<byte, string>()));
     }
 
+    /// <summary>
+    /// Capabilities implied by the merged profile, for rendering controls before the monitor has ever answered:
+    /// Range is continuous, Enum allows its labelled values, Action allows 1.
+    /// </summary>
+    public MonitorCapabilities SynthesizeCapabilities()
+    {
+        var known = _embedded.Controls.Select(ToDefinition).ToDictionary(d => d.Code);
+        foreach (var def in LoadOverlay()) known[def.Code] = def;
+
+        return new MonitorCapabilities("", known.Values.ToDictionary(
+            d => d.Code,
+            d => d.Kind switch
+            {
+                ControlKind.Enum => (IReadOnlyList<byte>?)[.. d.ValueLabels.Keys.Order()],
+                ControlKind.Action => [1],
+                _ => null,
+            }));
+    }
+
     /// <summary>Adds or replaces one definition in the user overlay and saves it.</summary>
     public void SaveOverlay(ControlDefinition definition)
     {

@@ -13,7 +13,8 @@ public sealed class ControlServiceTests : IDisposable
     readonly ControlService _control;
 
     public ControlServiceTests() =>
-        _control = new ControlService(new DdcQueue(_link), new ProfileStore(_dir.Path), new BackupStore(Path.Combine(_dir.Path, "backups")));
+        _control = new ControlService(new DdcQueue(_link), new ProfileStore(_dir.Path), new BackupStore(Path.Combine(_dir.Path, "backups")),
+            new CapabilitiesCache(_dir.Path));
 
     public void Dispose()
     {

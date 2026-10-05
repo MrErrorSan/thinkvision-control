@@ -13,18 +13,34 @@ public enum MonitorStatus { Connecting, NotFound, NotResponding, Connected }
 public sealed record WriteResult(WriteOutcome Outcome, string Message, uint? Value = null);
 
 /// <summary>The only write path to the monitor. Owns the value cache and enforces <see cref="SafetyPolicy"/>.</summary>
-public sealed class ControlService(DdcQueue queue, ProfileStore profiles, BackupStore backups) : IDisposable
+public sealed class ControlService : IDisposable
 {
     private const byte ColourMode = 0x14, Brightness = 0x10, Contrast = 0x12;
-    private static readonly TimeSpan ReconnectInterval = TimeSpan.FromSeconds(5);
     private static readonly WriteResult NotRespondingResult = new(WriteOutcome.NotResponding, "Monitor not responding");
 
+    private readonly DdcQueue queue;
+    private readonly ProfileStore profiles;
+    private readonly BackupStore backups;
+    private readonly CapabilitiesCache capabilitiesCache;
     private readonly Lock gate = new();
     private readonly Dictionary<byte, VcpReading> cache = [];
-    private Timer? reconnectTimer;
-    private int reconnecting;
+    private readonly Dictionary<byte, Drag> drags = [];
+    private CancellationTokenSource? burst;
+    private string? cachedCapabilities;
+    private bool liveCapabilities;
     private MonitorStatus status = MonitorStatus.Connecting;
     private bool disposed;
+
+    public ControlService(DdcQueue queue, ProfileStore profiles, BackupStore backups, CapabilitiesCache cache)
+    {
+        this.queue = queue;
+        this.profiles = profiles;
+        this.backups = backups;
+        capabilitiesCache = cache;
+        cachedCapabilities = cache.Load();
+        Capabilities = TryParse(cachedCapabilities) ?? profiles.SynthesizeCapabilities();
+        Controls = profiles.Resolve(Capabilities);
+    }
 
     public event Action<byte, uint>? ValueChanged;
     public event Action<bool>? RespondingChanged;
@@ -32,8 +48,10 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 
     public MonitorStatus Status { get { lock (gate) return status; } }
     public bool IsResponding => Status == MonitorStatus.Connected;
-    public MonitorCapabilities? Capabilities { get; private set; }
-    public IReadOnlyDictionary<byte, ControlDefinition> Controls { get; private set; } = new Dictionary<byte, ControlDefinition>();
+    public MonitorCapabilities Capabilities { get; private set; }
+    public IReadOnlyDictionary<byte, ControlDefinition> Controls { get; private set; }
+
+    internal Func<TimeSpan, CancellationToken, Task> Delay { get; set; } = Task.Delay;
 
     public bool TryGetCached(byte code, out VcpReading reading)
     {
@@ -53,11 +71,18 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
                 return;
             }
 
-            if (Capabilities is null)
+            if (!liveCapabilities)
             {
-                var caps = CapabilitiesParser.Parse(await queue.Run(l => l.ReadCapabilities()));
+                var raw = await queue.Run(l => l.ReadCapabilities());
+                var caps = CapabilitiesParser.Parse(raw);
                 Controls = profiles.Resolve(caps);
                 Capabilities = caps;
+                liveCapabilities = true;
+                if (raw != cachedCapabilities)
+                {
+                    capabilitiesCache.Save(raw);
+                    cachedCapabilities = raw;
+                }
             }
 
             List<byte> cached;
@@ -66,7 +91,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
                 .Where(d => d.Kind is ControlKind.Range or ControlKind.Enum && d.Section is PanelSection.Main or PanelSection.Advanced)
                 .Select(d => d.Code)
                 .Union(cached);
-            if (await RefreshCoreAsync(codes)) SetStatus(MonitorStatus.Connected);
+            if (await RefreshCoreAsync(codes, recover: false)) SetStatus(MonitorStatus.Connected);
         }
         catch (Exception ex) when (ex is DdcException or FormatException)
         {
@@ -75,10 +100,44 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         }
     }
 
-    public Task RefreshAsync(IEnumerable<byte> codes) => RefreshCoreAsync(codes);
+    /// <summary>Starts (or restarts) a bounded retry burst over <see cref="RetryBurst.Delays"/>; no-op while connected.</summary>
+    public void RequestReconnect()
+    {
+        CancellationTokenSource cts;
+        lock (gate)
+        {
+            if (disposed || status == MonitorStatus.Connected) return;
+            burst?.Cancel();
+            burst = cts = new CancellationTokenSource();
+        }
+        _ = RunBurstAsync(cts.Token);
+    }
+
+    private async Task RunBurstAsync(CancellationToken ct)
+    {
+        try
+        {
+            foreach (var delay in RetryBurst.Delays)
+            {
+                await Delay(delay, ct);
+                ct.ThrowIfCancellationRequested();
+                await ReconnectAsync();
+                if (Status == MonitorStatus.Connected) return;
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            FileLog.Write($"Reconnect failed: {ex.Message}");
+        }
+    }
+
+    public Task RefreshAsync(IEnumerable<byte> codes) => RefreshCoreAsync(codes, recover: true);
 
     /// <returns>False if every requested code failed.</returns>
-    private async Task<bool> RefreshCoreAsync(IEnumerable<byte> codes)
+    private async Task<bool> RefreshCoreAsync(IEnumerable<byte> codes, bool recover)
     {
         int requested = 0, succeeded = 0;
         foreach (var code in codes.ToList())
@@ -98,7 +157,8 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 
         if (requested > 0 && succeeded == 0)
         {
-            SetStatus(MonitorStatus.NotResponding);
+            if (recover) Lost(MonitorStatus.NotResponding);
+            else SetStatus(MonitorStatus.NotResponding);
             return false;
         }
         return true;
@@ -106,8 +166,8 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
 
     public async Task<WriteResult> SetAsync(byte code, uint value, bool confirmed = false)
     {
+        if (Status != MonitorStatus.Connected) return NotRespondingResult;
         var caps = Capabilities;
-        if (caps is null) return NotRespondingResult;
 
         Controls.TryGetValue(code, out var def);
         var hasCached = TryGetCached(code, out var cached);
@@ -137,7 +197,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         catch (DdcException ex)
         {
             FileLog.Write($"Write 0x{code:X2}={v} failed: {ex.Message}");
-            SetStatus(MonitorStatus.NotResponding);
+            Lost(MonitorStatus.NotResponding);
             return NotRespondingResult;
         }
 
@@ -159,7 +219,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
             catch (DdcException ex)
             {
                 FileLog.Write($"Verify read 0x{code:X2} failed: {ex.Message}");
-                SetStatus(MonitorStatus.NotResponding);
+                Lost(MonitorStatus.NotResponding);
                 return NotRespondingResult;
             }
         }
@@ -169,6 +229,96 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         }
 
         return new(WriteOutcome.Ok, Describe(def, v), v);
+    }
+
+    /// <summary>Suppresses <see cref="ValueChanged"/> for <paramref name="code"/> until <see cref="EndDragAsync"/> completes.</summary>
+    public void BeginDrag(byte code)
+    {
+        lock (gate) drags.TryAdd(code, new Drag());
+    }
+
+    /// <summary>Latest value wins; at most one write in flight per code and no read-back.</summary>
+    public void DragTo(byte code, uint value)
+    {
+        if (!Controls.TryGetValue(code, out var def) || def.Kind != ControlKind.Range) return;
+        var hasCached = TryGetCached(code, out var cached);
+        var decision = SafetyPolicy.Evaluate(def, Capabilities, code, value, hasCached ? cached.Max : null, confirmed: false);
+        if (decision.Verdict != SafetyVerdict.Allow) return;
+
+        Drag drag;
+        lock (gate)
+        {
+            if (status != MonitorStatus.Connected) return;
+            if (!drags.TryGetValue(code, out drag!)) drags[code] = drag = new Drag();
+            if (drag.Ending) return;
+            drag.Pending = decision.Value;
+            if (drag.Idle is not null) return;
+            drag.Idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        _ = DragLoopAsync(code, drag);
+    }
+
+    private async Task DragLoopAsync(byte code, Drag drag)
+    {
+        var failed = false;
+        TaskCompletionSource idle;
+        while (true)
+        {
+            uint v;
+            lock (gate)
+            {
+                if (failed || drag.Pending is not uint pending)
+                {
+                    drag.Pending = null;
+                    idle = drag.Idle!;
+                    drag.Idle = null;
+                    break;
+                }
+                v = pending;
+                drag.Pending = null;
+            }
+
+            try
+            {
+                await queue.Run(l => { l.Write(code, v); return 0; });
+                UpdateCache(code, new VcpReading(v, TryGetCached(code, out var r) ? r.Max : 100u));
+            }
+            catch (Exception ex)
+            {
+                FileLog.Write($"Drag write 0x{code:X2}={v} failed: {ex.Message}");
+                failed = true;
+                if (ex is DdcException) Lost(MonitorStatus.NotResponding);
+            }
+        }
+        idle.SetResult();
+    }
+
+    /// <summary>Waits for the in-flight drag write, writes the released value, verifies it once and reports it.</summary>
+    public async Task<WriteResult> EndDragAsync(byte code, uint value)
+    {
+        Task idle = Task.CompletedTask;
+        lock (gate)
+        {
+            if (drags.TryGetValue(code, out var drag))
+            {
+                drag.Ending = true;
+                drag.Pending = null;
+                if (drag.Idle is { } tcs) idle = tcs.Task;
+            }
+        }
+        await idle;
+
+        WriteResult result;
+        try
+        {
+            result = await SetAsync(code, value);
+        }
+        finally
+        {
+            lock (gate) drags.Remove(code);
+        }
+        if (TryGetCached(code, out var actual)) ValueChanged?.Invoke(code, actual.Current);
+        return result;
     }
 
     /// <summary>Adds <paramref name="delta"/> to the cached value, clamped to 0..Max.</summary>
@@ -215,10 +365,7 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
     }
 
     /// <summary>Re-resolves <see cref="Controls"/> after the user overlay changed (finder naming).</summary>
-    public void ReloadProfile()
-    {
-        if (Capabilities is { } caps) Controls = profiles.Resolve(caps);
-    }
+    public void ReloadProfile() => Controls = profiles.Resolve(Capabilities);
 
     public void Dispose()
     {
@@ -226,10 +373,23 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         {
             if (disposed) return;
             disposed = true;
-            reconnectTimer?.Dispose();
-            reconnectTimer = null;
+            burst?.Cancel();
+            burst = null;
         }
         queue.Dispose();
+    }
+
+    private static MonitorCapabilities? TryParse(string? raw)
+    {
+        if (raw is null) return null;
+        try
+        {
+            return CapabilitiesParser.Parse(raw);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private Dictionary<byte, uint> BackupValues()
@@ -249,10 +409,17 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         bool changed;
         lock (gate)
         {
-            changed = !cache.TryGetValue(code, out var old) || old.Current != reading.Current;
+            changed = (!cache.TryGetValue(code, out var old) || old.Current != reading.Current) && !drags.ContainsKey(code);
             cache[code] = reading;
         }
         if (changed) ValueChanged?.Invoke(code, reading.Current);
+    }
+
+    /// <summary>A failure during normal operation: report it and start recovering on our own.</summary>
+    private void Lost(MonitorStatus value)
+    {
+        SetStatus(value);
+        RequestReconnect();
     }
 
     private void SetStatus(MonitorStatus value)
@@ -264,35 +431,9 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
             statusChanged = status != value;
             respondingChanged = (status == MonitorStatus.Connected) != (value == MonitorStatus.Connected);
             status = value;
-            if (value == MonitorStatus.Connected)
-            {
-                reconnectTimer?.Dispose();
-                reconnectTimer = null;
-            }
-            else
-            {
-                reconnectTimer ??= new Timer(_ => _ = ReconnectTickAsync(), null, ReconnectInterval, ReconnectInterval);
-            }
         }
         if (statusChanged) StatusChanged?.Invoke(value);
         if (respondingChanged) RespondingChanged?.Invoke(value == MonitorStatus.Connected);
-    }
-
-    private async Task ReconnectTickAsync()
-    {
-        if (Interlocked.Exchange(ref reconnecting, 1) == 1) return;
-        try
-        {
-            await ReconnectAsync();
-        }
-        catch (Exception ex)
-        {
-            FileLog.Write($"Reconnect failed: {ex.Message}");
-        }
-        finally
-        {
-            Volatile.Write(ref reconnecting, 0);
-        }
     }
 
     private static string Describe(ControlDefinition def, uint value) => def.Kind switch
@@ -301,4 +442,11 @@ public sealed class ControlService(DdcQueue queue, ProfileStore profiles, Backup
         ControlKind.Enum => $"{def.Name} → {(value <= byte.MaxValue && def.ValueLabels.TryGetValue((byte)value, out var label) ? label : $"0x{value:X2}")}",
         _ => def.Name,
     };
+
+    private sealed class Drag
+    {
+        public uint? Pending;
+        public TaskCompletionSource? Idle;
+        public bool Ending;
+    }
 }
