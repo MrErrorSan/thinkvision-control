@@ -10,7 +10,7 @@ set -euo pipefail
 
 APP_NAME="ThinkVision Control"
 BUNDLE_ID="com.thinkvisioncontrol.app"
-VERSION="0.0.1"
+VERSION="0.0.2"
 EXE_NAME="thinkvision-control"            # AssemblyName of src/ThinkVisionControl.Avalonia
 ICON_SRC="assets/brand/icns/ThinkVisionControl.icns"
 ICON_NAME="ThinkVisionControl.icns"

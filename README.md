@@ -62,6 +62,14 @@ The P32p-20's menu buttons sit behind the bottom edge of the screen. They're har
 </p>
 <p align="center"><b>Tray flyout</b> and the <b>on-screen indicator</b> shown by shortcuts</p>
 
+## Supported monitors
+
+| Monitor | Status |
+|---|---|
+| Lenovo ThinkVision **P32p-20** | ✅ Supported, tested daily |
+
+This is currently the only supported model. The app looks for the P32p-20 by its hardware ID and won't connect to other monitors, including other ThinkVision models. Want yours added? See [Contributing](#contributing).
+
 ## Platform support
 
 There are two apps that share the same core:
