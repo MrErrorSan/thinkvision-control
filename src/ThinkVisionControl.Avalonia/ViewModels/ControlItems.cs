@@ -279,6 +279,7 @@ public sealed class RestoreRow(ICommand run) : Observable, IActionRow
 /// <summary>The Day or Night preset card.</summary>
 public sealed class PresetItem : Observable
 {
+    readonly MainViewModel _owner;
     string _values = "";
     string? _note;
 
@@ -288,7 +289,7 @@ public sealed class PresetItem : Observable
         Icon = icon;
         IsNight = night;
         ApplyCommand = new RelayCommand(_ => _ = owner.ApplyPresetAsync(this));
-        SaveCommand = new RelayCommand(_ => owner.SavePreset(this));
+        _owner = owner;
     }
 
     public string Name { get; }
@@ -297,8 +298,10 @@ public sealed class PresetItem : Observable
     public string SaveText => $"Save current settings as {Name}";
     public string MoreName => $"More options for {Name}";
     public ICommand ApplyCommand { get; }
-    public ICommand SaveCommand { get; }
     public string Description => _note ?? _values;
+
+    /// <summary>Saves the current settings into this preset; false when saving failed.</summary>
+    internal bool Save() => _owner.SavePreset(this);
 
     internal string Values
     {

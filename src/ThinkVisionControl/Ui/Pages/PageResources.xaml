@@ -46,8 +46,7 @@
     <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
         <Setter Property="Width" Value="32" />
         <Setter Property="Height" Value="32" />
-        <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
-        <Setter Property="FontSize" Value="16" />
+        <Setter Property="ContentTemplate" Value="{StaticResource GlyphContentTemplate}" />
     </Style>
 
     <!-- Button content "glyph + text": the button's Tag is the glyph, its Content the text. Being a template, the text

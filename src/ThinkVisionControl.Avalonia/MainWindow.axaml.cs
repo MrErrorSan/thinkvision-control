@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using FluentAvalonia.Styling;
 using FluentAvalonia.UI.Controls;
@@ -79,6 +82,27 @@ public partial class MainWindow : Window
             _pages[item] = page;
         }
         PageHost.Content = page;
+    }
+
+    // Saving answers under the More button: "Saved as Day", or "Couldn't save Day" with the reason on the card.
+    async void SavePreset_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: PresetItem item } menuItem) return;
+        var saved = item.Save();
+        if (menuItem.FindLogicalAncestorOfType<Button>() is not { } button) return;
+        var glyph = new TextBlock { Text = saved ? Glyphs.Saved : Glyphs.SaveFailed, Margin = new Thickness(0, 0, 8, 0) };
+        glyph.Classes.Add("Icon");
+        glyph.Bind(TextBlock.ForegroundProperty, glyph.GetResourceObservable(saved ? "SystemFillColorSuccessBrush" : "SystemFillColorCriticalBrush"));
+        var tip = ToolTip.GetTip(button) as string ?? "More options"; // a second save while the first tip shows
+        ToolTip.SetTip(button, new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { glyph, new TextBlock { Text = saved ? $"Saved as {item.Name}" : $"Couldn't save {item.Name}" } },
+        });
+        ToolTip.SetIsOpen(button, true);
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+        ToolTip.SetIsOpen(button, false);
+        ToolTip.SetTip(button, tip);
     }
 
     // ---------------------------------------------------------------- dialogs
