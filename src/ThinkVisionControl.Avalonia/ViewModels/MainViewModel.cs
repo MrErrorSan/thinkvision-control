@@ -471,7 +471,9 @@ public sealed class MainViewModel : Observable
         SyncAll();
     }
 
-    internal void SavePreset(PresetItem item)
+    /// <summary>Stores the current brightness, contrast and colour mode in the preset. False when the settings file
+    /// couldn't be written; the card then says why.</summary>
+    internal bool SavePreset(PresetItem item)
     {
         var old = item.IsNight ? _settings.Night : _settings.Day;
         var preset = old with
@@ -480,11 +482,14 @@ public sealed class MainViewModel : Observable
             Contrast = Cached(Contrast) ?? old.Contrast,
             ColourMode = Cached(ColourMode) is { } mode ? (byte)mode : old.ColourMode,
         };
-        if (SaveSettings(item.IsNight ? _settings with { Night = preset } : _settings with { Day = preset }))
+        if (!SaveSettings(item.IsNight ? _settings with { Night = preset } : _settings with { Day = preset }))
         {
-            item.Note = null;
-            RefreshPresets();
+            item.Note = SettingsError;
+            return false;
         }
+        item.Note = null;
+        RefreshPresets();
+        return true;
     }
 
     void RefreshPresets()

@@ -446,7 +446,9 @@ public sealed class PanelViewModel : Observable
         SyncAll();
     }
 
-    internal void SavePreset(PresetItem item)
+    /// <summary>Stores the current brightness, contrast and colour mode in the preset. False when the settings file
+    /// couldn't be written; the card then says why.</summary>
+    internal bool SavePreset(PresetItem item)
     {
         var old = item.IsNight ? _settings.Night : _settings.Day;
         var preset = old with
@@ -455,11 +457,14 @@ public sealed class PanelViewModel : Observable
             Contrast = Cached(Contrast) ?? old.Contrast,
             ColourMode = Cached(ColourMode) is { } mode ? (byte)mode : old.ColourMode,
         };
-        if (SaveSettings(item.IsNight ? _settings with { Night = preset } : _settings with { Day = preset }))
+        if (!SaveSettings(item.IsNight ? _settings with { Night = preset } : _settings with { Day = preset }))
         {
-            item.Note = null;
-            RefreshPresets();
+            item.Note = SettingsError;
+            return false;
         }
+        item.Note = null;
+        RefreshPresets();
+        return true;
     }
 
     void RefreshPresets()
@@ -872,6 +877,7 @@ public sealed class ActionItem : ControlItem
 /// <summary>The Day or Night preset card.</summary>
 public sealed class PresetItem : Observable
 {
+    readonly PanelViewModel _owner;
     string _values = "";
     string? _note;
 
@@ -881,7 +887,7 @@ public sealed class PresetItem : Observable
         Icon = icon;
         IsNight = night;
         ApplyCommand = new RelayCommand(_ => _ = owner.ApplyPresetAsync(this));
-        SaveCommand = new RelayCommand(_ => owner.SavePreset(this));
+        _owner = owner;
     }
 
     public string Name { get; }
@@ -889,8 +895,10 @@ public sealed class PresetItem : Observable
     internal bool IsNight { get; }
     public string SaveText => $"Save current settings as {Name}";
     public ICommand ApplyCommand { get; }
-    public ICommand SaveCommand { get; }
     public string Description => _note ?? _values;
+
+    /// <summary>Saves the current settings into this preset; false when saving failed.</summary>
+    internal bool Save() => _owner.SavePreset(this);
 
     internal string Values
     {

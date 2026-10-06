@@ -71,15 +71,14 @@
     <Setter Property="Margin" Value="0,0,-12,0" />
   </Style>
 
-  <!-- A square transparent button holding one glyph (More, Edit). -->
+  <!-- A square transparent button holding one glyph (More, Edit). The glyph is a TextBlock.Icon child: the icon font
+       must not go on the button, because its tooltip and flyout inherit the font and would show text as empty boxes. -->
   <Style Selector="Button.Icon">
     <Setter Property="Width" Value="32" />
     <Setter Property="Height" Value="32" />
     <Setter Property="Padding" Value="0" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
-    <Setter Property="FontFamily" Value="{DynamicResource IconFont}" />
-    <Setter Property="FontSize" Value="16" />
   </Style>
 
   <!-- Small bordered key label, e.g. Ctrl. -->

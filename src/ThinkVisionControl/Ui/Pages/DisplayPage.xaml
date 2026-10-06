@@ -18,7 +18,7 @@
                             AutomationProperties.Name="{Binding Name, StringFormat='More options for {0}'}" ToolTip="More options">
                         <Button.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="{Binding SaveText}" Command="{Binding SaveCommand}" />
+                                <MenuItem Header="{Binding SaveText}" Click="SavePreset_Click" />
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>

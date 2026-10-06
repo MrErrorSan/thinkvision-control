@@ -65,11 +65,11 @@
         <ui:FASettingsExpander.Footer>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="Apply" MinWidth="80" Command="{Binding ApplyCommand}" />
-            <Button Classes="Icon" Content="{x:Static vm:Glyphs.More}" ToolTip.Tip="More options"
-                    AutomationProperties.Name="{Binding MoreName}">
+            <Button Classes="Icon" ToolTip.Tip="More options" AutomationProperties.Name="{Binding MoreName}">
+              <TextBlock Classes="Icon" Text="{x:Static vm:Glyphs.More}" />
               <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedRight">
-                  <MenuItem Header="{Binding SaveText}" Command="{Binding SaveCommand}" />
+                  <MenuItem Header="{Binding SaveText}" Click="SavePreset_Click" />
                 </MenuFlyout>
               </Button.Flyout>
             </Button>

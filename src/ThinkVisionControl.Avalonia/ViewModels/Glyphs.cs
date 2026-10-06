@@ -48,6 +48,8 @@ public static class Glyphs
     /// <summary>ic_fluent_plug_disconnected_24_regular.</summary>
     public const string NotFound = "";
     public const string NotResponding = IconGlyphs.Error;
+    public const string Saved = IconGlyphs.CheckmarkCircle;
+    public const string SaveFailed = IconGlyphs.Error;
 
     public const string Edit = IconGlyphs.Edit;
     public const string More = IconGlyphs.More;
