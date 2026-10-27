@@ -10,14 +10,14 @@
     <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
-  <!-- Publish: English-only satellites, R2R for startup,
-       and no single-file compression (it costs ~73 MB private memory for the process lifetime). -->
+  <!-- Publish: a small folder for the installer (packaging/windows). It uses the shared .NET 10 Desktop Runtime,
+       which the installer adds when missing; without it the .NET host shows a "please install" message.
+       R2R precompiles the app's own code so start-up doesn't wait on the JIT. -->
   <PropertyGroup>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
     <PublishReadyToRun>true</PublishReadyToRun>
-    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
-    <!-- Bundle WPF's native DLLs into the single exe (extracted on first run) so it can be copied as one file. -->
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>

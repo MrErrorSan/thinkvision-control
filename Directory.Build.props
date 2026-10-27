@@ -1,7 +1,7 @@
 <Project>
   <!-- One version for every project. Release tags are v<Version>. -->
   <PropertyGroup>
-    <Version>0.0.2</Version>
+    <Version>0.0.3</Version>
     <Product>ThinkVision Control</Product>
     <Copyright>ThinkVision Control contributors. GPL-2.0-or-later.</Copyright>
   </PropertyGroup>

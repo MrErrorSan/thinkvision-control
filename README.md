@@ -91,11 +91,24 @@ macOS and Linux support is new and has been verified in builds and a Linux VM, b
 
 ## Before you start
 
-- The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and `git`. There are no installers yet; you build from source with the commands below.
+- **Windows:** download `ThinkVisionControl-Setup-<version>.exe` from [Releases](../../releases) and run it. To build from source instead, you need the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and `git`.
+- **macOS and Linux:** the .NET 10 SDK and `git`; you build from source with the commands below.
 - The monitor connected **directly** with USB-C, DisplayPort or HDMI. Docks, KVMs and DisplayLink adapters often block DDC/CI.
 - **DDC/CI enabled** on the monitor. It's on by default. Holding the monitor's **Exit** key for 10 seconds toggles it, and the screen shows "DDC/CI enable" or "DDC/CI disable".
 
 ## Windows
+
+**Install:** run `ThinkVisionControl-Setup-<version>.exe` (about 3 MB). Setup lets you:
+
+- choose the install folder (default `C:\Program Files\ThinkVision Control`);
+- create Start menu and desktop shortcuts;
+- install the **.NET 10 Desktop Runtime**, which the app needs. Setup checks for it first. If it's already installed, setup skips it. If it's missing, setup downloads it from Microsoft (about 60 MB). Windows 11 doesn't include it.
+
+If you skip the runtime, the app shows a "You must install or update .NET" message with a download button when you open it.
+
+Uninstall from **Settings → Apps**. Your settings in `%APPDATA%\ThinkVisionControl` are kept.
+
+**Build from source:**
 
 ```powershell
 winget install Microsoft.DotNet.SDK.10
@@ -110,13 +123,13 @@ Run it straight away:
 dotnet run --project src/ThinkVisionControl
 ```
 
-Or build one portable `.exe`:
+Or build the installer (needs [Inno Setup 6.5+](https://jrsoftware.org/isinfo.php): `winget install JRSoftware.InnoSetup`):
 
 ```powershell
-dotnet publish src/ThinkVisionControl -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
+.\scripts\make-windows-setup.ps1
 ```
 
-Start `publish\ThinkVisionControl.exe`; it adds itself to the Start menu. "Start with Windows" and "Run in background" are in **App settings**.
+It writes `build\ThinkVisionControl-Setup-<version>.exe`, and the app files themselves are in `build\win-x64`. "Start with Windows" and "Run in background" are in **App settings**.
 
 ## macOS (Apple Silicon)
 
@@ -217,7 +230,7 @@ The same options work on every OS. If the app is already running, the command go
 ```bash
 thinkvision-control --preset night                                           # Linux
 "/Applications/ThinkVision Control.app/Contents/MacOS/thinkvision-control" --input usbc   # macOS
-publish\ThinkVisionControl.exe --step brightness=+10                         # Windows
+"C:\Program Files\ThinkVision Control\ThinkVisionControl.exe" --step brightness=+10   # Windows
 ```
 
 ## Default shortcuts

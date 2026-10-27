@@ -18,26 +18,21 @@ public sealed class CommandPipe : IDisposable
     /// <param name="received">Called on a background thread with the forwarded arguments.</param>
     public CommandPipe(Action<string[]> received) => _ = Task.Run(() => ListenAsync(received, _cts.Token));
 
-    /// <summary>Sends <paramref name="args"/> to the running instance. False if none is listening in time.</summary>
-    public static bool TrySend(IReadOnlyList<string> args)
+    /// <summary>Sends <paramref name="args"/> to the running instance. False if none is listening within <paramref name="timeout"/>.</summary>
+    public static bool TrySend(IReadOnlyList<string> args, TimeSpan timeout)
     {
-        // The first instance may still be starting its listener, so give it a few chances.
-        for (var attempt = 0; attempt < 3; attempt++)
+        try
         {
-            try
-            {
-                using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
-                client.Connect(1000);
-                using var writer = new StreamWriter(client);
-                writer.Write(string.Join('\n', args));
-                return true;
-            }
-            catch (Exception ex) when (ex is TimeoutException or IOException)
-            {
-                Thread.Sleep(200);
-            }
+            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
+            client.Connect(timeout);
+            using var writer = new StreamWriter(client);
+            writer.Write(string.Join('\n', args));
+            return true;
         }
-        return false;
+        catch (Exception ex) when (ex is TimeoutException or IOException)
+        {
+            return false;
+        }
     }
 
     public void Dispose() => _cts.Cancel();
