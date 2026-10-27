@@ -37,11 +37,14 @@ public sealed class DdcQueue : IDisposable
         return tcs.Task;
     }
 
+    /// <summary>Lets the command in flight finish, but waits at most <see cref="DisposeWait"/> so exit never hangs on the monitor.</summary>
     public void Dispose()
     {
         _channel.Writer.TryComplete();
-        _worker.Wait();
+        _worker.Wait(DisposeWait);
     }
+
+    internal static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(1);
 
     private async Task WorkAsync()
     {

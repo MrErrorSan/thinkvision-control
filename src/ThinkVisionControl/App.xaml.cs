@@ -51,9 +51,8 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown; // exit-on-close is handled in OnPanelClosed
 
         _singleInstance = new Mutex(true, "ThinkVisionControl.SingleInstance", out var isFirst);
-        if (!isFirst)
+        if (!isFirst && !HandOffOrTakeOver(e.Args))
         {
-            CommandPipe.TrySend(e.Args);
             Shutdown();
             return;
         }
@@ -101,16 +100,33 @@ public partial class App : Application
         base.OnExit(e);
     }
 
+    /// <summary>
+    /// Another copy holds the single-instance mutex. Forward this launch to it, or, if it is still starting its
+    /// listener or already shutting down, take over once it releases the mutex. True = this process carries on.
+    /// Never quits silently: that left the Start menu shortcut looking dead while an old copy was exiting.
+    /// </summary>
+    bool HandOffOrTakeOver(string[] args)
+    {
+        var slice = TimeSpan.FromMilliseconds(250);
+        for (var deadline = DateTime.UtcNow.AddSeconds(5); DateTime.UtcNow < deadline;)
+        {
+            if (CommandPipe.TrySend(args, slice)) return false;
+            try { if (_singleInstance!.WaitOne(slice)) return true; }
+            catch (AbandonedMutexException) { return true; } // it was killed; the mutex is ours now
+        }
+        return false;
+    }
+
     void StartResident(bool showWindow)
     {
         _headless = false;
         if (!_residentStarted)
         {
             _residentStarted = true;
-            EnsureStartMenuShortcut();
-            SetJumpList();
             ApplySettings(_settings);
             _ = ConnectAsync();
+            // Not needed for the first frame, so it waits until the window is up.
+            Dispatcher.BeginInvoke(SetJumpList, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         }
         if (showWindow) ShowWindow();
         UpdateEfficiency();
@@ -276,12 +292,6 @@ public partial class App : Application
             OsdWindow.ShowLevel(s.Code == Brightness ? "Brightness" : "Contrast", reading.Current, reading.Max);
         else
             OsdWindow.ShowMessage(result.Message);
-    }
-
-    static void EnsureStartMenuShortcut()
-    {
-        try { StartMenuRegistration.EnsureShortcut(); }
-        catch (Exception ex) { FileLog.Write($"Start Menu shortcut creation failed: {ex.Message}"); }
     }
 
     // Tasks on the taskbar/Start right-click menu. They launch the exe with a command, so they work with the app closed.
