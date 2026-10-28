@@ -62,7 +62,7 @@ if [ -e /etc/udev/rules.d/60-thinkvision-i2c.rules ] && [ -e /etc/modules-load.d
     exit 0
 fi
 echo "The app needs access to the monitor's control channel (/dev/i2c-*). This is set up once, with sudo."
-answer=y
+answer=n   # without a terminal (piped, scripted), print the commands instead of running sudo
 if [ -t 0 ]; then
     printf "Set it up now? [Y/n] "
     read -r answer || answer=n
