@@ -1,9 +1,11 @@
 //! Ports of the 0.0.4 xUnit tests (INV §13), run against `FakeLink`.
 
 mod cli_tests;
+mod crash_tests;
 mod engine_tests;
 mod misc_tests;
 mod profile_tests;
+mod schedule_tests;
 mod settings_tests;
 
 use std::path::{Path, PathBuf};
@@ -13,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use crate::engine::{Command, Engine, EngineHandle, Event, MonitorStatus, Origin, Timing, WriteResult};
 use crate::fake::FakeLink;
-use crate::link::VcpReading;
+use crate::link::{MonitorLink, VcpReading};
 use crate::profile::ProfileStore;
 
 pub struct TempDir(PathBuf);
@@ -52,12 +54,17 @@ impl Harness {
     }
 
     pub fn with_timing(link: &FakeLink, dir: &Path, timing: Timing) -> Self {
+        Self::spawn(Box::new(link.clone()), link, dir, timing, false)
+    }
+
+    /// The engine on `engine_link` (a `FakeLink` or a wrapper around `fake`), optionally in safe mode.
+    pub fn spawn(engine_link: Box<dyn MonitorLink>, fake: &FakeLink, dir: &Path, timing: Timing, safe_mode: bool) -> Self {
         let (tx, events) = mpsc::channel();
-        let handle = Engine::spawn(Box::new(link.clone()), ProfileStore::new(dir), dir.to_path_buf(), timing,
+        let handle = Engine::spawn(engine_link, ProfileStore::new(dir), dir.to_path_buf(), timing, safe_mode,
             Box::new(move |e| {
                 let _ = tx.send(e);
             }));
-        Self { link: link.clone(), handle: Some(handle), events }
+        Self { link: fake.clone(), handle: Some(handle), events }
     }
 
     pub fn send(&self, command: Command) {

@@ -119,6 +119,9 @@ pub fn inputs(st: &State) -> Vec<(u16, String)> {
 }
 
 pub fn status_line(st: &State) -> (&'static str, String) {
+    if st.asleep && st.status == MonitorStatus::Connected {
+        return (glyph::MOON, "Asleep".into());
+    }
     match st.status {
         MonitorStatus::Connected => {
             let input = st
@@ -137,6 +140,24 @@ pub fn status_line(st: &State) -> (&'static str, String) {
 
 /// The state banner (INV §1.2), for the status the hold timer has let through.
 pub fn banner(st: &State) -> Banner {
+    if st.safe_mode {
+        return Banner {
+            visible: true,
+            severity: Severity::Info,
+            title: s("Safe mode"),
+            message: s("ThinkVision Control closed while reading the monitor's details last time, so it's using the saved copy and the hidden-settings finder is off."),
+            action: s("Read them now"),
+        };
+    }
+    if st.asleep {
+        return Banner {
+            visible: true,
+            severity: Severity::Info,
+            title: s("Your monitor is asleep"),
+            message: s("Changes wait until it wakes up or you unlock this PC."),
+            action: s(""),
+        };
+    }
     let (status, failure) = st.shown_status;
     let (severity, title, message, action): (Severity, String, &str, &str) = match (status, failure) {
         (None, _) | (Some(MonitorStatus::Connected), _) => return Banner::default(),
@@ -162,7 +183,7 @@ pub fn banner(st: &State) -> Banner {
         (Some(MonitorStatus::NotResponding), _) => (
             Severity::Error,
             "Your monitor isn't responding".into(),
-            "DDC/CI might be off. Hold the monitor's Exit key for 10 seconds, then try again.",
+            "DDC/CI might be off. Hold the monitor's Exit key for 10 seconds, then try again. If this started after a graphics driver update, the previous driver may help.",
             "Try again",
         ),
         (Some(MonitorStatus::NotFound), _) => (
@@ -357,6 +378,7 @@ pub fn render(app: &App, st: &State) {
     let fw = st.firmware().map(|f| format!(" · Firmware {f}")).unwrap_or_default();
     app.set_profile_text(s(format!("Monitor profile: {}{fw}", st.profile.display_name)));
 
+    render_auto(app, st);
     render_finder(app, st);
 }
 
@@ -434,4 +456,51 @@ fn render_finder(app: &App, st: &State) {
     } else {
         sync(app.get_finder_values(), values, |m| app.set_finder_values(m));
     }
+}
+
+/// Automatic Day/Night (B1): the mode, the remembered times and place, and a line saying what happens next.
+fn render_auto(app: &App, st: &State) {
+    use tvc_core::schedule::AutoMode;
+    let hhmm = |m: u16| format!("{:02}:{:02}", m / 60, m % 60);
+    let (day, night) = st.settings.auto_times;
+    app.set_auto_mode(match st.settings.auto_day_night {
+        AutoMode::Off => 0,
+        AutoMode::Times { .. } => 1,
+        AutoMode::Sun { .. } => 2,
+    });
+    app.set_auto_day(s(hhmm(day)));
+    app.set_auto_night(s(hhmm(night)));
+    let (lat, lon) = st.settings.auto_location.map_or((String::new(), String::new()), |(a, b)| (format!("{a:.4}"), format!("{b:.4}")));
+    app.set_auto_lat(s(lat));
+    app.set_auto_lon(s(lon));
+    let summary = match st.settings.auto_day_night {
+        AutoMode::Off => String::new(),
+        AutoMode::Times { day, night } => format!("Day preset at {}, Night preset at {}.", hhmm(day), hhmm(night)),
+        AutoMode::Sun { lat, lon } => {
+            let offset = crate::localtime::utc_offset();
+            let today = civil_date((crate::localtime::unix_now() + offset as i64).div_euclid(86_400));
+            match tvc_core::solar::sun_times(today.0, today.1, today.2, lat, lon) {
+                Some((rise, set)) => {
+                    let local = |m: u32| hhmm(((m as i64 + offset as i64 / 60).rem_euclid(1440)) as u16);
+                    format!("Today: Day preset at sunrise {}, Night preset at sunset {}.", local(rise), local(set))
+                }
+                None => "No sunrise or sunset there today; nothing changes until there is.".into(),
+            }
+        }
+    };
+    app.set_auto_note(s(if st.auto_note.is_empty() { summary } else { st.auto_note.clone() }));
+}
+
+/// Days since 1970-01-01 → (year, month, day), proleptic Gregorian (H. Hinnant's civil_from_days).
+fn civil_date(days: i64) -> (i32, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = (yoe + era * 400 + i64::from(month <= 2)) as i32;
+    (year, month, day)
 }

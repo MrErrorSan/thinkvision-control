@@ -1,15 +1,19 @@
-//! OS integration: data folder, single instance, autostart, monitor events, efficiency mode, taskbar theme,
-//! setup hints and global hotkeys. One module per concern, `#[cfg(target_os)]` inside each.
+//! OS integration: data folder, single instance, autostart, system events (display, lock, power), efficiency mode,
+//! taskbar theme, setup hints, global hotkeys, monitor wake, console attach and the `thinkvision://` scheme. One
+//! module per concern, `#[cfg(target_os)]` inside each.
 // The controller that consumes this API lands later.
 #![allow(dead_code)]
 
 pub mod autostart;
+pub mod console;
 pub mod efficiency;
 pub mod hotkeys;
 pub mod instance;
 pub mod monitor_events;
 pub mod setup;
 pub mod taskbar;
+pub mod url_scheme;
+pub mod wake;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -87,17 +91,18 @@ mod tests {
     fn debouncer_coalesces_a_burst() {
         let count = Arc::new(AtomicUsize::new(0));
         let c = count.clone();
-        let d = Debouncer::new(Duration::from_millis(60), move || {
+        // Wide margins: Windows sleeps overshoot by tens of ms when the machine is busy.
+        let d = Debouncer::new(Duration::from_millis(400), move || {
             c.fetch_add(1, Ordering::SeqCst);
         });
         for _ in 0..5 {
             d.trigger();
             thread::sleep(Duration::from_millis(10));
         }
-        thread::sleep(Duration::from_millis(250));
+        thread::sleep(Duration::from_millis(1000));
         assert_eq!(count.load(Ordering::SeqCst), 1);
         d.trigger();
-        thread::sleep(Duration::from_millis(250));
+        thread::sleep(Duration::from_millis(1000));
         assert_eq!(count.load(Ordering::SeqCst), 2);
     }
 

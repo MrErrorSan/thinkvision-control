@@ -413,6 +413,54 @@ export component FinderPage inherits VerticalLayout {
     }
 }
 
+// Switches between the Day and Night presets on a schedule (B1). Off / at set times / at sunrise and sunset.
+component AutoDayNightCard inherits CardFrame {
+    property <int> choice: App.auto-mode;
+    VerticalLayout {
+        Card {
+            border-width: 0px;
+            background: transparent;
+            glyph: Glyphs.moon;
+            title: "Switch presets automatically";
+            description: App.auto-note;
+            SyncCombo {
+                model: ["Off", "At set times", "At sunrise and sunset"];
+                index: App.auto-mode;
+                accessible-label: "Switch presets automatically";
+                selected => {
+                    root.choice = self.current-index;
+                    App.set-auto-mode(self.current-index);
+                }
+            }
+        }
+        if root.choice == 1: VerticalLayout {
+            RowDivider { }
+            HorizontalLayout {
+                padding: 12px;
+                padding-left: 52px;
+                spacing: 8px;
+                Text { text: "Day"; vertical-alignment: center; color: Theme.text; }
+                day := LineEdit { text: App.auto-day; width: 80px; accessible-label: "Day preset time"; }
+                Text { text: "Night"; vertical-alignment: center; color: Theme.text; }
+                night := LineEdit { text: App.auto-night; width: 80px; accessible-label: "Night preset time"; }
+                Rectangle { horizontal-stretch: 1; }
+                Button { text: "Save"; clicked => { App.save-auto-times(day.text, night.text); } }
+            }
+        }
+        if root.choice == 2: VerticalLayout {
+            RowDivider { }
+            HorizontalLayout {
+                padding: 12px;
+                padding-left: 52px;
+                spacing: 8px;
+                lat := LineEdit { text: App.auto-lat; placeholder-text: "Latitude, e.g. 31.52"; accessible-label: "Latitude"; }
+                lon := LineEdit { text: App.auto-lon; placeholder-text: "Longitude, e.g. 74.36"; accessible-label: "Longitude"; }
+                Button { text: "Save"; clicked => { App.save-auto-location(lat.text, lon.text); } }
+            }
+        }
+    }
+}
+
 export component SettingsPage inherits VerticalLayout {
     if App.setup-hints.length > 0: SectionHeader { text: "System setup"; first: true; }
     if App.setup-hints.length > 0: VerticalLayout {
@@ -486,6 +534,9 @@ export component SettingsPage inherits VerticalLayout {
             }
         }
     }
+
+    SectionHeader { text: "Automatic Day/Night"; }
+    AutoDayNightCard { }
 
     SectionHeader { text: "Keyboard shortcuts"; }
     if App.shortcuts-description != "": Text {

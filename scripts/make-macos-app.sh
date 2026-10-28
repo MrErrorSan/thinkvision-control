@@ -73,6 +73,17 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>ThinkVision Control link</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>thinkvision</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST

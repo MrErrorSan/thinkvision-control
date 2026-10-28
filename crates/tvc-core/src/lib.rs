@@ -3,6 +3,7 @@
 
 pub mod cli;
 pub mod clock;
+pub mod crash;
 pub mod engine;
 #[cfg(any(test, feature = "fake"))]
 pub mod fake;
@@ -12,7 +13,10 @@ pub mod link;
 pub mod log;
 pub mod mccs;
 pub mod profile;
+pub mod result;
 pub mod safety;
+pub mod schedule;
+pub mod solar;
 pub mod store;
 
 #[cfg(test)]

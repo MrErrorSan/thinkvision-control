@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::hotkey::{Action, Gesture};
-use crate::store::{BackupStore, CapabilitiesCache, Preset, Settings, SettingsStore};
+use crate::schedule::AutoMode;
+use crate::store::{BackupStore, CapabilitiesCache, Preset, Settings, SettingsStore, DEFAULT_AUTO_TIMES};
 
 use super::TempDir;
 
@@ -22,6 +23,9 @@ fn missing_file_gives_defaults() {
     assert_eq!(s.this_machine_input, 0x11);
     assert!(!s.background_mode); // new installs exit on close
     assert!(!s.start_with_windows);
+    assert_eq!(s.auto_day_night, AutoMode::Off);
+    assert_eq!(s.auto_times, (7 * 60, 19 * 60));
+    assert_eq!(s.auto_location, None);
 }
 
 #[test]
@@ -207,4 +211,87 @@ fn capabilities_cache_round_trips() {
     assert_eq!(cache.load(), None);
     cache.save("(vcp(10))");
     assert_eq!(cache.load().as_deref(), Some("(vcp(10))"));
+}
+
+/// Writes `settings.json` with the default settings plus the given `"AutoDayNight"` JSON, then loads it.
+fn load_with_auto(auto: Option<&str>) -> (TempDir, Settings) {
+    let dir = TempDir::new();
+    let store = SettingsStore::new(dir.path());
+    store.save(&Settings::default()).unwrap();
+    let path = dir.path().join("settings.json");
+    let mut json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let object = json.as_object_mut().unwrap();
+    object.remove("AutoDayNight");
+    if let Some(auto) = auto {
+        object.insert("AutoDayNight".into(), serde_json::from_str(auto).unwrap());
+    }
+    std::fs::write(&path, json.to_string()).unwrap();
+    let loaded = store.load();
+    (dir, loaded)
+}
+
+#[test]
+fn auto_day_night_round_trips_in_every_mode() {
+    let modes = [
+        (AutoMode::Off, (6 * 60 + 30, 20 * 60), Some((31.5, 74.25))),
+        (AutoMode::Times { day: 6 * 60 + 30, night: 60 }, (6 * 60 + 30, 60), None),
+        (AutoMode::Sun { lat: -33.875, lon: 151.25 }, DEFAULT_AUTO_TIMES, Some((-33.875, 151.25))),
+    ];
+    for (mode, times, location) in modes {
+        let dir = TempDir::new();
+        let store = SettingsStore::new(dir.path());
+        let saved = Settings { auto_day_night: mode, auto_times: times, auto_location: location, ..Settings::default() };
+        store.save(&saved).unwrap();
+        assert_eq!(store.load(), saved, "{mode:?}");
+    }
+}
+
+#[test]
+fn auto_day_night_file_format() {
+    let dir = TempDir::new();
+    let settings = Settings { auto_day_night: AutoMode::Sun { lat: 31.5, lon: 74.25 }, ..Settings::default() };
+    SettingsStore::new(dir.path()).save(&settings).unwrap();
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.path().join("settings.json")).unwrap()).unwrap();
+
+    assert_eq!(json["AutoDayNight"], serde_json::json!({
+        "Mode": "Sun", "Day": "07:00", "Night": "19:00", "Latitude": 31.5, "Longitude": 74.25
+    }));
+    let off = Settings::default();
+    SettingsStore::new(dir.path()).save(&off).unwrap();
+    let text = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+    assert!(text.contains(r#""Mode": "Off""#) && text.contains(r#""Latitude": null"#), "{text}");
+}
+
+#[test]
+fn a_0_0_4_file_without_auto_day_night_loads_as_off() {
+    let (_dir, s) = load_with_auto(None);
+    assert_eq!((s.auto_day_night, s.auto_times, s.auto_location), (AutoMode::Off, DEFAULT_AUTO_TIMES, None));
+}
+
+#[test]
+fn malformed_auto_day_night_is_off_and_never_corrupt() {
+    for auto in ["null", "42", r#""Sun""#, "[]", r#"{"Mode":"Weekly"}"#, r#"{"Mode":"Times","Day":"7am","Night":"19:00"}"#,
+        r#"{"Mode":"Times","Day":"24:00","Night":"19:00"}"#, r#"{"Mode":"Times","Night":"19:00"}"#,
+        r#"{"Mode":"Sun","Latitude":95,"Longitude":10}"#, r#"{"Mode":"Sun","Latitude":"north","Longitude":10}"#,
+        r#"{"Mode":"Sun","Latitude":31.5}"#, r#"{"Mode":7}"#] {
+        let (dir, s) = load_with_auto(Some(auto));
+        assert_eq!(s.auto_day_night, AutoMode::Off, "{auto}");
+        assert!(!dir.path().join("settings.json.bak").exists(), "{auto}");
+        assert_eq!(s.day, Settings::default().day, "{auto}");
+    }
+}
+
+#[test]
+fn auto_day_night_reads_leniently_and_remembers_values() {
+    let (_dir, s) = load_with_auto(Some(r#"{"Mode":"times","Day":"6:05","Night":" 23:59 "}"#));
+    assert_eq!(s.auto_day_night, AutoMode::Times { day: 6 * 60 + 5, night: 23 * 60 + 59 });
+
+    let (_dir, s) = load_with_auto(Some(r#"{"Mode":"SUN","Latitude":"31.5","Longitude":-0.25}"#));
+    assert_eq!(s.auto_day_night, AutoMode::Sun { lat: 31.5, lon: -0.25 });
+    assert_eq!(s.auto_times, DEFAULT_AUTO_TIMES);
+
+    // Off keeps what was typed for the settings UI.
+    let (_dir, s) = load_with_auto(Some(r#"{"Mode":"Off","Day":"08:15","Night":"21:00","Latitude":51.5,"Longitude":0}"#));
+    assert_eq!((s.auto_day_night, s.auto_times, s.auto_location), (AutoMode::Off, (8 * 60 + 15, 21 * 60), Some((51.5, 0.0))));
 }

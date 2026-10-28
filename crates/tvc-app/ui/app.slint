@@ -53,6 +53,13 @@ export global App {
     in property <int> this-pc-index: -1;
     in property <string> shortcuts-description;
     in property <[HotkeyRow]> hotkeys;
+    // Automatic Day/Night: 0 off, 1 at set times, 2 at sunrise and sunset
+    in property <int> auto-mode;
+    in property <string> auto-day: "07:00";
+    in property <string> auto-night: "19:00";
+    in property <string> auto-lat;
+    in property <string> auto-lon;
+    in property <string> auto-note;
     in property <string> version;
     in property <string> profile-text;
 
@@ -76,6 +83,9 @@ export global App {
     callback edit-hotkey(int);
     callback copy-text(string);
     callback dialog-result(bool);
+    callback set-auto-mode(int);
+    callback save-auto-times(string, string);       // day, night as HH:MM
+    callback save-auto-location(string, string);    // latitude, longitude in degrees
     callback restore-backup();
 
     callback finder-snapshot();

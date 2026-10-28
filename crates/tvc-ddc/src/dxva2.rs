@@ -12,8 +12,8 @@ use windows_sys::Win32::Devices::Display::{
     SetVCPFeature, PHYSICAL_MONITOR,
 };
 use windows_sys::Win32::Foundation::{
-    GetLastError, ERROR_GRAPHICS_INVALID_PHYSICAL_MONITOR_HANDLE, ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS,
-    ERROR_INVALID_HANDLE, HANDLE, LPARAM, RECT,
+    GetLastError, ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED, ERROR_GRAPHICS_INVALID_PHYSICAL_MONITOR_HANDLE,
+    ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS, ERROR_INVALID_HANDLE, HANDLE, LPARAM, RECT,
 };
 use windows_sys::Win32::Graphics::Gdi::{
     EnumDisplayDevicesW, EnumDisplayMonitors, GetMonitorInfoW, DISPLAY_DEVICEW, HDC, HMONITOR, MONITORINFOEXW,
@@ -133,18 +133,33 @@ impl MonitorLink for Dxva2Link {
     }
 }
 
-/// The error for a failed dxva2 call, with GetLastError. A dead handle is `Gone`; anything else is worth retrying.
+/// The error for a failed dxva2 call, with GetLastError.
 fn failure(call: &str, code: Option<u8>) -> LinkError {
     // SAFETY: no preconditions.
     let error = unsafe { GetLastError() };
     let code = code.map(|c| format!(" 0x{c:02X}")).unwrap_or_default();
-    let message = format!("{call}{code} failed (Win32 error 0x{error:08X})");
-    let gone = [
+    classify(error, format!("{call}{code} failed (Win32 error 0x{error:08X})"))
+}
+
+/// Sorts a dxva2 error (A2, after PowerToys' `DdcErrorClassifier`, MIT):
+/// - `Unsupported`: the monitor answered that it doesn't implement the code (`ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED`).
+/// - `Gone`: the physical-monitor handle is dead (invalid handle, monitor no longer exists); reconnect.
+/// - `Transient`: everything else. That covers the I²C transmit/receive errors, the DDC/CI framing errors (invalid
+///   data, message command, length, checksum), current > maximum (also what a corrupted reply produces),
+///   `ERROR_TIMEOUT`, MCA internal/capabilities-string errors, and the connection-level codes
+///   `I2C_NOT_SUPPORTED`, `I2C_DEVICE_DOES_NOT_EXIST` and `ONLY_CONSOLE_SESSION_SUPPORTED`. PowerToys stops on the
+///   two I²C ones, but they describe the whole bus rather than one code (so not `Unsupported`), a reconnect finds the
+///   same handle (so not `Gone`), and a sleeping monitor or a dock can raise them briefly; the engine's retry budget
+///   and reconnect schedule bound the cost.
+fn classify(error: u32, message: String) -> LinkError {
+    const GONE: [u32; 3] = [
         ERROR_INVALID_HANDLE,
         ERROR_GRAPHICS_INVALID_PHYSICAL_MONITOR_HANDLE as u32,
         ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS as u32,
     ];
-    if gone.contains(&error) {
+    if error == ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED as u32 {
+        LinkError::Unsupported(message)
+    } else if GONE.contains(&error) {
         LinkError::Gone(message)
     } else {
         LinkError::Transient(message)
@@ -213,4 +228,60 @@ fn device_ids(monitor: HMONITOR) -> Vec<String> {
 fn wide_to_string(wide: &[u16]) -> String {
     let end = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
     String::from_utf16_lossy(&wide[..end])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::Foundation::{
+        ERROR_GRAPHICS_DDCCI_CURRENT_CURRENT_VALUE_GREATER_THAN_MAXIMUM_VALUE, ERROR_GRAPHICS_DDCCI_INVALID_DATA,
+        ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_CHECKSUM, ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_COMMAND,
+        ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_LENGTH, ERROR_GRAPHICS_I2C_DEVICE_DOES_NOT_EXIST,
+        ERROR_GRAPHICS_I2C_ERROR_RECEIVING_DATA, ERROR_GRAPHICS_I2C_ERROR_TRANSMITTING_DATA,
+        ERROR_GRAPHICS_I2C_NOT_SUPPORTED, ERROR_GRAPHICS_MCA_INTERNAL_ERROR,
+        ERROR_GRAPHICS_ONLY_CONSOLE_SESSION_SUPPORTED, ERROR_TIMEOUT,
+    };
+
+    fn kind(error: u32) -> &'static str {
+        match classify(error, String::new()) {
+            LinkError::Transient(_) => "transient",
+            LinkError::Unsupported(_) => "unsupported",
+            LinkError::Gone(_) => "gone",
+        }
+    }
+
+    #[test]
+    fn vcp_not_supported_is_final() {
+        assert_eq!(ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED as u32, 0xC026_2584);
+        assert_eq!(kind(ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED as u32), "unsupported");
+    }
+
+    #[test]
+    fn dead_handles_are_gone() {
+        assert_eq!(kind(ERROR_INVALID_HANDLE), "gone");
+        assert_eq!(kind(ERROR_GRAPHICS_INVALID_PHYSICAL_MONITOR_HANDLE as u32), "gone");
+        assert_eq!(kind(ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS as u32), "gone");
+    }
+
+    #[test]
+    fn bus_and_framing_errors_are_transient() {
+        let transient = [
+            ERROR_GRAPHICS_I2C_ERROR_TRANSMITTING_DATA,
+            ERROR_GRAPHICS_I2C_ERROR_RECEIVING_DATA,
+            ERROR_GRAPHICS_I2C_NOT_SUPPORTED,
+            ERROR_GRAPHICS_I2C_DEVICE_DOES_NOT_EXIST,
+            ERROR_GRAPHICS_DDCCI_INVALID_DATA,
+            ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_COMMAND,
+            ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_LENGTH,
+            ERROR_GRAPHICS_DDCCI_INVALID_MESSAGE_CHECKSUM,
+            ERROR_GRAPHICS_DDCCI_CURRENT_CURRENT_VALUE_GREATER_THAN_MAXIMUM_VALUE,
+            ERROR_GRAPHICS_MCA_INTERNAL_ERROR,
+            ERROR_GRAPHICS_ONLY_CONSOLE_SESSION_SUPPORTED,
+        ];
+        for error in transient {
+            assert_eq!(kind(error as u32), "transient", "0x{:08X}", error as u32);
+        }
+        assert_eq!(kind(ERROR_TIMEOUT), "transient");
+        assert_eq!(kind(0), "transient");
+    }
 }

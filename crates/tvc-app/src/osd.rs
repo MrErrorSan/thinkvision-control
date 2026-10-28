@@ -46,6 +46,13 @@ impl OsdHost {
         let created = host.window.is_none();
         if created {
             let Ok(osd) = Osd::new() else { return };
+            // The kept OSD stays "visible" (alpha 0), so Windows may pick it as the process's main window. It can't
+            // be clicked or focused, so a close request can only come from outside (installer upgrade, taskkill
+            // without /F): exit in order rather than hide it behind Slint's back.
+            osd.window().on_close_requested(|| {
+                let _ = slint::quit_event_loop();
+                slint::CloseRequestResponse::KeepWindowShown
+            });
             host.window = Some(osd);
         }
         let osd = host.window.as_ref().unwrap();

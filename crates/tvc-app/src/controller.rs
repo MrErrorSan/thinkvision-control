@@ -13,8 +13,12 @@ use std::time::Duration;
 
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
-use tvc_core::cli::CliCommand;
-use tvc_core::engine::{Command, EngineHandle, Event, FinderEvent, MonitorStatus, Origin, ResolvedControls, WriteOutcome, WriteResult};
+use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget};
+use tvc_core::engine::{
+    Command, EngineHandle, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
+};
+use tvc_core::result::ResultKind;
+use tvc_core::schedule::{self, AutoMode, Phase};
 use tvc_core::finder::CodeChange;
 use tvc_core::hotkey::{Action, Gesture};
 use tvc_core::link::{LinkFailure, VcpReading};
@@ -23,7 +27,9 @@ use tvc_core::store::{Preset, Settings, SettingsStore};
 use tvc_core::log;
 
 use crate::osd::{Content, OsdHost};
+use crate::localtime;
 use crate::platform;
+use crate::platform::monitor_events::SystemEvent;
 use crate::view::{self, glyph, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT};
 use crate::{App, Dialog, MainWindow, Severity, ShortcutEditor, Tray};
 
@@ -32,6 +38,7 @@ const BANNER_HOLD: Duration = Duration::from_secs(1);
 const KEY_DEBOUNCE: Duration = Duration::from_millis(300);
 const TOAST_FOR: Duration = Duration::from_millis(2500);
 const HOTKEY_STEP: i32 = 5;
+const AUTO_EVERY: Duration = Duration::from_secs(60);
 
 thread_local! {
     static APP: RefCell<Option<Rc<Controller>>> = const { RefCell::new(None) };
@@ -91,6 +98,12 @@ pub struct State {
     pub hotkeys_available: bool,
     pub failed_hotkeys: Vec<Action>,
     pub finder: FinderState,
+    /// Display off, session locked or PC asleep: the engine sends nothing (A1).
+    pub asleep: bool,
+    /// Started after a crash during a risky monitor operation: no writes until the user leaves it (C1).
+    pub safe_mode: bool,
+    /// Last error from the Automatic Day/Night form, shown under it.
+    pub auto_note: String,
 }
 
 impl State {
@@ -143,6 +156,15 @@ pub struct Controller {
     /// Verbs that arrived before the first connect attempt finished.
     pending_cli: RefCell<Vec<CliCommand>>,
     watcher: RefCell<Option<platform::monitor_events::Watcher>>,
+    /// `--json` for command-line output.
+    json: Cell<bool>,
+    /// Process exit code for a headless run (B5).
+    exit_code: Cell<i32>,
+    auto_timer: slint::Timer,
+    /// The Day/Night phase last applied by the schedule; a preset is applied only when it changes (B1).
+    auto_phase: Cell<Option<Phase>>,
+    /// The one live capability read per run has been asked for.
+    caps_requested: Cell<bool>,
 }
 
 impl Controller {
@@ -168,6 +190,9 @@ impl Controller {
                 hotkeys_available: true,
                 failed_hotkeys: vec![],
                 finder: FinderState::default(),
+                asleep: false,
+                safe_mode: false,
+                auto_note: String::new(),
             }),
             window: RefCell::new(None),
             osd: Rc::new(RefCell::new(OsdHost::default())),
@@ -184,6 +209,11 @@ impl Controller {
             headless: Cell::new(false),
             pending_cli: RefCell::new(vec![]),
             watcher: RefCell::new(None),
+            json: Cell::new(false),
+            exit_code: Cell::new(0),
+            auto_timer: slint::Timer::default(),
+            auto_phase: Cell::new(None),
+            caps_requested: Cell::new(false),
         })
     }
 
@@ -193,6 +223,10 @@ impl Controller {
 
     pub fn send(&self, command: Command) {
         self.engine.send(command);
+    }
+
+    pub fn exit_code(&self) -> i32 {
+        self.exit_code.get()
     }
 
     pub fn into_engine(self: Rc<Self>) -> Option<EngineHandle> {
@@ -209,10 +243,22 @@ impl Controller {
             // First resident start (also a headless run turned resident): retry burst and display/power events.
             self.send(Command::RequestReconnect);
             let tx = self.engine.sender();
-            let watcher = platform::monitor_events::watch(move || {
-                let _ = tx.send(Command::RecheckAfterEvent);
+            let watcher = platform::monitor_events::watch(move |event| {
+                let command = match event {
+                    SystemEvent::DisplayChanged => Command::RecheckAfterEvent,
+                    SystemEvent::DisplayOff => Command::Power(PowerState::DisplayOff),
+                    SystemEvent::DisplayOn => Command::Power(PowerState::DisplayOn),
+                    SystemEvent::Locked => Command::Power(PowerState::Locked),
+                    SystemEvent::Unlocked => Command::Power(PowerState::Unlocked),
+                    SystemEvent::Suspending => Command::Power(PowerState::Suspending),
+                    SystemEvent::Resumed => Command::Power(PowerState::Resumed),
+                };
+                let _ = tx.send(command);
             });
             *self.watcher.borrow_mut() = Some(watcher);
+            if !self.demo {
+                platform::url_scheme::register();
+            }
         }
         self.apply_settings();
         if show_window {
@@ -224,8 +270,9 @@ impl Controller {
     }
 
     /// One CLI command without a resident app (INV §6.2): connect once, run, show the OSD, exit.
-    pub fn start_headless(self: &Rc<Self>, command: CliCommand) {
+    pub fn start_headless(self: &Rc<Self>, command: CliCommand, json: bool) {
         self.headless.set(true);
+        self.json.set(json);
         self.pending_cli.borrow_mut().push(command);
         // Safety net: never linger if the monitor never answers.
         slint::Timer::single_shot(Duration::from_secs(5), || with(|c| c.quit_if_headless()));
@@ -233,7 +280,72 @@ impl Controller {
 
     fn quit_if_headless(&self) {
         if self.headless.get() {
+            if !self.pending_cli.borrow().is_empty() {
+                self.exit_code.set(tvc_cli::exit_code(None, true)); // never got past connecting: timed out
+            }
             let _ = slint::quit_event_loop();
+        }
+    }
+
+    /// Exit code for a headless run that ended without a result: not found or not responding (B5).
+    fn exit_for_status(&self) {
+        let kind = match self.st.borrow().status {
+            MonitorStatus::NotFound => ResultKind::NotFound,
+            _ => ResultKind::NotResponding,
+        };
+        self.exit_code.set(tvc_cli::exit_code(Some(kind), true));
+    }
+
+    /// Prints a command-line line (or JSON object) in headless runs; main attached the console.
+    fn print_result(&self, text: &str, json: String) {
+        if self.headless.get() {
+            println!("{}", if self.json.get() { json } else { text.to_string() });
+        }
+    }
+
+    /// `--get` (B5): prints the values the connect just read. Headless: then exits. Forwarded link: OSD.
+    fn print_get(&self, target: GetTarget) {
+        if self.st.borrow().status != MonitorStatus::Connected {
+            self.exit_for_status();
+            let msg = self.not_connected_text();
+            self.print_result(&msg, format!("{{\"error\":{}}}", json_str(&msg)));
+            self.quit_if_headless();
+            return;
+        }
+        let st = self.st.borrow();
+        let wants = |t: GetTarget| target == GetTarget::All || target == t;
+        let mut fields: Vec<(&str, String, String)> = vec![];
+        for (t, code, key) in [(GetTarget::Brightness, BRIGHTNESS, "brightness"), (GetTarget::Contrast, CONTRAST, "contrast")] {
+            if let Some(v) = st.value(code).filter(|_| wants(t)) {
+                fields.push((key, v.to_string(), v.to_string()));
+            }
+        }
+        if let Some(l) = st.value(INPUT).filter(|_| wants(GetTarget::Input)).map(|v| st.input_label(v)) {
+            fields.push(("input", l.clone(), json_str(&l)));
+        }
+        let mode = st.value(COLOUR_MODE).filter(|_| wants(GetTarget::ColourMode));
+        if let Some(l) = mode.and_then(|v| st.def(COLOUR_MODE).map(|d| view::label(d, v))) {
+            fields.push(("colourMode", l.clone(), json_str(&l)));
+        }
+        drop(st);
+        let text = fields.iter().map(|(k, v, _)| format!("{k}: {v}")).collect::<Vec<_>>().join("\n");
+        let json = format!("{{{}}}", fields.iter().map(|(k, _, j)| format!("\"{k}\":{j}")).collect::<Vec<_>>().join(","));
+        let kind = if fields.is_empty() { ResultKind::Unsupported } else { ResultKind::Ok };
+        self.exit_code.set(tvc_cli::exit_code(Some(kind), true));
+        if self.headless.get() {
+            self.print_result(&text, json);
+            self.quit_if_headless();
+        } else {
+            OsdHost::show(&self.osd, Content::Message(&text.replace('\n', " · ")));
+        }
+    }
+
+    fn not_connected_text(&self) -> String {
+        let st = self.st.borrow();
+        if st.status == MonitorStatus::NotResponding {
+            "Your monitor isn't responding".to_string()
+        } else {
+            format!("{} isn't connected", st.profile.display_name)
         }
     }
 
@@ -275,9 +387,20 @@ impl Controller {
             }
             CliCommand::Input(code) => {
                 let value = code.unwrap_or(st.settings.this_machine_input) as u16;
+                platform::wake::nudge();
                 Command::Set { code: INPUT, value, confirmed: false, origin }
             }
             CliCommand::Step { code, delta } => Command::Step { code, delta, origin },
+            CliCommand::Get(target) => {
+                drop(st);
+                self.print_get(target);
+                return;
+            }
+            CliCommand::Help => {
+                drop(st);
+                self.show_window();
+                return;
+            }
         };
         let connected = st.status == MonitorStatus::Connected;
         drop(st);
@@ -296,6 +419,7 @@ impl Controller {
     // Settings → tray, hotkeys, autostart (re-applied after every save, as 0.0.4)
 
     fn apply_settings(self: &Rc<Self>) {
+        self.arm_auto();
         let (background, start) = {
             let st = self.st.borrow();
             (st.settings.background_mode, st.settings.start_with_windows)
@@ -327,6 +451,7 @@ impl Controller {
         tray.on_switch_to_me(|| {
             with(|c| {
                 let code = c.st.borrow().settings.this_machine_input as u16;
+                platform::wake::nudge();
                 c.send(Command::Set { code: INPUT, value: code, confirmed: false, origin: Origin::Tray });
             })
         });
@@ -407,9 +532,13 @@ impl Controller {
                     _ => "usbc",
                 };
                 let Some(value) = input(kind) else { return };
+                platform::wake::nudge();
                 Command::Set { code: INPUT, value, confirmed: false, origin }
             }
-            Action::SwitchToMe => Command::Set { code: INPUT, value: this_pc, confirmed: false, origin },
+            Action::SwitchToMe => {
+                platform::wake::nudge();
+                Command::Set { code: INPUT, value: this_pc, confirmed: false, origin }
+            }
             Action::OpenPanel => unreachable!(),
         };
         self.send(cmd);
@@ -443,6 +572,18 @@ impl Controller {
             }
             Event::Result { origin, code, preset, result } => self.on_result(origin, code, preset, result),
             Event::Finder(f) => self.on_finder(f),
+            Event::Asleep(asleep) => {
+                self.st.borrow_mut().asleep = asleep;
+                if !asleep {
+                    self.auto_tick(); // catch up on a Day/Night change missed while asleep (B1)
+                }
+                self.update_tray();
+                self.render();
+            }
+            Event::SafeMode(on) => {
+                self.st.borrow_mut().safe_mode = on;
+                self.render();
+            }
         }
     }
 
@@ -465,7 +606,15 @@ impl Controller {
                 self.run_cli(cmd);
             }
             if self.headless.get() && status != MonitorStatus::Connected {
+                self.exit_for_status();
                 self.quit_after_osd();
+            }
+            if status == MonitorStatus::Connected {
+                self.auto_tick();
+                if !self.headless.get() && !self.caps_requested.replace(true) {
+                    // Connected on the cached capabilities; refresh them from the monitor once things are quiet.
+                    slint::Timer::single_shot(Duration::from_secs(2), || with(|c| c.send(Command::ReadCapabilities)));
+                }
             }
         }
         if self.window.borrow().is_some() {
@@ -491,9 +640,21 @@ impl Controller {
         log::write(&format!("{origin:?} {code:?} {preset:?}: {:?} {}", result.outcome, result.message));
         match origin {
             Origin::Window => self.result_in_window(code, preset, &result),
+            // B1: automatic presets stay quiet; only a failure is worth a word, and only in an open window.
+            Origin::Schedule => {
+                if result.outcome != WriteOutcome::Ok {
+                    self.auto_phase.set(None); // try again on the next tick
+                    self.show_toast(&format!("Automatic Day/Night: {}", result.message));
+                }
+            }
             _ => {
                 self.osd_result(code, &result);
                 if self.headless.get() {
+                    self.exit_code.set(tvc_cli::exit_code(Some(result.kind), true));
+                    let ok = result.outcome == WriteOutcome::Ok;
+                    let kind = format!("{:?}", result.kind);
+                    let json = format!("{{\"ok\":{ok},\"kind\":{},\"message\":{}}}", json_str(&kind), json_str(&result.message));
+                    self.print_result(&result.message, json);
                     self.quit_after_osd();
                 }
             }
@@ -581,13 +742,7 @@ impl Controller {
     }
 
     fn osd_not_connected(&self) {
-        let st = self.st.borrow();
-        let msg = if st.status == MonitorStatus::NotResponding {
-            "Your monitor isn't responding".to_string()
-        } else {
-            format!("{} isn't connected", st.profile.display_name)
-        };
-        drop(st);
+        let msg = self.not_connected_text();
         OsdHost::show(&self.osd, Content::Message(&msg));
     }
 
@@ -721,7 +876,10 @@ impl Controller {
         if st.status != MonitorStatus::Connected || st.value(INPUT) == Some(code) {
             return;
         }
-        let set = move |c: &Rc<Controller>| c.send(Command::Set { code: INPUT, value: code, confirmed: false, origin: Origin::Window });
+        let set = move |c: &Rc<Controller>| {
+            platform::wake::nudge();
+            c.send(Command::Set { code: INPUT, value: code, confirmed: false, origin: Origin::Window });
+        };
         if code == st.settings.this_machine_input as u16 {
             drop(st);
             set(self);
@@ -996,6 +1154,14 @@ impl Controller {
                 f.status = None;
             }
             FinderEvent::NoSnapshot => f.status = Some((Severity::Warning, "Take a snapshot first.".into())),
+            FinderEvent::Refused(kind) => {
+                let text = match kind {
+                    ResultKind::SafeMode => "Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first.",
+                    ResultKind::Asleep => "The monitor is asleep or this PC is locked. Try again once it's awake.",
+                    _ => "The monitor didn't answer. Try again.",
+                };
+                f.status = Some((Severity::Warning, text.into()));
+            }
             FinderEvent::Changes(changes) => {
                 f.status = Some(if changes.is_empty() {
                     (Severity::Info, "Nothing changed. Make sure the setting really changed on screen, then compare again.".into())
@@ -1077,6 +1243,128 @@ impl Controller {
 }
 
 // -------------------------------------------------------------------------------------------------------------
+// Automatic Day/Night (B1)
+
+impl Controller {
+    /// Runs the 60 s schedule tick while a mode is on; stops it otherwise.
+    fn arm_auto(&self) {
+        if self.st.borrow().settings.auto_day_night == AutoMode::Off {
+            self.auto_timer.stop();
+            self.auto_phase.set(None);
+        } else if !self.auto_timer.running() {
+            self.auto_timer.start(slint::TimerMode::Repeated, AUTO_EVERY, || with(|c| c.auto_tick()));
+        }
+    }
+
+    /// Applies Day or Night when the scheduled phase differs from the one applied last. The latest event at or
+    /// before now wins, so a change missed during sleep is caught up on wake.
+    fn auto_tick(&self) {
+        let st = self.st.borrow();
+        if st.status != MonitorStatus::Connected || st.asleep || st.safe_mode {
+            return;
+        }
+        let Some(phase) = schedule::current(&st.settings.auto_day_night, localtime::unix_now(), localtime::utc_offset()) else {
+            return;
+        };
+        if self.auto_phase.get() == Some(phase) {
+            return;
+        }
+        let preset = if phase == Phase::Night { st.settings.night.clone() } else { st.settings.day.clone() };
+        drop(st);
+        self.auto_phase.set(Some(phase));
+        self.send(Command::ApplyPreset { preset, origin: Origin::Schedule });
+    }
+
+    /// 0 = off, 1 = at set times, 2 = at sunrise and sunset (uses the remembered times or place).
+    fn set_auto_mode(self: &Rc<Self>, index: i32) {
+        {
+            let mut st = self.st.borrow_mut();
+            st.auto_note.clear();
+            let (day, night) = st.settings.auto_times;
+            st.settings.auto_day_night = match index {
+                1 => AutoMode::Times { day, night },
+                2 => match st.settings.auto_location {
+                    Some((lat, lon)) => AutoMode::Sun { lat, lon },
+                    None => {
+                        st.auto_note = "Enter your latitude and longitude, then Save.".into();
+                        AutoMode::Off
+                    }
+                },
+                _ => AutoMode::Off,
+            };
+        }
+        self.auto_phase.set(None);
+        self.save_settings();
+        self.auto_tick();
+    }
+
+    fn save_auto_times(self: &Rc<Self>, day: &str, night: &str) {
+        let (Some(day), Some(night)) = (parse_hhmm(day), parse_hhmm(night)) else {
+            self.st.borrow_mut().auto_note = "Use 24-hour times like 07:00 and 19:30.".into();
+            self.render();
+            return;
+        };
+        if day == night {
+            self.st.borrow_mut().auto_note = "Day and Night need different times.".into();
+            self.render();
+            return;
+        }
+        {
+            let mut st = self.st.borrow_mut();
+            st.auto_note.clear();
+            st.settings.auto_times = (day, night);
+            st.settings.auto_day_night = AutoMode::Times { day, night };
+        }
+        self.auto_phase.set(None);
+        self.save_settings();
+        self.auto_tick();
+    }
+
+    fn save_auto_location(self: &Rc<Self>, lat: &str, lon: &str) {
+        let parse = |t: &str, limit: f64| t.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.abs() <= limit);
+        let (Some(lat), Some(lon)) = (parse(lat, 90.0), parse(lon, 180.0)) else {
+            self.st.borrow_mut().auto_note =
+                "Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive).".into();
+            self.render();
+            return;
+        };
+        {
+            let mut st = self.st.borrow_mut();
+            st.auto_note.clear();
+            st.settings.auto_location = Some((lat, lon));
+            st.settings.auto_day_night = AutoMode::Sun { lat, lon };
+        }
+        self.auto_phase.set(None);
+        self.save_settings();
+        self.auto_tick();
+    }
+}
+
+/// "7:05" / "07:05" → minutes after midnight.
+fn parse_hhmm(text: &str) -> Option<u16> {
+    let (h, m) = text.trim().split_once(':')?;
+    let (h, m): (u16, u16) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+/// A JSON string literal.
+fn json_str(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+// -------------------------------------------------------------------------------------------------------------
 // Key mapping for the shortcut editor: Slint key text → Win32 virtual key.
 
 fn is_modifier(text: &str) -> bool {
@@ -1120,7 +1408,19 @@ fn wire(ui: &MainWindow) {
     app.on_control_action(|code| with(|c| c.control_action(code as u8)));
     app.on_apply_preset(|i| with(|c| c.apply_preset(i as usize, Origin::Window)));
     app.on_save_preset(|i| with(|c| c.save_preset(i as usize)));
-    app.on_banner_action(|| with(|c| c.send(Command::RequestReconnect)));
+    app.on_banner_action(|| {
+        with(|c| {
+            if c.st.borrow().safe_mode {
+                c.send(Command::SetSafeMode(false));
+                c.send(Command::RecheckAfterEvent); // read the capabilities skipped in safe mode
+            } else {
+                c.send(Command::RequestReconnect);
+            }
+        })
+    });
+    app.on_set_auto_mode(|i| with(|c| c.set_auto_mode(i)));
+    app.on_save_auto_times(|day, night| with(|c| c.save_auto_times(&day, &night)));
+    app.on_save_auto_location(|lat, lon| with(|c| c.save_auto_location(&lat, &lon)));
     app.on_restore_backup(|| with(|c| c.send(Command::RestoreBackup { origin: Origin::Window })));
     app.on_dialog_result(|yes| with(|c| c.on_dialog_result(yes)));
     app.on_set_background(|on| {

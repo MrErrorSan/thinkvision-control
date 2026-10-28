@@ -76,10 +76,13 @@ pub struct ProxyCandidate {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExchangeOutcome {
     Ok,
-    /// At least one read returned bytes, but none parsed (bad checksum, wrong opcode or code, unsupported).
+    /// At least one read returned bytes, but none parsed (bad checksum, wrong opcode or code, or "unsupported"
+    /// before the checksum form is known).
     InvalidReply,
     /// Every attempt failed with an IOReturn error.
     IoError,
+    /// A valid reply said the monitor doesn't implement the code. Final: no retry, no checksum fallback.
+    Unsupported,
 }
 
 /// True when CoreGraphics' vendor and model numbers are the target's.
@@ -92,6 +95,19 @@ pub fn is_target(vendor: u32, model: u32, want_vendor: u16, want_model: u16) -> 
 /// unparseable (an I/O error says nothing about the checksum).
 pub fn fallback_checksum_mode(remembered: Option<bool>, tried: bool, outcome: ExchangeOutcome) -> Option<bool> {
     (remembered.is_none() && tried && outcome == ExchangeOutcome::InvalidReply).then_some(false)
+}
+
+/// What one reply means. `Some(Ok)` takes it; `Some(Unsupported)` stops: a well-formed "unsupported" reply is final
+/// once the checksum form is known. Before that it could be the monitor rejecting our checksum form, so it counts as
+/// an invalid reply (`None`, keep trying) and the exchange may fall back to the other form.
+pub fn reply_outcome(form_known: bool, accepted: bool, says_unsupported: bool) -> Option<ExchangeOutcome> {
+    if accepted {
+        Some(ExchangeOutcome::Ok)
+    } else if form_known && says_unsupported {
+        Some(ExchangeOutcome::Unsupported)
+    } else {
+        None
+    }
 }
 
 /// Paths to verify on connect: the MCDP29xx variant first when the service's provider says so.
@@ -170,6 +186,16 @@ mod tests {
         assert_eq!(fallback_checksum_mode(None, true, ExchangeOutcome::IoError), None);
         assert_eq!(fallback_checksum_mode(None, false, ExchangeOutcome::InvalidReply), None);
         assert_eq!(fallback_checksum_mode(Some(true), true, ExchangeOutcome::InvalidReply), None);
+        assert_eq!(fallback_checksum_mode(None, true, ExchangeOutcome::Unsupported), None);
+    }
+
+    #[test]
+    fn unsupported_reply_is_final_only_once_the_checksum_form_is_known() {
+        assert_eq!(reply_outcome(true, false, true), Some(ExchangeOutcome::Unsupported));
+        assert_eq!(reply_outcome(false, false, true), None); // could be our checksum form: keep today's fallback
+        assert_eq!(reply_outcome(true, false, false), None);
+        assert_eq!(reply_outcome(false, true, false), Some(ExchangeOutcome::Ok));
+        assert_eq!(reply_outcome(true, true, false), Some(ExchangeOutcome::Ok));
     }
 
     #[test]

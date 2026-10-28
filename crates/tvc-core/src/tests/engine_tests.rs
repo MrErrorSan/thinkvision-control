@@ -1,11 +1,14 @@
 //! ControlServiceTests, OfflineAndReconnectTests, StatusReasonTests and DdcQueueTests, against the engine.
 
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::engine::{Event, FinderEvent, WriteOutcome, SHUTDOWN_WAIT};
+use crate::engine::{Event, FinderEvent, PowerState, WriteOutcome, SHUTDOWN_WAIT};
 use crate::finder::CodeChange;
-use crate::link::LinkFailure;
+use crate::link::{LinkError, LinkFailure, MonitorLink};
+use crate::result::ResultKind;
 use crate::profile::{ControlDefinition, ControlKind, SafetyClass, Section};
 use crate::store::{BackupStore, Preset};
 
@@ -91,7 +94,7 @@ fn direct_range_write_verifies_the_monitor_applied_the_requested_value() {
 
     let result = h.set(0x10, 25, false);
 
-    assert_eq!(result.outcome, WriteOutcome::Blocked);
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Kept));
     assert_eq!(result.message, "Brightness remains 0; the monitor did not apply 25. The current color mode may lock brightness.");
     assert_eq!(result.kept, Some(0));
 }
@@ -108,12 +111,14 @@ fn enum_write_reports_label_and_is_cached_without_read_back() {
     let (_dir, h) = connected();
     let reads = h.link.state().reads.len();
 
-    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: false, origin: Origin::Window });
+    let events = h.run(Command::Set { code: 0xE0, value: 2, confirmed: false, origin: Origin::Window });
 
-    assert_eq!(results(&events)[0].message, "Input → DisplayPort");
-    assert_eq!(values(&events), [(0x60, reading(0x0F, 49))]);
+    assert_eq!(results(&events)[0].message, "Over Drive → Extreme");
+    assert_eq!(results(&events)[0].kind, ResultKind::Ok);
+    assert_eq!(values(&events), [(0xE0, reading(2, 2))]);
     assert_eq!(h.link.state().reads.len(), reads);
-    assert_eq!(h.set(0x60, 0x13, false).message, "0x13 is not a valid value for Input.");
+    let invalid = h.set(0x60, 0x13, false);
+    assert_eq!((invalid.kind, invalid.message.as_str()), (ResultKind::OutOfRange, "0x13 is not a valid value for Input."));
 }
 
 #[test]
@@ -131,7 +136,8 @@ fn dead_monitor_reports_not_responding_and_raises_event() {
 fn osd_enable_power_and_unnamed_codes_never_reach_the_monitor() {
     let (_dir, h) = connected();
 
-    assert_eq!(h.set(0xCA, 2, true).outcome, WriteOutcome::Blocked);
+    let osd = h.set(0xCA, 2, true);
+    assert_eq!((osd.outcome, osd.kind), (WriteOutcome::Blocked, ResultKind::Refused));
     assert_eq!(h.set(0xEB, 1, true).outcome, WriteOutcome::Blocked);
     let power = h.set(0xD6, 5, true);
     assert_eq!((power.outcome, power.message.as_str()), (WriteOutcome::Blocked, "Power is never written."));
@@ -411,7 +417,8 @@ fn writes_are_refused_until_connected() {
     let h = Harness::new(&link, dir.path());
     h.connect();
 
-    assert_eq!(h.set(0x10, 30, false).outcome, WriteOutcome::NotResponding);
+    let result = h.set(0x10, 30, false);
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::NotResponding, ResultKind::NotFound));
     assert!(link.state().writes.is_empty());
 }
 
@@ -435,12 +442,12 @@ fn refresh_that_fails_completely_marks_the_monitor_lost_and_retries() {
     let connects = h.link.state().connects;
 
     assert_eq!(statuses(&h.run(Command::Refresh(vec![0x10]))), [MonitorStatus::NotResponding]);
-    wait_until(|| h.link.state().connects == connects + 5);
+    wait_until(|| h.link.state().connects == connects + Timing::zero().burst.len());
 }
 
 #[test]
-fn retry_burst_runs_five_attempts_then_stops() {
-    assert_eq!(Timing::default().burst, [500, 1000, 2000, 4000, 8000].map(Duration::from_millis));
+fn retry_burst_runs_each_step_then_stops() {
+    assert_eq!(Timing::default().burst, [500, 1000, 2000, 4000, 8000, 15_000, 30_000].map(Duration::from_millis));
     let link = FakeLink::new();
     link.state().absent = true;
     let dir = TempDir::new();
@@ -595,4 +602,293 @@ fn failed_calls_are_retried_five_times() {
     let reads = h.link.state().reads.len();
     h.run(Command::Poll(vec![0x10]));
     assert_eq!(h.link.state().reads.len(), reads + 5);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0.0.5 phase 2: A1 asleep, A2 error classes, A3 input switch, A4 stale steps, C1 safe mode.
+
+/// Errors a test scripts per code, in front of a `FakeLink`.
+#[derive(Default)]
+struct Script {
+    read: BTreeMap<u8, LinkError>,
+    write: BTreeMap<u8, LinkError>,
+    write_calls: usize,
+}
+
+#[derive(Clone)]
+struct ScriptedLink {
+    fake: FakeLink,
+    script: Arc<Mutex<Script>>,
+}
+
+impl ScriptedLink {
+    fn script(&self) -> MutexGuard<'_, Script> {
+        self.script.lock().unwrap()
+    }
+}
+
+impl MonitorLink for ScriptedLink {
+    fn connect(&mut self) -> Result<(), LinkFailure> {
+        self.fake.connect()
+    }
+
+    fn disconnect(&mut self) {
+        self.fake.disconnect();
+    }
+
+    fn capabilities(&mut self) -> Result<String, LinkError> {
+        self.fake.capabilities()
+    }
+
+    fn read(&mut self, code: u8) -> Result<VcpReading, LinkError> {
+        let error = self.script().read.get(&code).cloned();
+        match error {
+            Some(e) => Err(e),
+            None => self.fake.read(code),
+        }
+    }
+
+    fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError> {
+        let error = {
+            let mut s = self.script();
+            s.write_calls += 1;
+            s.write.get(&code).cloned()
+        };
+        match error {
+            Some(e) => Err(e),
+            None => self.fake.write(code, value),
+        }
+    }
+}
+
+fn scripted() -> (TempDir, Harness, ScriptedLink) {
+    let dir = TempDir::new();
+    let fake = FakeLink::new();
+    let link = ScriptedLink { fake: fake.clone(), script: Arc::default() };
+    let h = Harness::spawn(Box::new(link.clone()), &fake, dir.path(), Timing::zero(), false);
+    assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::Connected));
+    (dir, h, link)
+}
+
+fn asleep_events(events: &[Event]) -> Vec<bool> {
+    events.iter().filter_map(|e| match e { Event::Asleep(a) => Some(*a), _ => None }).collect()
+}
+
+#[test]
+fn nothing_reaches_the_monitor_while_asleep_and_waking_rechecks() {
+    let (_dir, h) = connected();
+    let (reads, connects) = { let s = h.link.state(); (s.reads.len(), s.connects) };
+
+    assert_eq!(asleep_events(&h.run(Command::Power(PowerState::Locked))), [true]);
+    let result = h.set(0x10, 30, false);
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Asleep));
+    assert_eq!(result.message, "The monitor is asleep or this PC is locked");
+    let step = h.result(Command::Step { code: 0x10, delta: 5, origin: Origin::Hotkey });
+    assert_eq!(step.kind, ResultKind::Asleep);
+    h.run(Command::Refresh(vec![0x10]));
+    h.run(Command::Poll(vec![0x10]));
+    h.run(Command::RecheckAfterEvent);
+    h.run(Command::DragTo { code: 0x10, value: 40 });
+    assert!(matches!(h.run(Command::FinderSnapshot)[..], [Event::Finder(FinderEvent::Refused(ResultKind::Asleep))]));
+    assert!(h.link.state().writes.is_empty());
+    assert_eq!({ let s = h.link.state(); (s.reads.len(), s.connects) }, (reads, connects));
+
+    // Display off while locked, then on: still locked, so still asleep.
+    h.run(Command::Power(PowerState::DisplayOff));
+    assert!(asleep_events(&h.run(Command::Power(PowerState::DisplayOn))).is_empty());
+    assert_eq!(h.link.state().connects, connects);
+
+    // The last wake event: after `wake_delay` (zero here), reconnect and re-read once.
+    assert_eq!(asleep_events(&h.run(Command::Power(PowerState::Unlocked))), [false]);
+    assert_eq!(h.link.state().connects, connects + 1);
+    assert!(h.link.state().reads.len() > reads);
+    assert_eq!(h.set(0x10, 30, false).kind, ResultKind::Ok);
+}
+
+#[test]
+fn the_wake_recheck_waits_for_the_wake_delay() {
+    let dir = TempDir::new();
+    let timing = Timing { wake_delay: Duration::from_millis(300), ..Timing::zero() };
+    let h = Harness::with_timing(&FakeLink::new(), dir.path(), timing);
+    h.connect();
+    let connects = h.link.state().connects;
+
+    h.run(Command::Power(PowerState::Suspending));
+    h.run(Command::Power(PowerState::Resumed));
+    assert_eq!(h.set(0x12, 50, false).kind, ResultKind::Asleep); // still waking
+    assert_eq!(h.link.state().connects, connects);
+
+    wait_until(|| h.link.state().connects == connects + 1);
+    assert_eq!(h.set(0x12, 50, false).kind, ResultKind::Ok);
+}
+
+#[test]
+fn the_retry_burst_is_paused_while_asleep() {
+    let link = FakeLink::new();
+    link.state().absent = true;
+    let dir = TempDir::new();
+    let h = Harness::new(&link, dir.path());
+    h.connect();
+    let connects = link.state().connects;
+
+    h.run(Command::Power(PowerState::DisplayOff));
+    h.run(Command::RequestReconnect);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(link.state().connects, connects);
+
+    link.state().absent = false;
+    let mut seen = statuses(&h.run(Command::Power(PowerState::DisplayOn)));
+    wait_until(|| {
+        seen.extend(statuses(&h.flush()));
+        seen.contains(&MonitorStatus::Connected)
+    });
+}
+
+#[test]
+fn permission_denied_right_after_resume_keeps_retrying_instead_of_reporting() {
+    let link = FakeLink::new();
+    {
+        let mut s = link.state();
+        s.absent = true;
+        s.failure_when_absent = LinkFailure::PermissionDenied;
+    }
+    let dir = TempDir::new();
+    let h = Harness::new(&link, dir.path());
+    let mut events = h.run(Command::Power(PowerState::Resumed));
+    wait_until(|| link.state().connects >= 3);
+    events.extend(h.flush());
+
+    assert!(!events.iter().any(|e| matches!(e, Event::Status { failure: Some(LinkFailure::PermissionDenied), .. })));
+}
+
+#[test]
+fn unsupported_is_final_and_keeps_the_monitor_connected() {
+    let (_dir, h, link) = scripted();
+    link.script().write.insert(0x12, LinkError::Unsupported("0x12".into()));
+
+    let events = h.run(Command::Set { code: 0x12, value: 50, confirmed: false, origin: Origin::Window });
+
+    let result = &results(&events)[0];
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Unsupported));
+    assert_eq!(result.message, "Contrast isn't supported by this monitor.");
+    assert_eq!(link.script().write_calls, 1);
+    assert!(statuses(&events).is_empty());
+}
+
+#[test]
+fn a_gone_connection_is_not_retried_and_reconnects_at_once() {
+    let (_dir, h, link) = scripted();
+    link.script().write.insert(0x12, LinkError::Gone("handle invalid".into()));
+
+    let events = h.run(Command::Set { code: 0x12, value: 50, confirmed: false, origin: Origin::Window });
+
+    assert_eq!(results(&events)[0].kind, ResultKind::NotResponding);
+    assert_eq!(link.script().write_calls, 1);
+    let mut seen = statuses(&events);
+    assert!(seen.contains(&MonitorStatus::NotResponding));
+    wait_until(|| {
+        seen.extend(statuses(&h.flush()));
+        seen.contains(&MonitorStatus::Connected)
+    });
+}
+
+#[test]
+fn input_switch_is_skipped_when_already_there() {
+    let (_dir, h) = connected();
+    let result = h.set(0x60, 0x11, false);
+    assert_eq!((result.kind, result.message.as_str()), (ResultKind::Ok, "Input → HDMI"));
+    assert!(h.link.state().writes.is_empty());
+}
+
+#[test]
+fn input_switch_writes_once_and_confirms_with_a_re_read() {
+    let (_dir, h) = connected();
+    let reads = h.link.state().reads.len();
+
+    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: false, origin: Origin::Window });
+
+    assert_eq!(results(&events)[0].message, "Input → DisplayPort");
+    assert_eq!(values(&events), [(0x60, reading(0x0F, 49))]);
+    assert_eq!(h.link.state().writes, [(0x60, 0x0F)]);
+    assert_eq!(h.link.state().reads.len(), reads + 2); // before and after
+}
+
+#[test]
+fn input_switch_reports_when_the_monitor_stayed() {
+    let (_dir, h) = connected();
+    h.link.state().ignored_writes.insert(0x60);
+
+    let result = h.set(0x60, 0x0F, false);
+
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Kept));
+    assert_eq!(result.message, "The monitor stayed on HDMI");
+    assert_eq!(result.kept, Some(0x11));
+    assert_eq!(h.link.state().writes, [(0x60, 0x0F)]);
+}
+
+#[test]
+fn input_switch_counts_a_silent_monitor_afterwards_as_done() {
+    let (_dir, h, link) = scripted();
+    // This PC can't read the input at all, as when the monitor shows the other PC.
+    link.script().read.insert(0x60, LinkError::Transient("no reply".into()));
+
+    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: false, origin: Origin::Window });
+
+    let result = &results(&events)[0];
+    assert_eq!((result.kind, result.message.as_str()), (ResultKind::Ok, "Input → DisplayPort"));
+    assert_eq!(h.link.state().writes, [(0x60, 0x0F)]);
+    assert!(statuses(&events).is_empty());
+}
+
+#[test]
+fn input_readings_keep_only_the_low_byte() {
+    let link = FakeLink::new();
+    link.state().values.insert(0x60, reading(0x0311, 49));
+    let dir = TempDir::new();
+    let h = Harness::new(&link, dir.path());
+
+    assert!(values(&h.connect()).contains(&(0x60, reading(0x11, 49))));
+}
+
+#[test]
+fn step_re_reads_a_stale_value_first() {
+    let dir = TempDir::new();
+    let timing = Timing { stale_after: Duration::ZERO, ..Timing::zero() };
+    let h = Harness::with_timing(&FakeLink::new(), dir.path(), timing);
+    h.connect();
+    h.link.state().values.insert(0x10, reading(40, 100)); // the other PC changed it
+
+    let result = h.result(Command::Step { code: 0x10, delta: 5, origin: Origin::Hotkey });
+
+    assert_eq!(result.message, "Brightness 45");
+    assert_eq!(h.link.state().writes, [(0x10, 45)]);
+}
+
+#[test]
+fn safe_mode_skips_the_capability_read_and_the_finder_but_still_writes() {
+    let dir = TempDir::new();
+    let fake = FakeLink::new();
+    let h = Harness::spawn(Box::new(fake.clone()), &fake, dir.path(), Timing::zero(), true);
+
+    let events = h.connect();
+    assert!(events.iter().any(|e| matches!(e, Event::SafeMode(true))));
+    assert_eq!(statuses(&events).last(), Some(&MonitorStatus::Connected));
+    assert_eq!(fake.state().capability_reads, 0);
+
+    assert_eq!(h.set(0x12, 50, false).kind, ResultKind::Ok);
+    assert!(matches!(h.run(Command::FinderSnapshot)[..], [Event::Finder(FinderEvent::Refused(ResultKind::SafeMode))]));
+    h.run(Command::ReadCapabilities);
+    assert_eq!(fake.state().capability_reads, 0);
+
+    assert!(matches!(h.run(Command::SetSafeMode(false))[..], [Event::SafeMode(false)]));
+    h.run(Command::ReadCapabilities);
+    assert_eq!(fake.state().capability_reads, 1);
+}
+
+#[test]
+fn schedule_origin_is_passed_through() {
+    let (_dir, h) = connected();
+    let preset = Preset { name: "Night".into(), brightness: 10, contrast: 60, colour_mode: None };
+    let events = h.run(Command::ApplyPreset { preset, origin: Origin::Schedule });
+    assert!(events.iter().any(|e| matches!(e, Event::Result { origin: Origin::Schedule, .. })));
 }

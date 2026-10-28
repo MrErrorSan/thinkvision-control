@@ -10,7 +10,7 @@ use tvc_core::link::{LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReadi
 use super::ffi::{self, Cf, IoAv};
 use super::locator::locate;
 use super::{
-    fallback_checksum_mode, is_unsupported_port, transport_order, ExchangeOutcome, Transport, ATTEMPTS,
+    fallback_checksum_mode, is_unsupported_port, reply_outcome, transport_order, ExchangeOutcome, Transport, ATTEMPTS,
     CAPABILITIES_FRAGMENT_LEN, CAPABILITIES_MAX_BYTES, RETRY_DELAY_MS, WRITE_CYCLES, WRITE_DELAY_MS,
 };
 use crate::{ascii, edid, not_connected, packet};
@@ -48,17 +48,19 @@ impl IoAvLink {
     }
 
     /// Sends a request and reads the reply until `accept` takes it, trying the checksum forms per
-    /// `fallback_checksum_mode` and remembering the one that worked.
+    /// `fallback_checksum_mode` and remembering the one that worked. Once the form is known, a reply that `unsupported`
+    /// recognises ends the exchange with `LinkError::Unsupported`.
     fn exchange(
         &mut self,
         what: &str,
         request: impl Fn(bool) -> Vec<u8>,
         reply_len: usize,
         accept: impl Fn(&[u8]) -> bool,
+        unsupported: impl Fn(&[u8]) -> bool,
     ) -> Result<Vec<u8>, LinkError> {
         let mut mode = self.include_source.unwrap_or(true);
         loop {
-            let (outcome, reply, error) = self.attempts(&request(mode), reply_len, &accept)?;
+            let (outcome, reply, error) = self.attempts(&request(mode), reply_len, &accept, &unsupported)?;
             if outcome == ExchangeOutcome::Ok {
                 self.include_source = Some(mode);
                 return Ok(reply);
@@ -67,10 +69,16 @@ impl IoAvLink {
                 mode = next;
                 continue;
             }
-            return Err(LinkError::Transient(match outcome {
-                ExchangeOutcome::IoError => format!("{} {what} failed (IOReturn 0x{:08X})", error.0, error.1),
-                _ => format!("No valid reply to {what} (chip 0x{:02X})", self.transport.chip_address),
-            }));
+            return Err(match outcome {
+                ExchangeOutcome::Unsupported => LinkError::Unsupported(format!("{what} is not supported by the monitor")),
+                ExchangeOutcome::IoError => {
+                    LinkError::Transient(format!("{} {what} failed (IOReturn 0x{:08X})", error.0, error.1))
+                }
+                _ => LinkError::Transient(format!(
+                    "No valid reply to {what} (chip 0x{:02X})",
+                    self.transport.chip_address
+                )),
+            });
         }
     }
 
@@ -80,6 +88,7 @@ impl IoAvLink {
         payload: &[u8],
         reply_len: usize,
         accept: &impl Fn(&[u8]) -> bool,
+        unsupported: &impl Fn(&[u8]) -> bool,
     ) -> Result<(ExchangeOutcome, Vec<u8>, CallError), LinkError> {
         let service = self.service()?;
         let mut saw_reply = false;
@@ -109,10 +118,12 @@ impl IoAvLink {
                 error = ("IOAVServiceReadI2C", ret);
                 continue;
             }
-            if accept(&reply) {
-                return Ok((ExchangeOutcome::Ok, reply, error));
+            let accepted = accept(&reply);
+            match reply_outcome(self.include_source.is_some(), accepted, !accepted && unsupported(&reply)) {
+                Some(ExchangeOutcome::Ok) => return Ok((ExchangeOutcome::Ok, reply, error)),
+                Some(outcome) => return Ok((outcome, Vec::new(), error)),
+                None => saw_reply = true,
             }
-            saw_reply = true;
         }
         let outcome = if saw_reply { ExchangeOutcome::InvalidReply } else { ExchangeOutcome::IoError };
         Ok((outcome, Vec::new(), error))
@@ -185,6 +196,7 @@ impl MonitorLink for IoAvLink {
                 |mode| packet::capabilities_request(at, mode),
                 CAPABILITIES_FRAGMENT_LEN,
                 |bytes| packet::parse_capabilities_fragment(bytes, at).is_some(),
+                |_| false, // capability replies have no "unsupported" form
             )?;
             let data = packet::parse_capabilities_fragment(&reply, at).unwrap_or_default();
             if data.is_empty() {
@@ -204,6 +216,7 @@ impl MonitorLink for IoAvLink {
             |mode| packet::get_vcp(code, mode),
             self.transport.vcp_reply_len,
             |bytes| packet::parse_vcp_reply(bytes, code).is_some(),
+            |bytes| packet::is_unsupported_reply(bytes, code),
         )?;
         packet::parse_vcp_reply(&reply, code).ok_or_else(|| LinkError::Transient("invalid reply".into()))
     }

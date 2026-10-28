@@ -1,4 +1,4 @@
-param([string]$Exe, [string]$Args1, [string]$Out, [string]$Title = "ThinkVision Control")
+param([string]$Exe, [string]$Args1, [string]$Out, [string]$Title = "ThinkVision Control", [int]$WaitMs = 1200)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System; using System.Runtime.InteropServices; using System.Text;
@@ -32,7 +32,7 @@ $h = [IntPtr]::Zero
 for ($i = 0; $i -lt 300 -and $h -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 20; $h = [W]::Find([uint32]$p.Id, $Title) }
 [W]::ShowWindow($h, 9) | Out-Null
 [W]::SetForegroundWindow($h) | Out-Null
-Start-Sleep -Milliseconds 1200
+Start-Sleep -Milliseconds $WaitMs
 $r = New-Object W+RECT
 [W]::DwmGetWindowAttribute($h, 9, [ref]$r, 16) | Out-Null   # DWMWA_EXTENDED_FRAME_BOUNDS
 $w = $r.R - $r.L; $hh = $r.B - $r.T

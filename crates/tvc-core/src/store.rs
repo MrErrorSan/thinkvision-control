@@ -10,6 +10,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::hotkey::Action;
+use crate::schedule::AutoMode;
 use crate::{hex, parse_hex};
 
 /// A Day/Night preset. Applied colour mode first, then brightness, then contrast.
@@ -21,7 +22,8 @@ pub struct Preset {
     pub colour_mode: Option<u8>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Not `Eq`: [`AutoMode::Sun`] holds floats.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     /// Gesture text per action; "" = not set. Always has all 11 actions.
     pub hotkeys: BTreeMap<Action, String>,
@@ -30,7 +32,18 @@ pub struct Settings {
     pub this_machine_input: u8,
     pub start_with_windows: bool,
     pub background_mode: bool,
+    /// B1: automatic Day/Night; Off unless the user turns it on.
+    pub auto_day_night: AutoMode,
+    /// The last Day/Night times chosen (minutes after local midnight), kept while another mode is on so the
+    /// settings UI can offer them again. Saved from `auto_day_night` when that is `Times`.
+    pub auto_times: (u16, u16),
+    /// The last location typed (latitude, longitude), kept like `auto_times`. Saved from `auto_day_night` when
+    /// that is `Sun`.
+    pub auto_location: Option<(f64, f64)>,
 }
+
+/// Day 07:00, Night 19:00.
+pub const DEFAULT_AUTO_TIMES: (u16, u16) = (7 * 60, 19 * 60);
 
 impl Default for Settings {
     /// A new install: background mode off.
@@ -42,6 +55,9 @@ impl Default for Settings {
             this_machine_input: 0x11,
             start_with_windows: false,
             background_mode: false,
+            auto_day_night: AutoMode::Off,
+            auto_times: DEFAULT_AUTO_TIMES,
+            auto_location: None,
         }
     }
 }
@@ -84,6 +100,9 @@ impl SettingsStore {
             this_machine_input: file.this_machine_input.0,
             start_with_windows: file.start_with_windows,
             background_mode: file.background_mode,
+            auto_day_night: file.auto_day_night.mode,
+            auto_times: file.auto_day_night.times,
+            auto_location: file.auto_day_night.location,
         }
     }
 
@@ -97,6 +116,7 @@ impl SettingsStore {
             this_machine_input: HexByte(settings.this_machine_input),
             start_with_windows: settings.start_with_windows,
             background_mode: settings.background_mode,
+            auto_day_night: AutoFileOut::from(settings),
         };
         let path = self.dir.join("settings.json");
         let temp = self.dir.join("settings.json.tmp");
@@ -119,6 +139,9 @@ struct SettingsFile {
     /// Files saved before 0.0.4 lack it; those users had the tray, so it loads as true.
     #[serde(default = "yes")]
     background_mode: bool,
+    /// New in 0.0.5 (0.0.4 ignores it). Missing or malformed → Off; never makes the file corrupt.
+    #[serde(default, deserialize_with = "auto_lenient")]
+    auto_day_night: AutoLoaded,
 }
 
 #[derive(Serialize)]
@@ -130,6 +153,7 @@ struct SettingsFileOut<'a> {
     this_machine_input: HexByte,
     start_with_windows: bool,
     background_mode: bool,
+    auto_day_night: AutoFileOut,
 }
 
 fn default_input() -> HexByte {
@@ -138,6 +162,83 @@ fn default_input() -> HexByte {
 
 fn yes() -> bool {
     true
+}
+
+/// `"AutoDayNight"` as loaded: the active mode plus the remembered times and place.
+struct AutoLoaded {
+    mode: AutoMode,
+    times: (u16, u16),
+    location: Option<(f64, f64)>,
+}
+
+impl Default for AutoLoaded {
+    fn default() -> Self {
+        Self { mode: AutoMode::Off, times: DEFAULT_AUTO_TIMES, location: None }
+    }
+}
+
+/// Reads any JSON: unknown modes, bad times or an invalid place fall back to Off and the defaults.
+fn auto_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<AutoLoaded, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    let field = |name: &str| value.get(name);
+    let time = |name: &str| field(name).and_then(serde_json::Value::as_str).and_then(parse_hhmm);
+    let number = |name: &str| match field(name)? {
+        serde_json::Value::Number(n) => n.as_f64(),
+        serde_json::Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    };
+    let (day, night) = (time("Day"), time("Night"));
+    let location = match (number("Latitude"), number("Longitude")) {
+        (Some(lat), Some(lon)) if valid_place(lat, lon) => Some((lat, lon)),
+        _ => None,
+    };
+    let mode_name = field("Mode").and_then(serde_json::Value::as_str).unwrap_or("").trim().to_ascii_lowercase();
+    let mode = match (mode_name.as_str(), day, night, location) {
+        ("times", Some(day), Some(night), _) => AutoMode::Times { day, night },
+        ("sun", _, _, Some((lat, lon))) => AutoMode::Sun { lat, lon },
+        _ => AutoMode::Off,
+    };
+    let times = (day.unwrap_or(DEFAULT_AUTO_TIMES.0), night.unwrap_or(DEFAULT_AUTO_TIMES.1));
+    Ok(AutoLoaded { mode, times, location })
+}
+
+fn valid_place(lat: f64, lon: f64) -> bool {
+    (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)
+}
+
+/// `"HH:MM"` (24-hour, one or two hour digits) → minutes after midnight.
+fn parse_hhmm(s: &str) -> Option<u16> {
+    let (h, m) = s.trim().split_once(':')?;
+    let digits = |p: &str, max: u16| -> Option<u16> {
+        if !(1..=2).contains(&p.len()) || !p.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        p.parse().ok().filter(|v| *v <= max)
+    };
+    Some(digits(h, 23)? * 60 + digits(m, 59)?)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct AutoFileOut {
+    mode: &'static str,
+    day: String,
+    night: String,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+}
+
+impl From<&Settings> for AutoFileOut {
+    /// The active mode's values, else the remembered ones.
+    fn from(s: &Settings) -> Self {
+        let hhmm = |m: u16| format!("{:02}:{:02}", m % 1440 / 60, m % 60);
+        let (mode, (day, night), location) = match s.auto_day_night {
+            AutoMode::Off => ("Off", s.auto_times, s.auto_location),
+            AutoMode::Times { day, night } => ("Times", (day, night), s.auto_location),
+            AutoMode::Sun { lat, lon } => ("Sun", s.auto_times, Some((lat, lon))),
+        };
+        Self { mode, day: hhmm(day), night: hhmm(night), latitude: location.map(|l| l.0), longitude: location.map(|l| l.1) }
+    }
 }
 
 /// Writes the hotkeys in action order (a JSON map would sort them).

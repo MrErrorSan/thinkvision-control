@@ -64,6 +64,13 @@ Type: files; Name: "{app}\ThinkVisionControl.runtimeconfig.json"
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startmenuicon
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
+[Registry]
+; thinkvision:// links (thinkvision://preset/night, ...). HKA is HKLM for an all-users install, HKCU with /CURRENTUSER.
+Root: HKA; Subkey: "Software\Classes\thinkvision"; ValueType: string; ValueName: ""; ValueData: "URL:{#AppName}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\thinkvision"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\thinkvision\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"
+Root: HKA; Subkey: "Software\Classes\thinkvision\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
+
 [Run]
 ; runasoriginaluser: setup runs elevated, the app must not.
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
@@ -73,5 +80,9 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // "Start with Windows" lives in the app's settings; remove its Run entry with the app.
   if CurUninstallStep = usPostUninstall then
+  begin
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ThinkVisionControl');
+    // The app also registers thinkvision:// for the current user at start; remove that copy too.
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\thinkvision');
+  end;
 end;

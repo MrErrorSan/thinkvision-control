@@ -33,10 +33,12 @@ The P32p-20's menu buttons sit behind the bottom edge of the screen. They're har
 - **One compact window** with three tabs. **Display** has what you use every day on one screen: input, brightness and contrast, Day and Night presets, and colour. **Monitor** has the rest of the menu, resets and the hidden settings finder. **Settings** has startup, this PC's input, presets and keyboard shortcuts.
 - **Live sliders:** the monitor follows as you drag, and the value is checked once you let go. If the monitor keeps an old value (some colour modes lock brightness), the app tells you why.
 - **Day and Night presets:** one click or one key sets brightness, contrast and colour mode together. Save your own from the current settings.
+- **Automatic Day/Night** (0.0.5): applies the presets by themselves, at times you set or at sunrise and sunset for a location you type. If the PC was asleep at the switch time, it catches up when it wakes.
 - **Global keyboard shortcuts**, with an on-screen level indicator: brightness and contrast up/down, presets, input switching, and "switch the monitor to this computer". You can rebind any of them.
 - **Quick access** without opening the window: keyboard shortcuts, and the tray menu (the menu-bar menu on macOS) with presets and "Switch to this PC". Clicking the tray icon opens the app.
 - **Two computers, one monitor:** each machine knows its own input, so "Switch to this PC" always brings the screen back to the one you're at.
 - **Stays in sync:** while the window is open it re-reads the monitor every few seconds, so changes made with the monitor's buttons or from the other computer show up.
+- **Reliability** (0.0.5): the app pauses while the monitor sleeps or the PC is locked, and keeps trying to reconnect for about a minute after a wake. If it crashed while probing the monitor, the next start is in safe mode, with no writes until you leave it.
 - **Safe by design:**
   - factory reset, reset brightness and contrast, and reset colour all ask first;
   - a backup is saved before any reset, and "Restore backup" undoes it;
@@ -45,7 +47,7 @@ The P32p-20's menu buttons sit behind the bottom edge of the screen. They're har
 - **Hidden settings finder:** watch the monitor's undocumented codes change while you press its buttons, then name them so they appear in the app. This is how Over Drive, Dynamic Contrast and USB Charging were mapped.
 - **Fluent look and theme-aware:** light and dark mode, and your accent colour. A clear message when the monitor isn't connected, isn't answering, or needs a one-time setup step.
 - **Light on resources:** one 9 MB program with no runtime to install. By default the app exits when you close the window. "Run in background" keeps the tray and shortcuts alive; closing the window then frees it, so the app idles at about 3 MB of memory and doesn't poll the monitor.
-- **Command line** for scripts, launchers and Stream Deck: `--preset night`, `--input usbc`, `--step brightness=+5`.
+- **Command line and links** for scripts, launchers and Stream Deck: `--preset night`, `--input usbc`, `--step brightness=+5`, `--get brightness`, and `thinkvision://` links.
 
 ## Screenshots
 
@@ -156,7 +158,7 @@ tar xzf thinkvision-control-<version>-linux-x64.tar.gz
 ./thinkvision-control-<version>-linux-x64/install.sh
 ```
 
-`install.sh` needs no root. It puts the program in `~/.local/share/thinkvision-control`, links it from `~/.local/bin`, and adds the launcher entry and icon. Run it again to update. The launcher entry includes Day, Night and "Switch monitor to this computer" in its right-click menu.
+`install.sh` needs no root. It puts the program in `~/.local/share/thinkvision-control`, links it from `~/.local/bin`, adds the launcher entry and icon, and registers `thinkvision://` links. Run it again to update. The launcher entry includes Day, Night and "Switch monitor to this computer" in its right-click menu.
 
 To build the tarball yourself, install [Rust](https://rustup.rs) and `git`, clone the repository and run `./scripts/make-linux-tarball.sh`. It writes `build/thinkvision-control-<version>-linux-x64.tar.gz`. If the build stops on a missing system library, install its development package.
 
@@ -201,20 +203,49 @@ Run them from the unpacked folder (the rule is also in `packaging/linux/` in the
 
 ## Command line
 
-The same options work on every OS. If the app is already running, the command goes to it. Otherwise the app performs the action, shows the indicator and exits, without opening a window.
+The same options work on every OS. If the app is already running, the command goes to it and exits with 0 once handed over; the result shows on the indicator there. Otherwise the app performs the action, shows the indicator and exits, without opening a window.
 
 | Option | What it does |
 |---|---|
 | `--preset day` / `--preset night` | Applies the Day or Night preset |
 | `--input hdmi` / `dp` / `usbc` / `this` | Switches the input. `this` means this computer's input, set in the Settings tab |
 | `--step brightness=+5` / `--step contrast=-5` | Changes brightness or contrast by a step |
+| `--get brightness` / `contrast` / `input` / `colour-mode` / `all` | Prints the current value (0.0.5) |
+| `--json` | With `--get`, prints JSON instead of text |
 | `--startup` | Starts in the tray or menu bar with no window, as at login |
+| `--help` | Lists the options and exit codes |
 
 ```bash
 thinkvision-control --preset night                                           # Linux
 "/Applications/ThinkVision Control.app/Contents/MacOS/thinkvision-control" --input usbc   # macOS
 "C:\Program Files\ThinkVision Control\thinkvision-control.exe" --step brightness=+10   # Windows
+thinkvision-control --get all --json
 ```
+
+`--get all` prints one `name: value` line per setting (`brightness: 40`, `contrast: 70`, `input: HDMI`, `colourMode: Neutral`); with `--json` it prints them as one object, `{"brightness":40,"contrast":70,"input":"HDMI","colourMode":"Neutral"}`. Other commands print their result (`Brightness 45`), or with `--json` an object with `ok`, `kind` and `message`.
+
+`--get` always makes its own read-only connection, even while the app is running, because a command handed over to the running app can't send output back.
+
+**Exit codes** (0.0.5), for scripts:
+
+| Code | Meaning |
+|---|---|
+| 0 | Done |
+| 1 | Monitor not found |
+| 2 | Value out of range |
+| 4 | The monitor doesn't support it |
+| 5 | The monitor isn't responding (DDC/CI off?) |
+| 8 | Timed out |
+
+**Links** (0.0.5): the installer, `install.sh` and the macOS app register `thinkvision://`, so a link does the same as a command from a browser, launcher, Run box (Win+R) or Stream Deck:
+
+| Link | Same as |
+|---|---|
+| `thinkvision://open` | Opening the app |
+| `thinkvision://preset/day` / `preset/night` | `--preset day` / `night` |
+| `thinkvision://input/hdmi` / `dp` / `usbc` / `this` | `--input ...` |
+| `thinkvision://step/brightness/+5` | `--step brightness=+5` |
+| `thinkvision://get/brightness` | `--get brightness` |
 
 ## Default shortcuts
 

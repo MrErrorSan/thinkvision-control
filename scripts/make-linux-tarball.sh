@@ -48,6 +48,10 @@ cp thinkvision-control.svg "$HOME/.local/share/icons/hicolor/scalable/apps/"
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$HOME/.local/share/applications" || true
 fi
+# thinkvision:// links (thinkvision://preset/night, ...) open the app.
+if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default thinkvision-control.desktop x-scheme-handler/thinkvision || true
+fi
 
 echo "Installed. Start \"ThinkVision Control\" from your app launcher, or run: thinkvision-control"
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "Note: ~/.local/bin is not on your PATH." ;; esac
