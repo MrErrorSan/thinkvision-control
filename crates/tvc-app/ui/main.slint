@@ -1,0 +1,163 @@
+// Main window: header with the monitor and its state, a tab strip, one scrolling page.
+import { Palette, ScrollView } from "std-widgets.slint";
+import "fonts/FluentSystemIcons-Regular.ttf";
+import { Theme, Glyphs, Icon } from "theme.slint";
+import { App } from "app.slint";
+import { Tab, InfoBar, DialogOverlay } from "controls.slint";
+import { DisplayPage, MonitorPage, SettingsPage, FinderPage, ShortcutDialog } from "pages.slint";
+
+export { App }
+export { Severity, Banner, InputItem, RangeRow, ControlKind, ControlRow, ControlGroup, PresetRow, HotkeyRow, SetupHint, Dialog, FinderChange, FinderValue, ShortcutEditor } from "types.slint";
+export { Tray, Osd } from "background.slint";
+
+export component MainWindow inherits Window {
+    // 0 = follow the OS, 1 = dark, 2 = light.
+    in property <int> forced-scheme: 0;
+    in-out property <int> tab: 0;
+    property <bool> compact: root.width < 520px;
+
+    changed forced-scheme => {
+        if root.forced-scheme == 1 { Palette.color-scheme = ColorScheme.dark; }
+        else if root.forced-scheme == 2 { Palette.color-scheme = ColorScheme.light; }
+    }
+
+    title: "ThinkVision Control";
+    icon: @image-url("app-icon-32.png");
+    preferred-width: 560px;
+    preferred-height: 680px;
+    min-width: 440px;
+    min-height: 520px;
+    background: Theme.window-bg;
+    default-font-family: "Segoe UI Variable Text";
+    default-font-size: 14px;
+
+    // Ctrl+1/2/3 switch tabs.
+    FocusScope {
+        key-pressed(e) => {
+            if e.modifiers.control && e.text == "1" { root.tab = 0; return accept; }
+            if e.modifiers.control && e.text == "2" { root.tab = 1; return accept; }
+            if e.modifiers.control && e.text == "3" { root.tab = 2; return accept; }
+            reject
+        }
+
+        VerticalLayout {
+            // Header: monitor glyph, name, connection line.
+            HorizontalLayout {
+                padding-left: Theme.gutter;
+                padding-right: Theme.gutter;
+                padding-top: 16px;
+                padding-bottom: 8px;
+                spacing: 14px;
+                Icon {
+                    text: Glyphs.display;
+                    font-size: 38px;
+                    width: 36px;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: App.model-name;
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        overflow: elide;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        Icon {
+                            text: App.status-glyph;
+                            font-size: 13px;
+                            width: 13px;
+                            color: App.connected ? Theme.success-fg : Theme.text-secondary;
+                        }
+                        Text {
+                            text: App.status-text;
+                            font-size: 13px;
+                            color: Theme.text-secondary;
+                            overflow: elide;
+                            accessible-role: text;
+                        }
+                    }
+                }
+            }
+
+            // Tabs.
+            Rectangle {
+                height: 41px;
+                HorizontalLayout {
+                    padding-left: Theme.gutter - 12px;
+                    alignment: start;
+                    accessible-role: tab-list;
+                    Tab { label: "Display"; selected: root.tab == 0; clicked => { root.tab = 0; } }
+                    Tab { label: "Monitor"; selected: root.tab == 1; clicked => { root.tab = 1; } }
+                    Tab { label: "Settings"; selected: root.tab == 2; clicked => { root.tab = 2; } }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.divider;
+                }
+            }
+
+            // Page.
+            Rectangle {
+                vertical-stretch: 1;
+                background: Theme.layer-bg;
+                ScrollView {
+                    VerticalLayout {
+                        alignment: start;
+                        padding-left: max(Theme.gutter, (root.width - 720px) / 2);
+                        padding-right: max(Theme.gutter, (root.width - 720px) / 2);
+                        padding-top: 16px;
+                        padding-bottom: 24px;
+                        spacing: 0px;
+
+                        if App.banner.visible: VerticalLayout {
+                            padding-bottom: 12px;
+                            InfoBar {
+                                data: App.banner;
+                                action => { App.banner-action(); }
+                            }
+                        }
+                        if root.tab == 0: DisplayPage { compact: root.compact; }
+                        if root.tab == 1 && !App.finder-open: MonitorPage { }
+                        if root.tab == 1 && App.finder-open: FinderPage { }
+                        if root.tab == 2: SettingsPage { }
+                    }
+                }
+            }
+        }
+    }
+
+    // Toast: short result messages ("Brightness stays 0: the colour mode locks it").
+    if App.toast != "": Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 16px;
+        width: min(parent.width - 32px, toast-text.preferred-width + 32px);
+        height: toast-text.preferred-height + 20px;
+        border-radius: Theme.radius;
+        background: Theme.dark ? #3a3a3a : #2b2b2b;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000044;
+        accessible-role: text;
+        accessible-label: App.toast;
+        toast-text := Text {
+            width: parent.width - 32px;
+            text: App.toast;
+            font-size: 13px;
+            color: #ffffff;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if App.editor.visible: ShortcutDialog { }
+
+    if App.dialog.visible: DialogOverlay {
+        data: App.dialog;
+        result(ok) => { App.dialog-result(ok); }
+    }
+}

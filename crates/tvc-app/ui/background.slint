@@ -1,0 +1,111 @@
+// Background mode: tray icon with its menu, and the step OSD.
+import { Palette } from "std-widgets.slint";
+import { Glyphs, Icon } from "theme.slint";
+
+// Slint's built-in tray (feature `system-tray`). Left click opens the window, right click shows the menu.
+export component Tray inherits SystemTrayIcon {
+    // Rust picks one by taskbar theme, adds a status badge and sets `image`.
+    out property <image> glyph-on-dark: @image-url("glyph-white-32.png");
+    out property <image> glyph-on-light: @image-url("glyph-dark-32.png");
+    in property <image> image: root.glyph-on-dark;
+    in property <string> tip: "ThinkVision Control";
+    in property <bool> connected;          // monitor actions only while connected
+    in property <bool> brightness-items;   // Linux: tray menus there have no left click
+    callback open();
+    callback preset(int);                  // 0 = Day, 1 = Night
+    callback switch-to-me();
+    callback step-brightness(int);
+    callback quit();
+
+    icon: root.image;
+    tooltip: root.tip;
+    title: "ThinkVision Control";
+    clicked => { root.open(); }
+
+    Menu {
+        MenuItem { title: "Open ThinkVision Control"; activated => { root.open(); } }
+        MenuSeparator { }
+        if root.connected && root.brightness-items: MenuItem { title: "Brightness up"; activated => { root.step-brightness(5); } }
+        if root.connected && root.brightness-items: MenuItem { title: "Brightness down"; activated => { root.step-brightness(-5); } }
+        if root.connected: MenuItem { title: "Day preset"; activated => { root.preset(0); } }
+        if root.connected: MenuItem { title: "Night preset"; activated => { root.preset(1); } }
+        if root.connected: MenuItem { title: "Switch to this PC"; activated => { root.switch-to-me(); } }
+        if root.connected: MenuSeparator { }
+        MenuItem { title: "Exit"; activated => { root.quit(); } }
+    }
+}
+
+// The step OSD: a 264x64 card. The software renderer can't draw per-pixel transparency on Windows, so the window is
+// the card and DWM rounds the corners. It stays "visible"; Rust shows and hides it with layered alpha.
+export component Osd inherits Window {
+    in property <string> glyph: Glyphs.brightness;
+    in property <string> label: "Brightness";
+    in property <string> value-text;
+    in property <float> fraction;          // 0..1; < 0 hides the bar
+    in property <string> message;          // non-empty = message mode ("Input → HDMI", errors)
+    title: "ThinkVision OSD";
+    no-frame: true;
+    always-on-top: true;
+    width: 320px;
+    height: 64px;
+    background: #2b2b2b;
+    default-font-family: "Segoe UI Variable Text";
+
+    Rectangle {
+        border-width: 1px;
+        border-color: #ffffff1a;
+    }
+    if root.message != "": Text {
+        x: 16px;
+        width: parent.width - 32px;
+        text: root.message;
+        font-size: 13px;
+        color: #ffffff;
+        wrap: word-wrap;
+        overflow: elide;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if root.message == "": Icon {
+        x: 16px;
+        y: root.fraction >= 0 ? 12px : 21px;
+        width: 22px;
+        height: 22px;
+        text: root.glyph;
+        font-size: 17px;
+        color: #ffffff;
+    }
+    if root.message == "": Text {
+        x: 44px;
+        y: root.fraction >= 0 ? 12px : 21px;
+        height: 22px;
+        text: root.label;
+        font-size: 14px;
+        color: #ffffffd0;
+        vertical-alignment: center;
+    }
+    if root.message == "": Text {
+        x: parent.width - 16px - self.width;
+        y: root.fraction >= 0 ? 10px : 19px;
+        height: 26px;
+        text: root.value-text;
+        font-size: 20px;
+        font-weight: 700;
+        color: #ffffff;
+        vertical-alignment: center;
+    }
+    if root.message == "" && root.fraction >= 0: Rectangle {
+        x: 16px;
+        y: 44px;
+        width: parent.width - 32px;
+        height: 4px;
+        border-radius: 2px;
+        background: #ffffff40;
+        Rectangle {
+            x: 0px;
+            width: parent.width * clamp(root.fraction, 0, 1);
+            border-radius: 2px;
+            background: Palette.accent-background;
+        }
+    }
+}

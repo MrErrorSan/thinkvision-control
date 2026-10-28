@@ -1,0 +1,514 @@
+// Building blocks: cards, rows, the input selector, tabs, banner, keycaps, dialog.
+import { Slider, Switch, Button, ComboBox } from "std-widgets.slint";
+import { Theme, Glyphs, Icon } from "theme.slint";
+import { Severity, Banner, InputItem, Dialog } from "types.slint";
+
+export component SectionHeader inherits VerticalLayout {
+    in property <string> text;
+    in property <bool> first;
+    padding-top: root.first ? 4px : 20px;
+    padding-bottom: 8px;
+    Text {
+        text: root.text;
+        font-size: 14px;
+        font-weight: 600;
+        color: Theme.text;
+        accessible-role: none;
+    }
+}
+
+export component CardFrame inherits Rectangle {
+    background: Theme.card-bg;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.card-stroke;
+}
+
+// Icon + title + description on the left, the control (children) on the right.
+export component Card inherits CardFrame {
+    in property <string> glyph;
+    in property <string> title;
+    in property <string> description;
+    in property <bool> enabled: true;
+
+    min-height: 60px;
+    accessible-role: groupbox;
+    accessible-label: root.title;
+    accessible-description: root.description;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 14px;
+
+        if root.glyph != "": Icon {
+            text: root.glyph;
+            font-size: 22px;
+            width: 22px;
+            color: root.enabled ? Theme.text : Theme.text-disabled;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            Text {
+                text: root.title;
+                font-size: 14px;
+                color: root.enabled ? Theme.text : Theme.text-disabled;
+                overflow: elide;
+            }
+            if root.description != "": Text {
+                text: root.description;
+                font-size: 12px;
+                color: root.enabled ? Theme.text-secondary : Theme.text-disabled;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                @children
+            }
+        }
+    }
+}
+
+// Glyph, label, slider and value on one line. `changed` fires while dragging, `released` once at the end.
+export component SliderRow inherits HorizontalLayout {
+    in property <string> glyph;
+    in property <string> label;
+    in property <float> value;
+    in property <int> revision;
+    in property <float> maximum: 100;
+    in property <bool> enabled: true;
+    in property <bool> known: true;     // false = the value text reads "—" (unknown or disconnected)
+    callback changed(float);
+    callback released(float);
+
+    init => { slider.value = root.value; }
+    changed value => { slider.value = root.value; }
+    changed revision => { slider.value = root.value; }
+
+    padding-left: 16px;
+    padding-right: 16px;
+    height: 52px;
+    spacing: 12px;
+
+    Icon {
+        text: root.glyph;
+        font-size: 20px;
+        width: 22px;
+        color: root.enabled ? Theme.text : Theme.text-disabled;
+    }
+    Text {
+        text: root.label;
+        width: 96px;
+        font-size: 14px;
+        vertical-alignment: center;
+        overflow: elide;
+        color: root.enabled ? Theme.text : Theme.text-disabled;
+    }
+    slider := Slider {
+        horizontal-stretch: 1;
+        minimum: 0;
+        maximum: root.maximum;
+        step: 1;
+        enabled: root.enabled;
+        accessible-label: root.label;
+        changed(v) => { root.changed(Math.round(v)); }
+        released(v) => { root.released(Math.round(v)); }
+    }
+    Text {
+        width: 32px;
+        text: root.known ? Math.round(slider.value) : "—";
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        font-size: 14px;
+        color: root.enabled ? Theme.text : Theme.text-disabled;
+    }
+}
+
+export component RowDivider inherits Rectangle {
+    height: 1px;
+    background: Theme.divider;
+}
+
+// A large toggle-style button: accent fill when selected; optional second line.
+export component TileButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    in property <string> caption;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    min-height: root.caption != "" ? 56px : 44px;
+    border-radius: Theme.radius;
+    border-width: root.selected ? 0px : 1px;
+    border-color: Theme.card-stroke;
+    background: root.selected ? Theme.accent
+              : ta.pressed ? Theme.card-bg-secondary
+              : ta.has-hover ? Theme.subtle-hover.mix(Theme.card-bg, 50%)
+              : Theme.card-bg;
+    animate background { duration: 100ms; }
+    opacity: root.enabled ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: root.caption != "" ? root.label + ", " + root.caption : root.label;
+    accessible-checked: root.selected;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: center;
+        if root.glyph != "": Icon {
+            text: root.glyph;
+            font-size: 18px;
+            width: 18px;
+            color: root.selected ? Theme.on-accent : Theme.text;
+        }
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.label;
+                font-size: 14px;
+                font-weight: root.selected ? 600 : 400;
+                horizontal-alignment: center;
+                overflow: elide;
+                color: root.selected ? Theme.on-accent : Theme.text;
+            }
+            if root.caption != "": Text {
+                text: root.caption;
+                font-size: 12px;
+                horizontal-alignment: center;
+                overflow: elide;
+                color: root.selected ? Theme.on-accent : Theme.text-secondary;
+            }
+        }
+    }
+}
+
+// Segmented input selector; equal-width tiles.
+export component InputSelector inherits HorizontalLayout {
+    in property <[InputItem]> inputs;
+    in property <int> active;          // code of the current input, -1 = unknown
+    in property <bool> enabled: true;
+    in property <bool> compact;        // hide the "This PC" caption on narrow windows
+    callback select(int);
+
+    spacing: 6px;
+    accessible-role: radio-group;
+    accessible-label: "Input";
+
+    for item in root.inputs: TileButton {
+        horizontal-stretch: 1;
+        label: item.label;
+        caption: item.this-pc && !root.compact ? "This PC" : (root.compact ? "" : " ");
+        selected: item.code == root.active;
+        enabled: root.enabled;
+        clicked => { root.select(item.code); }
+    }
+}
+
+// Top tab strip: text tabs, 3 px accent underline under the selected one.
+export component Tab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+
+    width: t.preferred-width + 24px;
+    height: 40px;
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+
+    ta := TouchArea { clicked => { root.clicked(); } }
+    Rectangle {
+        y: 4px;
+        height: 32px;
+        border-radius: 4px;
+        background: ta.pressed ? Theme.subtle-pressed : ta.has-hover ? Theme.subtle-hover : transparent;
+    }
+    t := Text {
+        text: root.label;
+        font-size: 14px;
+        font-weight: root.selected ? 600 : 400;
+        color: root.selected ? Theme.text : Theme.text-secondary;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        y: parent.height - 3px;
+        x: (parent.width - self.width) / 2;
+        width: root.selected ? t.preferred-width : 0px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        animate width { duration: 150ms; easing: ease-out; }
+    }
+}
+
+// WinUI InfoBar.
+export component InfoBar inherits Rectangle {
+    in property <Banner> data;
+    callback action;
+
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.card-stroke;
+    background: data.severity == Severity.error ? Theme.error-bg
+              : data.severity == Severity.warning ? Theme.warning-bg
+              : data.severity == Severity.success ? Theme.success-bg : Theme.info-bg;
+    accessible-role: groupbox;
+    accessible-label: root.data.title;
+    accessible-description: root.data.message;
+
+    HorizontalLayout {
+        padding: 14px;
+        spacing: 12px;
+        Icon {
+            y: 0px;
+            text: data.severity == Severity.error ? Glyphs.error
+                : data.severity == Severity.warning ? Glyphs.warning
+                : data.severity == Severity.success ? Glyphs.success : Glyphs.about;
+            font-size: 18px;
+            width: 18px;
+            vertical-alignment: top;
+            color: data.severity == Severity.error ? Theme.error-fg
+                 : data.severity == Severity.warning ? Theme.warning-fg
+                 : data.severity == Severity.success ? Theme.success-fg : Theme.accent;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.data.title;
+                font-size: 14px;
+                font-weight: 600;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+            if root.data.message != "": Text {
+                text: root.data.message;
+                font-size: 13px;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+        }
+        if root.data.action != "": VerticalLayout {
+            alignment: center;
+            Button {
+                text: root.data.action;
+                clicked => { root.action(); }
+            }
+        }
+    }
+}
+
+export component Keycap inherits Rectangle {
+    in property <string> text;
+    min-width: 28px;
+    height: 26px;
+    border-radius: 4px;
+    background: Theme.card-bg-secondary;
+    border-width: 1px;
+    border-color: Theme.divider;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        Text {
+            text: root.text;
+            font-size: 12px;
+            color: Theme.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+}
+
+// Windows Settings style: "On"/"Off" left of a bare switch.
+export component LabelledSwitch inherits HorizontalLayout {
+    in property <bool> checked;
+    in property <int> revision;
+    in property <string> name;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    spacing: 12px;
+    init => { sw.checked = root.checked; }
+    changed checked => { sw.checked = root.checked; }
+    changed revision => { sw.checked = root.checked; }
+    Text {
+        text: sw.checked ? "On" : "Off";
+        vertical-alignment: center;
+        color: root.enabled ? Theme.text : Theme.text-disabled;
+        font-size: 14px;
+    }
+    sw := Switch {
+        enabled: root.enabled;
+        accessible-label: root.name;
+        toggled => { root.toggled(self.checked); }
+    }
+}
+
+// Card whose header toggles a body; used for Custom colour.
+export component ExpanderCard inherits CardFrame {
+    in property <string> glyph;
+    in property <string> title;
+    in property <string> description;
+    in property <bool> enabled: true;
+    in-out property <bool> expanded;
+
+    clip: true;
+    accessible-role: groupbox;
+    accessible-label: root.title;
+
+    VerticalLayout {
+        Rectangle {
+            height: 60px;
+            background: ta.has-hover && root.enabled ? Theme.subtle-hover : transparent;
+            accessible-role: button;
+            accessible-label: root.title;
+            accessible-description: root.description;
+            accessible-expandable: true;
+            accessible-expanded: root.expanded;
+            accessible-action-expand => { root.expanded = !root.expanded; }
+            ta := TouchArea { clicked => { root.expanded = !root.expanded; } }
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 14px;
+                Icon {
+                    text: root.glyph;
+                    font-size: 22px;
+                    width: 22px;
+                    color: root.enabled ? Theme.text : Theme.text-disabled;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: root.title;
+                        font-size: 14px;
+                        color: root.enabled ? Theme.text : Theme.text-disabled;
+                    }
+                    Text {
+                        text: root.description;
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                    }
+                }
+                Icon {
+                    text: root.expanded ? Glyphs.chevron-up : Glyphs.chevron-down;
+                    font-size: 13px;
+                    width: 12px;
+                }
+            }
+        }
+        if root.expanded: RowDivider { }
+        // @children can't sit in a conditional element, so the body collapses to zero height instead.
+        Rectangle {
+            height: root.expanded ? body.preferred-height : 0px;
+            visible: root.expanded;
+            clip: true;
+            background: Theme.card-bg-secondary;
+            body := VerticalLayout {
+                padding-top: 4px;
+                padding-bottom: 4px;
+                @children
+            }
+        }
+    }
+}
+
+// Modal confirm dialog drawn over the window. Cancel (`secondary`) is the default: accent style, initial focus,
+// Enter; Esc anywhere cancels. An empty `primary` leaves one button (an OK message).
+export component DialogOverlay inherits Rectangle {
+    in property <Dialog> data;
+    callback result(bool);
+
+    background: #00000066;
+    TouchArea { }  // swallow clicks behind the dialog
+    init => { cancel.focus(); }
+
+    // Keys a button doesn't take bubble up here.
+    FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        key-pressed(e) => {
+            if e.text == Key.Escape || e.text == Key.Return { root.result(false); return accept; }
+            reject
+        }
+
+        CardFrame {
+            width: min(parent.width - 48px, 420px);
+            height: body.preferred-height;
+            background: Theme.layer-bg;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000055;
+            accessible-role: groupbox;
+            accessible-label: root.data.title;
+
+            body := VerticalLayout {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    Text {
+                        text: root.data.title;
+                        font-size: 20px;
+                        font-weight: 600;
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.data.message;
+                        font-size: 14px;
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                }
+                Rectangle {
+                    background: Theme.card-bg-secondary;
+                    border-bottom-left-radius: Theme.radius;
+                    border-bottom-right-radius: Theme.radius;
+                    HorizontalLayout {
+                        padding: 24px;
+                        spacing: 8px;
+                        if root.data.primary != "": Button {
+                            horizontal-stretch: 1;
+                            text: root.data.primary;
+                            clicked => { root.result(true); }
+                        }
+                        cancel := Button {
+                            horizontal-stretch: 1;
+                            text: root.data.secondary;
+                            primary: true;
+                            clicked => { root.result(false); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ComboBox whose selection follows `index` whenever it or `revision` changes, even after the user picked one.
+export component SyncCombo inherits ComboBox {
+    in property <int> index;
+    in property <int> revision;
+    init => { self.current-index = root.index; }
+    changed index => { self.current-index = root.index; }
+    changed revision => { self.current-index = root.index; }
+}

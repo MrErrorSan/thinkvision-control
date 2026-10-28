@@ -1,0 +1,601 @@
+// The three tabs. Each is a column of sections; the window wraps it in a scroll view.
+import { Button, LineEdit } from "std-widgets.slint";
+import { Theme, Glyphs, Icon } from "theme.slint";
+import { ControlKind } from "types.slint";
+import { App } from "app.slint";
+import { SectionHeader, CardFrame, Card, SliderRow, RowDivider, TileButton, InputSelector, Keycap, LabelledSwitch, ExpanderCard, InfoBar, SyncCombo } from "controls.slint";
+
+export component DisplayPage inherits VerticalLayout {
+    in property <bool> compact;
+    property <bool> custom-open;
+
+    if App.inputs.length > 0: SectionHeader { text: "Input"; first: true; }
+    if App.inputs.length > 0: InputSelector {
+        inputs: App.inputs;
+        active: App.active-input;
+        enabled: App.connected;
+        compact: root.compact;
+        select(code) => { App.select-input(code); }
+    }
+
+    SectionHeader { text: "Brightness and contrast"; first: App.inputs.length == 0; }
+    CardFrame {
+        VerticalLayout {
+            padding-top: 2px;
+            padding-bottom: 2px;
+            for r[i] in App.main-ranges: VerticalLayout {
+                if i > 0: RowDivider { }
+                SliderRow {
+                    glyph: r.glyph;
+                    label: r.label;
+                    value: r.value;
+                    revision: r.revision;
+                    maximum: r.maximum;
+                    enabled: r.enabled && App.connected;
+                    known: r.enabled && App.connected;
+                    changed(v) => { App.range-changed(r.code, v); }
+                    released(v) => { App.range-released(r.code, v); }
+                }
+            }
+        }
+    }
+    if App.range-note != "": Text {
+        text: App.range-note;
+        font-size: 12px;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+
+    if App.presets.length > 0: SectionHeader { text: "Presets"; }
+    if App.presets.length > 0: HorizontalLayout {
+        spacing: 6px;
+        for p[i] in App.presets: TileButton {
+            horizontal-stretch: 1;
+            glyph: p.glyph;
+            label: p.name;
+            caption: root.compact ? "" : p.summary;
+            enabled: App.connected;
+            clicked => { App.apply-preset(i); }
+        }
+    }
+
+    SectionHeader { text: "Colour"; }
+    VerticalLayout {
+        spacing: 4px;
+        Card {
+            glyph: Glyphs.colour;
+            title: "Colour mode";
+            enabled: App.connected;
+            SyncCombo {
+                model: App.colour-modes;
+                index: App.colour-mode-index;
+                revision: App.colour-revision;
+                enabled: App.connected;
+                accessible-label: "Colour mode";
+                selected => { App.colour-mode-selected(self.current-index); }
+            }
+        }
+        ExpanderCard {
+            glyph: Glyphs.options;
+            title: "Custom colour";
+            description: App.custom-colour-hint;
+            enabled: App.custom-colour-available && App.connected;
+            expanded <=> root.custom-open;
+            for r in App.custom-colour: SliderRow {
+                glyph: "";
+                label: r.label;
+                value: r.value;
+                revision: r.revision;
+                maximum: r.maximum;
+                enabled: r.enabled && App.custom-colour-available && App.connected;
+                known: r.enabled && App.connected;
+                changed(v) => { App.range-changed(r.code, v); }
+                released(v) => { App.range-released(r.code, v); }
+            }
+        }
+    }
+}
+
+export component MonitorPage inherits VerticalLayout {
+    for g[gi] in App.monitor-groups: VerticalLayout {
+        SectionHeader { text: g.title; first: gi == 0; }
+        VerticalLayout {
+            spacing: 4px;
+            for row in g.rows: Card {
+                glyph: row.glyph;
+                title: row.label;
+                description: row.description;
+                enabled: row.enabled && App.connected;
+                if row.kind == ControlKind.choice: SyncCombo {
+                    model: row.options;
+                    index: row.index;
+                    revision: row.revision;
+                    enabled: row.enabled && App.connected;
+                    accessible-label: row.label;
+                    selected => { App.control-changed(row.code, self.current-index); }
+                }
+                if row.kind == ControlKind.toggle: LabelledSwitch {
+                    checked: row.index == 1;
+                    revision: row.revision;
+                    name: row.label;
+                    enabled: row.enabled && App.connected;
+                    toggled(on) => { App.control-changed(row.code, on ? 1 : 0); }
+                }
+                if row.kind == ControlKind.action: Button {
+                    text: row.button;
+                    enabled: row.enabled && App.connected;
+                    accessible-label: row.label;
+                    clicked => { App.control-action(row.code); }
+                }
+            }
+        }
+    }
+
+    SectionHeader { text: "Backup"; }
+    Card {
+        glyph: Glyphs.reset;
+        title: "Restore backup";
+        description: App.restore-text;
+        enabled: App.connected;
+        Button {
+            text: "Restore";
+            enabled: App.connected;
+            clicked => { App.restore-backup(); }
+        }
+    }
+
+    SectionHeader { text: "Tools"; }
+    Card {
+        glyph: Glyphs.search;
+        title: "Find hidden settings";
+        description: "Look for settings your monitor supports but doesn't list";
+        Button {
+            text: "Open";
+            clicked => { App.finder-open = true; App.find-hidden(); }
+        }
+    }
+}
+
+// Shortcut editor: captures key presses (Rust validates them), Esc cancels, Enter saves, Tab moves focus.
+export component ShortcutDialog inherits Rectangle {
+    background: #00000066;
+    TouchArea { }
+
+    // The conflict dialog takes focus; give it back to the capture area when it closes.
+    property <bool> blocked: App.dialog.visible;
+    changed blocked => { if !root.blocked { capture.focus(); } }
+
+    // Esc cancels from anywhere in the dialog, buttons included.
+    FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        key-pressed(e) => {
+            if e.text == Key.Escape { App.editor-cancel(); return accept; }
+            reject
+        }
+
+        CardFrame {
+            width: min(parent.width - 32px, 440px);
+            height: body.preferred-height;
+            background: Theme.layer-bg;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000055;
+            accessible-role: groupbox;
+            accessible-label: "Edit shortcut";
+
+            body := VerticalLayout {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    Text { text: "Edit shortcut"; font-size: 20px; font-weight: 600; color: Theme.text; }
+                    Text {
+                        text: "Press a combination of keys to change the shortcut for " + App.editor.action + ".";
+                        font-size: 14px;
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                    capture := FocusScope {
+                        height: 72px;
+                        init => { self.focus(); }
+                        key-pressed(e) => {
+                            if e.text == Key.Escape { App.editor-cancel(); return accept; }
+                            if e.text == Key.Tab || e.text == Key.Backtab { return reject; }
+                            if e.text == Key.Return && !e.modifiers.control && !e.modifiers.alt && !e.modifiers.meta && !e.modifiers.shift {
+                                if App.editor.can-save { App.editor-save(); }
+                                return accept;
+                            }
+                            App.editor-key(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta, true);
+                            accept
+                        }
+                        key-released(e) => {
+                            App.editor-key(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta, false);
+                            accept
+                        }
+                        Rectangle {
+                            border-radius: Theme.radius;
+                            border-width: capture.has-focus ? 2px : 1px;
+                            border-color: capture.has-focus ? Theme.accent : Theme.card-stroke;
+                            background: Theme.card-bg;
+                            accessible-role: text;
+                            accessible-label: App.editor.keys.length == 0 ? "Press keys" : "Shortcut keys";
+                            TouchArea { clicked => { capture.focus(); } }
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+                                opacity: App.editor.live ? 0.75 : 1;
+                                for k in App.editor.keys: VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        height: 40px;
+                                        min-width: 40px;
+                                        border-radius: Theme.radius;
+                                        background: Theme.accent;
+                                        HorizontalLayout {
+                                            padding-left: 12px;
+                                            padding-right: 12px;
+                                            Text {
+                                                text: k;
+                                                font-size: 16px;
+                                                font-weight: 600;
+                                                color: Theme.on-accent;
+                                                vertical-alignment: center;
+                                                horizontal-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+                                if App.editor.keys.length == 0: Text {
+                                    text: "Press keys";
+                                    color: Theme.text-secondary;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    if App.editor.error-title != "": InfoBar {
+                        data: {
+                            visible: true,
+                            severity: App.editor.severity,
+                            title: App.editor.error-title,
+                            message: App.editor.error-message,
+                            action: "",
+                        };
+                    }
+                    Text { text: App.editor.hint; font-size: 12px; color: Theme.text-secondary; wrap: word-wrap; }
+                }
+                Rectangle {
+                    background: Theme.card-bg-secondary;
+                    border-bottom-left-radius: Theme.radius;
+                    border-bottom-right-radius: Theme.radius;
+                    HorizontalLayout {
+                        padding: 24px;
+                        spacing: 8px;
+                        Button { text: "Reset to default"; clicked => { App.editor-reset(); } }
+                        Button { text: "Clear"; enabled: App.editor.can-clear; clicked => { App.editor-clear(); } }
+                        Rectangle { horizontal-stretch: 1; }
+                        Button { text: "Save"; primary: true; enabled: App.editor.can-save; clicked => { App.editor-save(); } }
+                        Button { text: "Cancel"; clicked => { App.editor-cancel(); } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// "Find hidden settings": read-only snapshot / compare, then name what changed. A sub-page of the Monitor tab.
+export component FinderPage inherits VerticalLayout {
+    HorizontalLayout {
+        spacing: 8px;
+        padding-bottom: 8px;
+        Rectangle {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            background: back.pressed ? Theme.subtle-pressed : back.has-hover ? Theme.subtle-hover : transparent;
+            accessible-role: button;
+            accessible-label: "Back to Monitor";
+            accessible-action-default => { App.finder-open = false; }
+            Icon { text: Glyphs.back; font-size: 16px; }
+            back := TouchArea { clicked => { App.finder-open = false; } }
+        }
+        Text {
+            text: "Find hidden settings";
+            font-size: 18px;
+            font-weight: 600;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+    Text {
+        text: "This only reads from the monitor; nothing is written here. It compares Lenovo's undocumented codes before and after you change one setting with the monitor's own buttons, so you can name what each code controls. A named code then appears in Monitor settings.";
+        font-size: 13px;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+    if App.finder-status.visible: VerticalLayout {
+        padding-top: 12px;
+        InfoBar { data: App.finder-status; }
+    }
+
+    SectionHeader { text: "Steps"; }
+    VerticalLayout {
+        spacing: 4px;
+        Card {
+            title: "1. Take a snapshot";
+            description: App.finder-snapshot-text;
+            Button {
+                text: "Take snapshot";
+                enabled: App.connected && !App.finder-busy;
+                clicked => { App.finder-snapshot(); }
+            }
+        }
+        Card {
+            title: "2. Change one setting with the monitor's buttons";
+            description: "For example Over Drive. Change only one, then compare.";
+        }
+        Card {
+            title: "3. Compare";
+            description: "Lists the codes whose value changed";
+            Button {
+                text: "Compare";
+                enabled: App.finder-can-compare && App.connected && !App.finder-busy;
+                clicked => { App.finder-compare(); }
+            }
+        }
+    }
+
+    if App.finder-changes.length > 0: SectionHeader { text: "Changed"; }
+    if App.finder-changes.length > 0: CardFrame {
+        VerticalLayout {
+            padding: 4px;
+            accessible-role: list;
+            for c[i] in App.finder-changes: Rectangle {
+                height: 36px;
+                border-radius: 4px;
+                background: i == App.finder-selected ? Theme.subtle-hover : cta.has-hover ? Theme.subtle-pressed : transparent;
+                accessible-role: list-item;
+                accessible-label: c.text;
+                accessible-item-selected: i == App.finder-selected;
+                accessible-action-default => { App.finder-select(i); }
+                cta := TouchArea { clicked => { App.finder-select(i); } }
+                Rectangle {
+                    x: 0px;
+                    width: 3px;
+                    height: i == App.finder-selected ? 16px : 0px;
+                    border-radius: 1.5px;
+                    background: Theme.accent;
+                }
+                Text {
+                    x: 12px;
+                    text: c.text;
+                    font-size: 14px;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    if App.finder-selected >= 0: SectionHeader { text: "Name it"; }
+    if App.finder-selected >= 0: CardFrame {
+        // Typing breaks the field's binding; put the new change's name back when the form is refilled.
+        property <int> form: App.finder-form;
+        changed form => { name-edit.text = App.finder-name; }
+        VerticalLayout {
+            padding: 16px;
+            spacing: 8px;
+            Text { text: "Setting name"; font-size: 13px; color: Theme.text; }
+            name-edit := LineEdit {
+                text: App.finder-name;
+                placeholder-text: "e.g. Local dimming";
+                edited(t) => { App.finder-name-edited(t); }
+            }
+            for v[i] in App.finder-values: VerticalLayout {
+                spacing: 4px;
+                padding-top: 4px;
+                Text { text: v.caption; font-size: 12px; color: Theme.text-secondary; }
+                LineEdit {
+                    text: v.label;
+                    placeholder-text: "Label (optional)";
+                    edited(t) => { App.finder-value-edited(i, t); }
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                padding-top: 4px;
+                Button {
+                    text: "Save";
+                    primary: true;
+                    clicked => { App.finder-save(); }
+                }
+            }
+        }
+    }
+}
+
+// Switches between the Day and Night presets on a schedule. Off / at set times / at sunrise and sunset.
+component AutoDayNightCard inherits CardFrame {
+    property <int> choice: App.auto-mode;
+    VerticalLayout {
+        Card {
+            border-width: 0px;
+            background: transparent;
+            glyph: Glyphs.moon;
+            title: "Switch presets automatically";
+            description: App.auto-note;
+            SyncCombo {
+                model: ["Off", "At set times", "At sunrise and sunset"];
+                index: App.auto-mode;
+                accessible-label: "Switch presets automatically";
+                selected => {
+                    root.choice = self.current-index;
+                    App.set-auto-mode(self.current-index);
+                }
+            }
+        }
+        if root.choice == 1: VerticalLayout {
+            RowDivider { }
+            HorizontalLayout {
+                padding: 12px;
+                padding-left: 52px;
+                spacing: 8px;
+                Text { text: "Day"; vertical-alignment: center; color: Theme.text; }
+                day := LineEdit { text: App.auto-day; width: 80px; accessible-label: "Day preset time"; }
+                Text { text: "Night"; vertical-alignment: center; color: Theme.text; }
+                night := LineEdit { text: App.auto-night; width: 80px; accessible-label: "Night preset time"; }
+                Rectangle { horizontal-stretch: 1; }
+                Button { text: "Save"; clicked => { App.save-auto-times(day.text, night.text); } }
+            }
+        }
+        if root.choice == 2: VerticalLayout {
+            RowDivider { }
+            HorizontalLayout {
+                padding: 12px;
+                padding-left: 52px;
+                spacing: 8px;
+                lat := LineEdit { text: App.auto-lat; placeholder-text: "Latitude, e.g. 31.52"; accessible-label: "Latitude"; }
+                lon := LineEdit { text: App.auto-lon; placeholder-text: "Longitude, e.g. 74.36"; accessible-label: "Longitude"; }
+                Button { text: "Save"; clicked => { App.save-auto-location(lat.text, lon.text); } }
+            }
+        }
+    }
+}
+
+export component SettingsPage inherits VerticalLayout {
+    if App.setup-hints.length > 0: SectionHeader { text: "System setup"; first: true; }
+    if App.setup-hints.length > 0: VerticalLayout {
+        spacing: 4px;
+        for h in App.setup-hints: Card {
+            glyph: Glyphs.setup;
+            title: h.title;
+            description: h.command != "" ? h.message + "\n" + h.command : h.message;
+            if h.command != "": Button {
+                text: "Copy";
+                accessible-label: "Copy the command for: " + h.title;
+                clicked => { App.copy-text(h.command); }
+            }
+        }
+    }
+
+    SectionHeader { text: "Startup"; first: App.setup-hints.length == 0; }
+    CardFrame {
+        VerticalLayout {
+            Card {
+                border-width: 0px;
+                glyph: Glyphs.background;
+                title: "Run in background";
+                description: App.background-description;
+                LabelledSwitch {
+                    checked: App.background-mode;
+                    name: "Run in background";
+                    toggled(on) => { App.set-background(on); }
+                }
+            }
+            RowDivider { }
+            Card {
+                border-width: 0px;
+                background: transparent;
+                glyph: "";
+                title: App.start-label;
+                description: App.start-description;
+                LabelledSwitch {
+                    checked: App.start-with-os;
+                    name: App.start-label;
+                    toggled(on) => { App.set-start(on); }
+                }
+            }
+        }
+    }
+
+    SectionHeader { text: "This PC"; }
+    Card {
+        glyph: Glyphs.display;
+        title: "This PC's input";
+        description: "We ask before you switch the monitor away from it";
+        SyncCombo {
+            model: App.input-labels;
+            index: App.this-pc-index;
+            accessible-label: "This PC's input";
+            selected => { App.set-this-pc(self.current-index); }
+        }
+    }
+
+    if App.presets.length > 0: SectionHeader { text: "Presets"; }
+    if App.presets.length > 0: VerticalLayout {
+        spacing: 4px;
+        for p[i] in App.presets: Card {
+            glyph: p.glyph;
+            title: p.name;
+            description: p.summary;
+            Button {
+                text: "Save current";
+                accessible-label: "Save current settings as " + p.name;
+                clicked => { App.save-preset(i); }
+            }
+        }
+    }
+
+    SectionHeader { text: "Automatic Day/Night"; }
+    AutoDayNightCard { }
+
+    SectionHeader { text: "Keyboard shortcuts"; }
+    if App.shortcuts-description != "": Text {
+        text: App.shortcuts-description;
+        font-size: 12px;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+    if App.shortcuts-description != "": Rectangle { height: 8px; }
+    CardFrame {
+        VerticalLayout {
+            padding-top: 2px;
+            padding-bottom: 2px;
+            for h[i] in App.hotkeys: VerticalLayout {
+                if i > 0: RowDivider { }
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 8px;
+                    height: 48px;
+                    spacing: 6px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text { text: h.label; font-size: 14px; color: Theme.text; overflow: elide; }
+                        if h.warning != "": Text { text: h.warning; font-size: 12px; color: Theme.warning-fg; }
+                    }
+                    for k in h.keys: VerticalLayout {
+                        alignment: center;
+                        Keycap { text: k; }
+                    }
+                    if h.keys.length == 0: Text {
+                        text: "Not set";
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 36px;
+                        accessible-role: button;
+                        accessible-label: "Edit shortcut: " + h.label;
+                        accessible-action-default => { App.edit-hotkey(i); }
+                        Rectangle {
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 4px;
+                            background: eta.pressed ? Theme.subtle-pressed : eta.has-hover ? Theme.subtle-hover : transparent;
+                        }
+                        Icon { text: Glyphs.edit; font-size: 16px; }
+                        eta := TouchArea { clicked => { App.edit-hotkey(i); } }
+                    }
+                }
+            }
+        }
+    }
+
+    SectionHeader { text: "About"; }
+    Card {
+        glyph: Glyphs.about;
+        title: "ThinkVision Control " + App.version;
+        description: App.profile-text;
+    }
+}

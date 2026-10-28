@@ -1,0 +1,47 @@
+[package]
+name = "tvc-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "thinkvision-control"
+path = "src/main.rs"
+
+[dependencies]
+slint = { workspace = true }
+tvc-core = { path = "../tvc-core", features = ["fake"] }
+tvc-ddc = { path = "../tvc-ddc" }
+global-hotkey = "0.9"
+
+[build-dependencies]
+slint-build = { workspace = true }
+
+# Linux: both winit windowing backends.
+[target.'cfg(target_os = "linux")'.dependencies]
+slint = { workspace = true, features = ["backend-winit-x11", "backend-winit-wayland"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Pipes",
+    "Win32_System_Power",
+    "Win32_System_Registry",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }

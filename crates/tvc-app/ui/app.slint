@@ -1,0 +1,104 @@
+// Everything the window shows and every action it can take. Rust fills this on open and while visible,
+// and listens to the callbacks. Pages read it directly, so no property drilling.
+import { Banner, InputItem, RangeRow, ControlGroup, PresetRow, HotkeyRow, SetupHint, Dialog, FinderChange, FinderValue, ShortcutEditor } from "types.slint";
+
+export global App {
+    // Header
+    in property <string> model-name: "Monitor";
+    in property <string> status-glyph;
+    in property <string> status-text;
+    in property <bool> connected;
+    in property <Banner> banner;
+
+    // Display tab
+    in property <[InputItem]> inputs;
+    in property <int> active-input: -1;
+    in property <[RangeRow]> main-ranges;      // brightness, contrast
+    in property <string> range-note;            // e.g. "This colour mode locks brightness"
+    in property <[PresetRow]> presets;
+    in property <[string]> colour-modes;
+    in property <int> colour-mode-index: -1;
+    in property <int> colour-revision;
+    in property <bool> custom-colour-available;
+    in property <string> custom-colour-hint;
+    in property <[RangeRow]> custom-colour;     // red, green, blue gain
+
+    // Monitor tab
+    in property <[ControlGroup]> monitor-groups;
+    in property <string> restore-text: "Put back the settings saved before the last reset";
+
+    // Finder sub-page (Monitor tab)
+    in-out property <bool> finder-open;
+    in property <Banner> finder-status;
+    in property <bool> finder-busy;
+    in property <string> finder-snapshot-text: "Reads the current value of every code the monitor reports";
+    in property <bool> finder-can-compare;
+    in property <[FinderChange]> finder-changes;
+    in property <int> finder-selected: -1;
+    in property <string> finder-name;
+    in property <[FinderValue]> finder-values;
+    in property <int> finder-form;              // bumped when the naming form is refilled
+
+    // Shortcut editor dialog
+    in property <ShortcutEditor> editor;
+
+    // Settings tab
+    in property <[SetupHint]> setup-hints;
+    in property <bool> background-mode;
+    in property <string> background-description;
+    in property <string> start-label: "Start with Windows";
+    in property <string> start-description;
+    in property <bool> start-with-os;
+    in property <[string]> input-labels;
+    in property <int> this-pc-index: -1;
+    in property <string> shortcuts-description;
+    in property <[HotkeyRow]> hotkeys;
+    // Automatic Day/Night: 0 off, 1 at set times, 2 at sunrise and sunset
+    in property <int> auto-mode;
+    in property <string> auto-day: "07:00";
+    in property <string> auto-night: "19:00";
+    in property <string> auto-lat;
+    in property <string> auto-lon;
+    in property <string> auto-note;
+    in property <string> version;
+    in property <string> profile-text;
+
+    // Overlays
+    in property <Dialog> dialog;
+    in property <string> toast;
+
+    callback select-input(int);                 // input code
+    callback range-changed(int, float);         // code, value (while dragging)
+    callback range-released(int, float);        // code, value (drag end / click)
+    callback colour-mode-selected(int);         // index into colour-modes
+    callback control-changed(int, int);         // code, option index
+    callback control-action(int);               // code
+    callback apply-preset(int);
+    callback save-preset(int);
+    callback banner-action();
+    callback find-hidden();
+    callback set-background(bool);
+    callback set-start(bool);
+    callback set-this-pc(int);                  // index into input-labels
+    callback edit-hotkey(int);
+    callback copy-text(string);
+    callback dialog-result(bool);
+    callback set-auto-mode(int);
+    callback save-auto-times(string, string);       // day, night as HH:MM
+    callback save-auto-location(string, string);    // latitude, longitude in degrees
+    callback restore-backup();
+
+    callback finder-snapshot();
+    callback finder-compare();
+    callback finder-select(int);                // index into finder-changes
+    callback finder-name-edited(string);
+    callback finder-value-edited(int, string);  // index into finder-values, label
+    callback finder-save();
+
+    // Key text is Slint's (Key.UpArrow etc. for named keys); Rust validates and updates `editor`.
+    callback editor-key(string, bool, bool, bool, bool, bool);   // text, ctrl, alt, shift, meta, pressed
+    callback editor-save();
+    callback editor-clear();
+    callback editor-reset();
+    callback editor-cancel();
+}
