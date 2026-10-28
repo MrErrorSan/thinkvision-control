@@ -1,0 +1,77 @@
+{
+  "name": "wx-nofont",
+  "exe": "W:\\t\\release\\tvc-wx.exe",
+  "args": "",
+  "tray_only": false,
+  "size_bytes": 3935744.0,
+  "size_mb": 3.75,
+  "zipped_bytes": 1659122,
+  "zipped_mb": 1.58,
+  "files": {
+    "name": "tvc-wx.exe",
+    "bytes": 3935744
+  },
+  "startup_ms": [
+    579,
+    549,
+    518
+  ],
+  "first_run_ms": 579,
+  "warm_median_ms": 549,
+  "ws_mb": 28.6,
+  "private_mb": 6.2,
+  "threads": 12.0,
+  "runs": [
+    {
+      "run": 1,
+      "label": "first run",
+      "startup_ms": 579,
+      "samples": [
+        {
+          "ws_mb": 28.6,
+          "private_mb": 5.7,
+          "threads": 12
+        },
+        {
+          "ws_mb": 28.4,
+          "private_mb": 5.6,
+          "threads": 12
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "label": "warm",
+      "startup_ms": 549,
+      "samples": [
+        {
+          "ws_mb": 28.7,
+          "private_mb": 6.8,
+          "threads": 12
+        },
+        {
+          "ws_mb": 28.5,
+          "private_mb": 6.7,
+          "threads": 12
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "label": "warm",
+      "startup_ms": 518,
+      "samples": [
+        {
+          "ws_mb": 28.7,
+          "private_mb": 6.7,
+          "threads": 12
+        },
+        {
+          "ws_mb": 28.5,
+          "private_mb": 6.6,
+          "threads": 12
+        }
+      ]
+    }
+  ]
+}

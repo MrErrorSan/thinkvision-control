@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.21)
+project(probe_qt LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+qt_standard_project_setup()
+qt_add_executable(probe-qt WIN32 main.cpp)
+target_link_libraries(probe-qt PRIVATE Qt6::Widgets)
+# size-oriented release flags
+if(MSVC)
+  target_compile_options(probe-qt PRIVATE $<$<CONFIG:Release>:/O1 /GL>)
+  target_link_options(probe-qt PRIVATE $<$<CONFIG:Release>:/LTCG /OPT:REF /OPT:ICF>)
+endif()

@@ -1,0 +1,580 @@
+{
+  "date": "2026-10-28",
+  "ourLicence": "GPL-2.0-or-later",
+  "verifiedInOurCode": {
+    "displayEvents": "src/ThinkVisionControl/Platform/DisplayEvents.cs listens only to SystemEvents.DisplaySettingsChanged and PowerModeChanged(Resume), 2 s debounce",
+    "retryBurst": "src/ThinkVisionControl.Core/Control/RetryBurst.cs delays 0.5,1,2,4,8 s (about 15.5 s total)",
+    "ddcQueueRetries": "src/ThinkVisionControl.Core/Ddc/DdcQueue.cs retries any DdcException up to 5 times",
+    "windowsErrorCodes": "src/ThinkVisionControl.Ddc.Windows does not classify DDC error codes",
+    "cli": "src/ThinkVisionControl.Core/Commands/CommandLine.cs supports --preset, --input, --step; no --get or --json",
+    "colourModeFilter": "ColourModeOrder (PanelViewModel.cs:56,325; MainViewModel.cs:26) shows only the 8 Lenovo 0x14 values; other models' modes would be hidden",
+    "modelHardcodes": "Input codes 0x11/0x0F/0x31 in App.xaml.cs:29, App.axaml.cs:31, CommandLine.cs:24, PanelViewModel.cs:330,521, MainViewModel.cs:344,570; HotkeyAction InputHdmi/InputDp/InputUsbC; 'ThinkVision P32p-20' strings; single ProfileStore resource; single ThisMachineInput"
+  },
+  "projects": [
+    {
+      "name": "Monitorian",
+      "url": "https://github.com/emoacht/Monitorian",
+      "licence": "MIT",
+      "stack": "C#/WPF"
+    },
+    {
+      "name": "PowerToys Power Display",
+      "url": "https://github.com/microsoft/PowerToys",
+      "licence": "MIT",
+      "stack": "C#/WinUI 3"
+    },
+    {
+      "name": "Twinkle Tray",
+      "url": "https://github.com/xanderfrangos/twinkle-tray",
+      "licence": "MIT",
+      "stack": "Electron + C++"
+    },
+    {
+      "name": "MonitorControl",
+      "url": "https://github.com/MonitorControl/MonitorControl",
+      "licence": "MIT",
+      "stack": "Swift"
+    },
+    {
+      "name": "Lunar",
+      "url": "https://github.com/alin23/Lunar",
+      "licence": "MIT (Pro modes git-secret encrypted)",
+      "stack": "Swift"
+    },
+    {
+      "name": "display-switch",
+      "url": "https://github.com/haimgel/display_switch",
+      "licence": "MIT",
+      "stack": "Rust"
+    },
+    {
+      "name": "SimpleKVM",
+      "url": "https://github.com/fiddyschmitt/SimpleKVM",
+      "licence": "MIT",
+      "stack": "C#"
+    },
+    {
+      "name": "ddcutil",
+      "url": "https://github.com/rockowitz/ddcutil",
+      "licence": "GPL-2.0-or-later",
+      "stack": "C"
+    },
+    {
+      "name": "KDE PowerDevil",
+      "url": "https://invent.kde.org/plasma/powerdevil",
+      "licence": "LGPL-2.0",
+      "stack": "C++"
+    },
+    {
+      "name": "GNOME ddcutil extension",
+      "url": "https://github.com/daitj/gnome-display-brightness-ddcutil",
+      "licence": "GPL-3.0",
+      "stack": "JS"
+    },
+    {
+      "name": "Clight",
+      "url": "https://github.com/FedeDP/Clight",
+      "licence": "GPL-3.0",
+      "stack": "C"
+    },
+    {
+      "name": "vdu_controls",
+      "url": "https://github.com/digitaltrails/vdu_controls",
+      "licence": "GPL-3.0",
+      "stack": "Python"
+    },
+    {
+      "name": "BetterDisplay",
+      "url": "https://github.com/waydabber/BetterDisplay",
+      "licence": "closed",
+      "stack": "Swift"
+    },
+    {
+      "name": "ClickMonitorDDC",
+      "url": "https://www.ghacks.net/2017/01/08/clickmonitordcc-control-your-monitors-brightness-and-contrast/",
+      "licence": "closed",
+      "stack": "-"
+    },
+    {
+      "name": "ControlMyMonitor",
+      "url": "https://www.nirsoft.net/utils/control_my_monitor.html",
+      "licence": "closed freeware",
+      "stack": "-"
+    },
+    {
+      "name": "ddccontrol-db",
+      "url": "https://github.com/ddccontrol/ddccontrol-db",
+      "licence": "GPL-2.0-only",
+      "stack": "XML",
+      "note": "460 models, 10 Lenovo, no LEN62A2"
+    },
+    {
+      "name": "LizardByte libdisplaydevice",
+      "url": "https://github.com/LizardByte/libdisplaydevice",
+      "licence": "MIT",
+      "stack": "C++",
+      "note": "temporary topology change and revert (src/windows/win_display_device_topology.cpp)"
+    }
+  ],
+  "items": [
+    {
+      "id": "A1",
+      "group": "reliability",
+      "title": "React to monitor display on/off and lock/unlock; no DDC while off or locked; settle after wake; ~60 s reconnect schedule",
+      "effort": "S-M",
+      "borrow": "code",
+      "sources": [
+        "PowerToys DisplayChangeWatcher.cs, Helpers/PowerSettingsNative.cs (GUID_CONSOLE_DISPLAY_STATE 6fe69556-704a-47a0-8f24-c28d936fda47)",
+        "Monitorian Models/Watcher/PowerWatcher.cs, SessionWatcher.cs, TimerWatcher.cs, SystemEventsComplement.cs",
+        "MonitorControl AppDelegate.swift sleepID/soberNow",
+        "Lunar DDC.swift screensSleeping/locked gate",
+        "ddcutil src/dw/dw_suspend_resume.c (Linux EACCES grace)"
+      ],
+      "issues": [
+        "https://github.com/emoacht/Monitorian/issues/115",
+        "https://github.com/emoacht/Monitorian/issues/149",
+        "https://github.com/microsoft/PowerToys/issues/50949",
+        "https://github.com/xanderfrangos/twinkle-tray/issues/567"
+      ],
+      "recommendation": "build 0.0.5 phase 2"
+    },
+    {
+      "id": "A2",
+      "group": "reliability",
+      "title": "Classify DDC errors: retryable / final (unsupported 0xC0262584) / handle dead (0xC026258C, 0xC026258D)",
+      "effort": "S",
+      "borrow": "code",
+      "sources": [
+        "PowerToys PowerDisplay.Lib/Drivers/DDC/DdcErrorClassifier.cs",
+        "Twinkle Tray Monitors.js DDC_ERROR_REASONS",
+        "ddcutil src/ddc/ddc_packet_io.c DDCRC_DETERMINED_UNSUPPORTED"
+      ],
+      "recommendation": "build 0.0.5 phase 2"
+    },
+    {
+      "id": "A3",
+      "group": "reliability",
+      "title": "Sturdier input switch: read before write, no retry of 0x60 write, mask high byte, wake displays first",
+      "effort": "S",
+      "borrow": "code",
+      "sources": [
+        "display-switch src/display_control.rs try_switch_display",
+        "display-switch src/platform/wake_displays.rs"
+      ],
+      "issues": [
+        "https://github.com/haimgel/display-switch/issues/91",
+        "https://github.com/haimgel/display-switch/issues/158",
+        "https://github.com/fiddyschmitt/SimpleKVM/issues/26"
+      ],
+      "needsHardwareTest": "Does P32p-20 accept 0x60 from the inactive input?",
+      "recommendation": "build 0.0.5 phase 2"
+    },
+    {
+      "id": "A4",
+      "group": "reliability",
+      "title": "Fresh values without polling: re-read on wake, before hotkey step if cache > 30 s, tray hover; test VCP 0x02 new-control-value flag",
+      "effort": "S",
+      "borrow": "idea",
+      "sources": [
+        "Twinkle Tray electron.js tryEagerUpdate",
+        "Lunar refreshValues",
+        "Monitorian AppController.CheckUpdateAsync"
+      ],
+      "issues": [
+        "https://github.com/MonitorControl/MonitorControl/issues/1064",
+        "https://github.com/xanderfrangos/twinkle-tray/issues/148"
+      ],
+      "needsHardwareTest": "Does P32p-20 set VCP 0x02 after OSD/other-PC change?",
+      "recommendation": "build 0.0.5 phase 2"
+    },
+    {
+      "id": "A5",
+      "group": "reliability",
+      "title": "Linux: detect KDE PowerDevil DDC and suggest POWERDEVIL_NO_DDCUTIL=1",
+      "effort": "S",
+      "borrow": "idea",
+      "sources": [
+        "https://discuss.kde.org/t/disable-kde-monitor-brightness-control/25134"
+      ],
+      "recommendation": "later: when Linux is tested"
+    },
+    {
+      "id": "B1",
+      "group": "feature",
+      "title": "Automatic Day/Night by time or sunrise/sunset with catch-up after sleep",
+      "effort": "M",
+      "borrow": "code (sun maths)",
+      "sources": [
+        "Twinkle Tray electron.js getCurrentAdjustmentEvent/applyCurrentAdjustmentEvent",
+        "Lunar Utils/Solar.swift (MIT)",
+        "SunCalc (BSD-2)"
+      ],
+      "issues": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/252",
+        "https://github.com/xanderfrangos/twinkle-tray/issues/73",
+        "https://github.com/microsoft/PowerToys/issues/48774",
+        "https://github.com/waydabber/BetterDisplay/issues/2678"
+      ],
+      "recommendation": "build 0.0.5 phase 3"
+    },
+    {
+      "id": "B2",
+      "group": "feature",
+      "title": "Keyboard brightness keys drive the external monitor",
+      "effort": "S-M",
+      "borrow": "idea",
+      "sources": [
+        "Twinkle Tray windows_brightness_keys.cc",
+        "MonitorControl MediaKeyTapManager.swift"
+      ],
+      "issues": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/291"
+      ],
+      "recommendation": "skip"
+    },
+    {
+      "id": "B3",
+      "group": "feature",
+      "title": "Scroll on tray icon for brightness via low-level mouse hook only while over icon",
+      "effort": "M",
+      "borrow": "code",
+      "sources": [
+        "PowerToys TrayIconMouseWheelListener.cs, TrayWheelAdjustmentPlanner.cs",
+        "Twinkle Tray enableMouseEvents"
+      ],
+      "issues": [
+        "https://github.com/emoacht/Monitorian/issues/174",
+        "https://github.com/microsoft/PowerToys/issues/51376"
+      ],
+      "recommendation": "skip"
+    },
+    {
+      "id": "B4",
+      "group": "feature",
+      "title": "Switch input when a chosen USB device connects (software KVM)",
+      "effort": "M",
+      "borrow": "code",
+      "sources": [
+        "display-switch src/platform/pnp_detect_windows.rs, pnp_detect_libusb.rs",
+        "SimpleKVM"
+      ],
+      "issues": [
+        "https://github.com/haimgel/display-switch/issues/7",
+        "https://github.com/waydabber/BetterDisplay/issues/3033"
+      ],
+      "recommendation": "later"
+    },
+    {
+      "id": "B5",
+      "group": "feature",
+      "title": "CLI: --get, --json, typed exit codes, thinkvision:// URL scheme",
+      "effort": "S",
+      "borrow": "idea",
+      "sources": [
+        "PowerToys PowerDisplay.Contracts/CliExitCodes.cs, PowerDisplay.Cli/Program.cs, PipeServerIdentity.cs",
+        "ControlMyMonitor /GetValue /SetValueIfNeeded /SwitchValue",
+        "BetterDisplay CLI wiki"
+      ],
+      "recommendation": "build 0.0.5 phase 3"
+    },
+    {
+      "id": "B6",
+      "group": "feature",
+      "title": "Dim below 0% with a click-through overlay",
+      "effort": "M",
+      "borrow": "idea",
+      "sources": [
+        "MonitorControl OtherDisplay.setDirectBrightness, checkGammaInterference",
+        "Twinkle Tray usesExtendedMinimum"
+      ],
+      "issues": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/695"
+      ],
+      "recommendation": "skip"
+    },
+    {
+      "id": "B7",
+      "group": "feature",
+      "title": "Opt-in restore last settings after wake (delayed)",
+      "effort": "S",
+      "borrow": "idea",
+      "sources": [
+        "PowerToys MainViewModel.Settings.cs TryRestore, MonitorStateManager.cs",
+        "Lunar reapplyValuesAfterWake",
+        "MonitorControl startupActionWriteRepeatAfterSober"
+      ],
+      "issues": [
+        "https://github.com/emoacht/Monitorian/issues/115",
+        "https://github.com/MonitorControl/MonitorControl/issues/1920"
+      ],
+      "recommendation": "skip unless the monitor forgets"
+    },
+    {
+      "id": "B8",
+      "group": "feature",
+      "title": "Per-app presets",
+      "effort": "M",
+      "borrow": "idea",
+      "sources": [
+        "Twinkle Tray startFocusTracking",
+        "Lunar Data/AppException.swift"
+      ],
+      "issues": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/348"
+      ],
+      "recommendation": "skip"
+    },
+    {
+      "id": "B9",
+      "group": "feature",
+      "title": "Dim when idle, skip fullscreen/media",
+      "effort": "M",
+      "borrow": "idea",
+      "sources": [
+        "Twinkle Tray idleCheckLong/idleCheckShort",
+        "Clight"
+      ],
+      "issues": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/697"
+      ],
+      "recommendation": "skip"
+    },
+    {
+      "id": "B10",
+      "group": "feature",
+      "title": "Fine 1% step modifier",
+      "effort": "S",
+      "borrow": "idea",
+      "sources": [
+        "MonitorControl MediaKeyTapManager.swift"
+      ],
+      "recommendation": "later"
+    },
+    {
+      "id": "C1",
+      "group": "safety",
+      "title": "Crash marker around capabilities read and hidden-code finder",
+      "effort": "S",
+      "borrow": "code",
+      "sources": [
+        "PowerToys CrashDetectionScope.cs",
+        "Twinkle Tray withDDCSentinel"
+      ],
+      "recommendation": "build 0.0.5 phase 2"
+    },
+    {
+      "id": "C2",
+      "group": "safety",
+      "title": "Safe-mode start (hold Shift)",
+      "effort": "S",
+      "borrow": "idea",
+      "sources": [
+        "MonitorControl showSafeModeAlertIfNeeded"
+      ],
+      "recommendation": "skip: C1 covers it"
+    },
+    {
+      "id": "C3",
+      "group": "safety",
+      "title": "Mention GPU driver updates in 'not answering' message",
+      "effort": "S",
+      "borrow": "idea",
+      "issues": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/1187"
+      ],
+      "recommendation": "build 0.0.5 phase 2"
+    },
+    {
+      "id": "C4",
+      "group": "safety",
+      "title": "Per-code DDC health score feeding 'not responding'",
+      "effort": "M",
+      "borrow": "code",
+      "sources": [
+        "Lunar DDC/DDC.swift readFault/writeFault/skipReadingProperty"
+      ],
+      "recommendation": "skip: A2 covers most"
+    },
+    {
+      "id": "D1",
+      "group": "p32p20-check",
+      "title": "Colour mode 0x14 map disagrees with MCCS/siblings (E27q-20: 01 sRGB, 05 Reddish, 06 Neutral, 08 Bluish, 0B Custom)",
+      "effort": "S",
+      "ourEvidence": "read 0x14 after cycling OSD modes; 8 modes, 8 advertised values",
+      "test": "select each mode in app, check OSD highlight",
+      "sources": [
+        "https://github.com/ddccontrol/ddccontrol-db/blob/HEAD/db/monitor/LEN62D0.xml",
+        "https://github.com/ddccontrol/ddccontrol-db/issues/133",
+        "LDCC WMI user guide"
+      ],
+      "decision": "verified 2026-10-28: user checked every colour mode against the OSD; our names are correct"
+    },
+    {
+      "id": "D2",
+      "group": "p32p20-check",
+      "title": "Aspect ratio 0x86: MCCS says 02 keeps aspect, 05 stretches; ours is the opposite",
+      "effort": "S",
+      "test": "non-16:9 resolution, toggle both",
+      "recommendation": "test before 0.0.5 phase 2"
+    },
+    {
+      "id": "D3",
+      "group": "p32p20-check",
+      "title": "Brightness AND contrast locked in sRGB/DCI-P3/BT.709; Dynamic Contrast and Low Blue Light may also lock brightness",
+      "effort": "S",
+      "sources": [
+        "https://forums.lenovo.com/t5/Displays-Options-and-Accessories/P24q-20-OSD-buttons-no-response/m-p/5096178",
+        "https://www.ddcutil.com/archived/monitor_notes/"
+      ],
+      "recommendation": "test before 0.0.5 phase 2"
+    },
+    {
+      "id": "D-info",
+      "group": "p32p20-check",
+      "title": "New knowledge: built-in KVM on firmware LB1.2 (LDCC), F7/F8 maybe KVM PC1/PC2 table, FA a list of affected codes, USB 3.0 source halves USB-C lanes (4K@30), standby-wake over USB-C flaky, 0x62 likely audio-out level",
+      "sources": [
+        "https://forums.lenovo.com/t5/Displays-Options-and-Accessories/KVM-P32P-20/m-p/5101858",
+        "https://github.com/derkling/dotfiles/blob/HEAD/.local/bin/sway-host-setup"
+      ]
+    },
+    {
+      "id": "E1",
+      "group": "multi-model",
+      "title": "Profile registry + generic MCCS profile (port PowerToys VcpNames.cs, MIT)",
+      "effort": "S",
+      "recommendation": "later: second model"
+    },
+    {
+      "id": "E2",
+      "group": "multi-model",
+      "title": "Move hard-coded P32p-20 values into profile; share VM logic; fix colour-mode filter",
+      "effort": "S-M",
+      "recommendation": "later: second model"
+    },
+    {
+      "id": "E3",
+      "group": "multi-model",
+      "title": "Per-monitor data folder (caps cache, backups, overlay, this-PC input, presets)",
+      "effort": "S",
+      "recommendation": "later: second model"
+    },
+    {
+      "id": "E4",
+      "group": "multi-model",
+      "title": "Data-driven inputs and hotkeys; CLI --input name|0xNN; settings migration",
+      "effort": "M",
+      "recommendation": "later: second model"
+    },
+    {
+      "id": "E5",
+      "group": "multi-model",
+      "title": "Quirks block in profile (timing, write-only, power-off value, caps override)",
+      "effort": "S",
+      "recommendation": "later: second model"
+    },
+    {
+      "id": "E6",
+      "group": "multi-model",
+      "title": "Enumerate any DDC monitor; identify by EDID model id + serial; one selected monitor",
+      "effort": "M",
+      "recommendation": "later: after E1-E5"
+    },
+    {
+      "id": "E7",
+      "group": "multi-model",
+      "title": "Multiple monitors simultaneously",
+      "effort": "L",
+      "recommendation": "skip"
+    },
+    {
+      "id": "E8",
+      "group": "multi-model",
+      "title": "Export profile from finder for contributions",
+      "effort": "S",
+      "recommendation": "later: after E6"
+    },
+    {
+      "id": "F",
+      "group": "user-request",
+      "title": "Remove P32p-20 from this PC's desktop when handing it to another input; restore on Switch to this PC (Windows, opt-in)",
+      "effort": "M",
+      "design": "write 0x60 -> snapshot -> deactivate only that path temporarily via QueryDisplayConfig/SetDisplayConfig(SDC_USE_SUPPLIED_DISPLAY_CONFIG|SDC_ALLOW_CHANGES, no SAVE_TO_DATABASE); back: SetDisplayConfig(SDC_APPLY|SDC_USE_DATABASE_CURRENT) -> poll TryConnect 10 s -> write 0x60. Avoid DisplaySwitch.exe and SDC_TOPOLOGY_INTERNAL",
+      "pitfalls": [
+        "no DDC while path inactive",
+        "physical input button -> No signal",
+        "Windows may reactivate path",
+        "lid closed / only display: skip",
+        "App.xaml.cs:285 Connected gate needs away bypass"
+      ],
+      "sources": [
+        "https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setdisplayconfig",
+        "https://github.com/LizardByte/libdisplaydevice"
+      ],
+      "recommendation": "build (superseded by decision)",
+      "decision": "dropped 2026-10-28: current behaviour is fine"
+    },
+    {
+      "id": "G",
+      "group": "user-request",
+      "title": "Remove monitor power control (Standby/Off) from both apps; set 0xD6 to NeverWrite in the profile (do not delete it, or it becomes an unknown code nameable via the finder)",
+      "effort": "S",
+      "decision": "build (user request)",
+      "touches": [
+        "src/ThinkVisionControl/Ui/Pages/MonitorPage.xaml:37-41",
+        "src/ThinkVisionControl/Ui/PanelViewModel.cs:52,98,254-256,275,444-447",
+        "src/ThinkVisionControl.Avalonia/Views/Pages/MonitorPage.axaml:35-40",
+        "src/ThinkVisionControl.Avalonia/ViewModels/MainViewModel.cs:22,75,264-266,288,464-467",
+        "src/ThinkVisionControl.Core/Profile/p32p20.profile.json (0xD6)",
+        "README.md Features + Safe by design",
+        "docs/screenshots/monitor-settings.png"
+      ],
+      "keep": "reading 0xD6 to distinguish standby from not answering",
+      "sources": [
+        "https://github.com/xanderfrangos/twinkle-tray/issues/432",
+        "https://github.com/xanderfrangos/twinkle-tray/issues/1213",
+        "https://github.com/microsoft/PowerToys/issues/50449"
+      ],
+      "recommendation": "build 0.0.5 phase 2"
+    }
+  ],
+  "avoid": [
+    "Gamma-ramp dimming on Windows (Night Light / f.lux conflicts)",
+    "Smooth DDC fades (block on slow monitors)",
+    "Brightness calibration curves (Twinkle Tray #860 disabled theirs)",
+    "Retrying 0xD6 power or 0x60 input writes (Twinkle Tray #432, PowerToys #50449)",
+    "Copying GPL-3 code or Lunar Pro modes",
+    "Private macOS OSD API (broke on Tahoe)"
+  ],
+  "release005Phases": [
+    {
+      "phase": 1,
+      "what": "Migrate to Rust + Slint with a solid architecture; parity with 0.0.4 before moving on",
+      "refs": [
+        "2026-10-28-lightweight-ui.md",
+        "2026-10-28-ui-look-comparison.md"
+      ]
+    },
+    {
+      "phase": 2,
+      "what": "Reliability and cleanup",
+      "items": [
+        "G",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "C1",
+        "C3"
+      ],
+      "before": "hardware session: D2, D3, A3, A4 (0x02 flag)"
+    },
+    {
+      "phase": 3,
+      "what": "Features",
+      "items": [
+        "B1",
+        "B5"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+[package]
+name = "probe-slint-sw"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Slint 1.x, winit backend + software renderer only (no OpenGL/femtovg, no Qt, no accessibility)
+slint = { version = "1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

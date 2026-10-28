@@ -1,0 +1,138 @@
+// ThinkVision Control look-alike: navigation pane (320 px) on the left, one page of cards on the right.
+// Mirrors src/ThinkVisionControl.Avalonia/MainWindow.axaml (FANavigationView, OpenPaneLength 320).
+import { Palette } from "std-widgets.slint";
+import "FluentSystemIcons-Regular.ttf"; // found through build.rs include paths, not copied
+import { Theme, Glyphs, Icon, AccentOverride } from "theme.slint";
+export { AccentOverride }
+export { Tray, Osd } from "background.slint";
+import { NavItem } from "controls.slint";
+import { DisplayPage, MonitorPage } from "pages.slint";
+
+export component MainWindow inherits Window {
+    // 0 = follow the OS, 1 = dark, 2 = light (set from --dark / --light).
+    in property <int> forced-scheme: 0;
+    // 0 = Display, 1 = Monitor settings, 2 = App settings (placeholder).
+    in-out property <int> page: 0;
+    // Fake brightness, owned by main.rs in background mode (hotkeys / tray presets).
+    in-out property <float> brightness: 0;
+    property <bool> pane-open: true;
+    property <length> pane-width: root.pane-open ? 320px : 48px;
+    animate pane-width { duration: 200ms; easing: ease-out; }
+
+    changed forced-scheme => {
+        if root.forced-scheme == 1 {
+            Palette.color-scheme = ColorScheme.dark;
+        } else if root.forced-scheme == 2 {
+            Palette.color-scheme = ColorScheme.light;
+        }
+    }
+
+    title: "ThinkVision Control";
+    icon: @image-url("app-icon-32.png");
+    preferred-width: 1008px;
+    preferred-height: 720px;
+    min-width: 500px;
+    min-height: 400px;
+    background: Theme.window-bg;
+    default-font-family: "Segoe UI Variable Text";
+    default-font-size: 14px;
+
+    // Navigation pane.
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.pane-width;
+        height: root.height;
+        clip: true;
+
+        // Hamburger: 40x36 button, glyph centred 23 px from the left.
+        Rectangle {
+            x: 3px;
+            y: 4px;
+            width: 40px;
+            height: 36px;
+            border-radius: 4px;
+            background: menu-ta.pressed ? Theme.subtle-pressed : menu-ta.has-hover ? Theme.subtle-hover : transparent;
+            accessible-role: button;
+            accessible-label: "Navigation";
+            accessible-action-default => { root.pane-open = !root.pane-open; }
+            menu-ta := TouchArea {
+                clicked => { root.pane-open = !root.pane-open; }
+            }
+            Icon {
+                x: 13px;
+                text: Glyphs.menu;
+                font-size: 16px;
+            }
+        }
+
+        NavItem {
+            x: 3px;
+            y: 44px;
+            width: 314px;
+            glyph: Glyphs.display;
+            label: "Display";
+            selected: root.page == 0;
+            clicked => { root.page = 0; }
+        }
+        NavItem {
+            x: 3px;
+            y: 84px;
+            width: 314px;
+            glyph: Glyphs.options;
+            label: "Monitor settings";
+            selected: root.page == 1;
+            clicked => { root.page = 1; }
+        }
+
+        // Footer: separator, then App settings.
+        Rectangle {
+            x: 8px;
+            y: root.height - 59px;
+            width: 304px;
+            height: 1px;
+            background: Theme.divider;
+        }
+        NavItem {
+            x: 3px;
+            y: root.height - 50px;
+            width: 314px;
+            glyph: Glyphs.settings;
+            label: "App settings";
+            selected: root.page == 2;
+            clicked => { root.page = 2; }
+        }
+    }
+
+    // Content layer: lighter fill, 1 px outline on the left and top, 8 px top-left radius (FANavigationView).
+    // Drawn 1 px past the right and bottom edges so only the left and top outline shows.
+    Rectangle {
+        x: root.pane-width;
+        y: 0px;
+        width: root.width - self.x + 1px;
+        height: root.height + 1px;
+        background: Theme.layer-bg;
+        border-top-left-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.layer-stroke;
+        clip: true;
+
+        Rectangle {
+            x: 1px;
+            y: 1px;
+            width: parent.width - 2px;
+            height: parent.height - 2px;
+
+            if root.page == 0: DisplayPage { brightness <=> root.brightness; }
+            if root.page == 1: MonitorPage { }
+            if root.page == 2: Text {
+                x: 37px;
+                y: 26px;
+                text: "App settings";
+                font-size: 28px;
+                font-weight: 600;
+                color: Theme.text;
+            }
+        }
+    }
+}

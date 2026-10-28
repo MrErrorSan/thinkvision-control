@@ -1,0 +1,15 @@
+[package]
+name = "probe-egui-glow"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# eframe with the glow (OpenGL) renderer instead of the 0.37 default wgpu; otherwise the default feature set
+eframe = { version = "0.37", default-features = false, features = ["glow", "accesskit", "clipboard", "default_fonts", "links", "system_fonts", "wayland", "x11"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

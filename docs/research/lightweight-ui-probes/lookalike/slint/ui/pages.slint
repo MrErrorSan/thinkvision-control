@@ -1,0 +1,225 @@
+// The two pages. Static data, matching docs/screenshots/display.png and monitor-settings.png.
+import { ScrollView, ComboBox, Button, RadioGroup } from "std-widgets.slint";
+import { Theme, Glyphs, Icon } from "theme.slint";
+import { SectionHeader, Card, SliderValue, LabelledSwitch, CustomColourExpander, AccentRadio } from "controls.slint";
+
+// Page column: 36 px side padding (plus the layer's 1 px outline), title 26 px from the top, 36 px at the bottom.
+component PageTitle inherits Text {
+    font-size: 28px;
+    font-weight: 600;
+    height: 36px;
+    vertical-alignment: center;
+    color: Theme.text;
+}
+
+component Cards inherits VerticalLayout {
+    spacing: 4px;
+}
+
+export component DisplayPage inherits ScrollView {
+    in-out property <float> brightness: 0;
+    property <int> input-index: 0;
+    // Workaround: the first layout pass (wrapped subtitles settle their height late) leaves the Flickable scrolled
+    // a few px down; reset to the top once after startup.
+    Timer {
+        interval: 50ms;
+        running: true;
+        triggered => { root.content-y = 0; self.running = false; }
+    }
+    VerticalLayout {
+        padding-left: 37px;
+        padding-right: 37px;
+        padding-top: 26px;
+        padding-bottom: 36px;
+        alignment: start;
+
+        PageTitle { text: "Display"; }
+
+        // Device header: monitor glyph (48 px), name, status line.
+        HorizontalLayout {
+            padding-top: 16px;
+            spacing: 16px;
+            alignment: start;
+            Icon {
+                text: Glyphs.display;
+                font-size: 52px;
+                width: 48px;
+                height: 48px;
+            }
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: "ThinkVision P32p-20";
+                    font-size: 20px;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Icon {
+                        text: Glyphs.connected;
+                        font-size: 14px;
+                        width: 13px;
+                        color: Theme.text-secondary;
+                    }
+                    Text {
+                        text: "Connected over HDMI · Firmware LB1.2";
+                        font-size: 14px;
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // The real page has a StateBar here (16 px margin, empty while connected).
+        Rectangle { height: 16px; }
+
+        SectionHeader { text: "Brightness and contrast"; }
+        Cards {
+            Card {
+                glyph: Glyphs.brightness;
+                title: "Brightness";
+                card-height: 80px;
+                SliderValue { value <=> root.brightness; name: "Brightness"; }
+            }
+            Card {
+                glyph: Glyphs.contrast;
+                title: "Contrast";
+                card-height: 80px;
+                SliderValue { value: 25; name: "Contrast"; }
+            }
+        }
+
+        SectionHeader { text: "Colour"; }
+        Cards {
+            Card {
+                glyph: Glyphs.colour;
+                title: "Colour mode";
+                subtitle: "Changes apply straight away";
+                ComboBox {
+                    width: 160px;
+                    model: ["Neutral", "Warm", "Cool", "sRGB", "User / Custom colour"];
+                    current-index: 0;
+                    accessible-label: "Colour mode";
+                }
+            }
+            CustomColourExpander {
+                glyph: Glyphs.options;
+                title: "Custom colour";
+                subtitle: "Available in User / Custom colour mode";
+            }
+        }
+
+        SectionHeader { text: "Input"; }
+        Card {
+            glyph: Glyphs.input;
+            title: "Input";
+            subtitle: "This PC uses HDMI";
+            card-height: 75px;
+            if !Theme.exact-accent: RadioGroup {
+                orientation: horizontal;
+                accessible-label: "Input";
+                RadioButton { text: "HDMI"; checked: true; }
+                RadioButton { text: "DisplayPort"; }
+                RadioButton { text: "USB-C"; }
+            }
+            if Theme.exact-accent: HorizontalLayout {
+                spacing: 20px;
+                accessible-role: radio-group;
+                accessible-label: "Input";
+                for name[i] in ["HDMI", "DisplayPort", "USB-C"]: AccentRadio {
+                    text: name;
+                    checked: root.input-index == i;
+                    clicked => { root.input-index = i; }
+                }
+            }
+        }
+    }
+}
+
+export component MonitorPage inherits ScrollView {
+    // Workaround: the first layout pass (wrapped subtitles settle their height late) leaves the Flickable scrolled
+    // a few px down; reset to the top once after startup.
+    Timer {
+        interval: 50ms;
+        running: true;
+        triggered => { root.content-y = 0; self.running = false; }
+    }
+    VerticalLayout {
+        padding-left: 37px;
+        padding-right: 37px;
+        padding-top: 26px;
+        padding-bottom: 36px;
+        alignment: start;
+
+        PageTitle { text: "Monitor settings"; }
+        Rectangle { height: 16px; }
+
+        SectionHeader { text: "Picture"; }
+        Cards {
+            Card {
+                glyph: Glyphs.overdrive;
+                title: "Over Drive";
+                subtitle: "Reduces motion blur. Extreme can leave trails behind moving objects";
+                ComboBox {
+                    width: 160px;
+                    model: ["Off", "Normal", "Extreme"];
+                    current-index: 1;
+                    accessible-label: "Over Drive";
+                }
+            }
+            Card {
+                glyph: Glyphs.dyn-contrast;
+                title: "Dynamic Contrast";
+                subtitle: "Adjusts contrast to match what's on screen";
+                card-height: 78px;
+                LabelledSwitch { checked: false; name: "Dynamic Contrast"; }
+            }
+            Card {
+                glyph: Glyphs.aspect;
+                title: "Aspect ratio";
+                subtitle: "The monitor greys this out at its native resolution and may ignore changes";
+                card-height: 84px;
+                ComboBox {
+                    width: 200px;
+                    model: ["Full screen", "Original aspect ratio"];
+                    current-index: 0;
+                    accessible-label: "Aspect ratio";
+                }
+            }
+        }
+
+        SectionHeader { text: "Ports"; }
+        Card {
+            glyph: Glyphs.usb;
+            title: "USB Charging";
+            subtitle: "Charge devices from the monitor's USB ports while it's in standby";
+            card-height: 78px;
+            LabelledSwitch { checked: true; name: "USB Charging"; }
+        }
+
+        SectionHeader { text: "On-screen menu"; }
+        Card {
+            glyph: Glyphs.language;
+            title: "Menu language";
+            subtitle: "The language of the monitor's own menus";
+            ComboBox {
+                width: 200px;
+                model: ["English", "Deutsch", "Français", "日本語"];
+                current-index: 0;
+                accessible-label: "Menu language";
+            }
+        }
+
+        SectionHeader { text: "Power"; }
+        Card {
+            glyph: Glyphs.power;
+            title: "Power";
+            subtitle: "Put the monitor in standby or turn it off";
+            Button { text: "Standby"; min-width: 96px; }
+            Button { text: "Turn off"; min-width: 96px; }
+        }
+    }
+}

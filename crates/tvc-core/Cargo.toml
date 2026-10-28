@@ -1,0 +1,14 @@
+[package]
+name = "tvc-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# FakeLink for tests and `thinkvision-control --demo`.
+fake = []
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

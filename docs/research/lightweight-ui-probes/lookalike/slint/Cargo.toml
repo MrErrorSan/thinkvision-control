@@ -1,0 +1,36 @@
+[package]
+name = "lookalike-slint"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+publish = false
+
+# Visual look-alike of ThinkVision Control's main window (static data, no monitor control).
+# Software renderer, the configuration recommended in docs/research/2026-10-28-lightweight-ui.md.
+# `unstable-winit-030` is only used to tell winit the forced light/dark theme so the native title bar matches.
+[dependencies]
+slint = { version = "=1.18.1", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-software",
+    "accessibility",
+    "unstable-winit-030",
+    "system-tray",
+] }
+global-hotkey = "0.9"
+
+[build-dependencies]
+slint-build = "=1.18.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Linux: both winit windowing backends (WSLg offers Wayland and XWayland). Cargo merges these features into the
+# slint dependency above on Linux only.
+[target.'cfg(target_os = "linux")'.dependencies]
+slint = { version = "=1.18.1", default-features = false, features = ["backend-winit-x11", "backend-winit-wayland"] }

@@ -1,0 +1,81 @@
+// Fluent tokens (neutral, no Mica), type ramp and icon glyphs.
+// The accent comes from Slint's Palette, which re-hues its default blue with the OS accent.
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    out property <color> window-bg: dark ? #202020 : #f3f3f3;
+    out property <color> layer-bg: dark ? #282828 : #f9f9f9;
+    out property <color> card-bg: dark ? #2d2d2d : #fdfdfd;
+    out property <color> card-bg-secondary: dark ? #282828 : #f6f6f6;
+    out property <color> card-stroke: dark ? #1c1c1c : #e5e5e5;
+    out property <color> divider: dark ? #ffffff15 : #00000012;
+
+    out property <color> text: dark ? #ffffff : #1b1b1b;
+    out property <color> text-secondary: dark ? #c5c5c5 : #616161;
+    out property <color> text-disabled: dark ? #ffffff5d : #0000005c;
+
+    out property <color> subtle-hover: dark ? #ffffff0f : #0000000a;
+    out property <color> subtle-pressed: dark ? #ffffff0a : #00000006;
+
+    out property <brush> accent: Palette.accent-background;
+    out property <brush> on-accent: Palette.accent-foreground;
+
+    // InfoBar backgrounds (WinUI SystemFill*Background) and icon colours.
+    out property <color> info-bg: dark ? #2b2b2b : #f6f6f6;
+    out property <color> warning-bg: dark ? #433519 : #fff4ce;
+    out property <color> error-bg: dark ? #442726 : #fde7e9;
+    out property <color> success-bg: dark ? #393d1b : #dff6dd;
+    out property <color> warning-fg: dark ? #fce100 : #9d5d00;
+    out property <color> error-fg: dark ? #ff99a4 : #c42b1c;
+    out property <color> success-fg: dark ? #6ccb5f : #0f7b0f;
+
+    out property <length> radius: 6px;
+    out property <length> gutter: 20px;
+}
+
+// Fluent UI System Icons, _24_regular; the same codepoints the 0.0.4 app uses.
+export global Glyphs {
+    out property <string> display: "\u{f35a}";
+    out property <string> options: "\u{f588}";
+    out property <string> settings: "\u{f6aa}";
+    out property <string> brightness: "\u{e1f8}";
+    out property <string> moon: "\u{f87e}";
+    out property <string> contrast: "\u{f2be}";
+    out property <string> colour: "\u{f2f6}";
+    out property <string> input: "\u{e99a}";
+    out property <string> keyboard: "\u{f4b9}";
+    out property <string> overdrive: "\u{f831}";
+    out property <string> dyn-contrast: "\u{f33c}";
+    out property <string> aspect: "\u{e685}";
+    out property <string> usb: "\u{edd0}";
+    out property <string> language: "\u{f4f4}";
+    out property <string> reset: "\u{f1a0}";
+    out property <string> search: "\u{f690}";
+    out property <string> background: "\u{f124}";
+    out property <string> about: "\u{f4a4}";
+    out property <string> setup: "\u{f8c1}";
+    out property <string> connected: "\u{f295}";
+    out property <string> connecting: "\u{f191}";
+    out property <string> not-found: "\u{f60a}";
+    out property <string> warning: "\u{f86a}";
+    out property <string> error: "\u{f3f2}";
+    out property <string> success: "\u{f299}";
+    out property <string> edit: "\u{f3de}";
+    out property <string> copy: "\u{f32c}";
+    out property <string> dismiss: "\u{f36a}";
+    out property <string> back: "\u{f15c}";
+    out property <string> chevron-right: "\u{f2b1}";
+    out property <string> chevron-down: "\u{f2a4}";
+    out property <string> chevron-up: "\u{f2b7}";
+}
+
+// The glyphs fill 0.918 em with no left bearing, so a glyph meant to look N px wide uses font-size N / 0.918.
+export component Icon inherits Text {
+    font-family: "FluentSystemIcons-Regular";
+    color: Theme.text;
+    vertical-alignment: center;
+    horizontal-alignment: center;
+    accessible-role: none;
+}

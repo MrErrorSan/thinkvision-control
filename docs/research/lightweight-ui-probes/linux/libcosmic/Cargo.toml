@@ -1,0 +1,15 @@
+[package]
+name = "probe-cosmic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# libcosmic from git (System76's toolkit on top of an iced fork); desktop (winit) app, wgpu renderer
+libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = ["winit", "tokio", "wgpu", "multi-window"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

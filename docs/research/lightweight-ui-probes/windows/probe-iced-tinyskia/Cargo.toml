@@ -1,0 +1,15 @@
+[package]
+name = "probe-iced-tinyskia"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "thread-pool"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

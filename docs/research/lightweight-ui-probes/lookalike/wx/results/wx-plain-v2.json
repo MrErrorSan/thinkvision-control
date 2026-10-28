@@ -1,0 +1,77 @@
+{
+  "name": "wx-plain-v2",
+  "exe": "W:\\t\\release\\examples\\plain.exe",
+  "args": "",
+  "tray_only": false,
+  "size_bytes": 3841536.0,
+  "size_mb": 3.66,
+  "zipped_bytes": 1615392,
+  "zipped_mb": 1.54,
+  "files": {
+    "name": "plain.exe",
+    "bytes": 3841536
+  },
+  "startup_ms": [
+    252,
+    80,
+    52
+  ],
+  "first_run_ms": 252,
+  "warm_median_ms": 80,
+  "ws_mb": 17.1,
+  "private_mb": 3.1,
+  "threads": 4.0,
+  "runs": [
+    {
+      "run": 1,
+      "label": "first run",
+      "startup_ms": 252,
+      "samples": [
+        {
+          "ws_mb": 17.1,
+          "private_mb": 3.1,
+          "threads": 4
+        },
+        {
+          "ws_mb": 17.1,
+          "private_mb": 3.1,
+          "threads": 4
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "label": "warm",
+      "startup_ms": 80,
+      "samples": [
+        {
+          "ws_mb": 17.1,
+          "private_mb": 3.1,
+          "threads": 4
+        },
+        {
+          "ws_mb": 17.1,
+          "private_mb": 3.1,
+          "threads": 4
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "label": "warm",
+      "startup_ms": 52,
+      "samples": [
+        {
+          "ws_mb": 17.3,
+          "private_mb": 3.1,
+          "threads": 4
+        },
+        {
+          "ws_mb": 17.3,
+          "private_mb": 3.1,
+          "threads": 4
+        }
+      ]
+    }
+  ]
+}

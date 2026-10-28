@@ -1,0 +1,15 @@
+[package]
+name = "probe-slint"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Slint 1.x, default features (winit backend, femtovg GL + software renderers, accessibility)
+slint = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

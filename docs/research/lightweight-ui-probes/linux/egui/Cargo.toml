@@ -1,0 +1,15 @@
+[package]
+name = "probe-egui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# eframe 0.37 default features: wgpu renderer, x11 + wayland, accesskit, default + system fonts, clipboard, links
+eframe = "0.37"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -1,0 +1,95 @@
+// Background mode: tray icon with menu, and the brightness OSD.
+import { Palette } from "std-widgets.slint";
+import { Glyphs, Icon } from "theme.slint";
+
+// Slint's built-in tray (feature `system-tray`). Left click = clicked (Windows), right click = menu.
+export component Tray inherits SystemTrayIcon {
+    callback open();
+    callback preset(int);
+    callback quit();
+
+    icon: @image-url("app-icon-32.png");
+    tooltip: "ThinkVision Control";
+    title: "ThinkVision Control";
+    clicked => { root.open(); }
+
+    Menu {
+        MenuItem {
+            title: "Open";
+            activated => { root.open(); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: "Day preset";
+            activated => { root.preset(0); }
+        }
+        MenuItem {
+            title: "Night preset";
+            activated => { root.preset(1); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: "Quit";
+            activated => { root.quit(); }
+        }
+    }
+}
+
+// The OSD card from docs/screenshots/osd.png. The software renderer can't draw a per-pixel transparent window on
+// Windows, so the window IS the card (264x64); main.rs asks DWM for rounded corners instead of painting them.
+export component Osd inherits Window {
+    in property <int> value;
+    title: "ThinkVision OSD";
+    no-frame: true;
+    always-on-top: true;
+    width: 264px;
+    height: 64px;
+    background: #2b2b2b;
+    default-font-family: "Segoe UI Variable Text";
+
+    Rectangle {
+        border-width: 1px;
+        border-color: #ffffff1a;
+    }
+    Icon {
+        x: 16px;
+        y: 12px;
+        height: 22px;
+        text: Glyphs.brightness;
+        font-size: 17px;
+        color: #ffffff;
+    }
+    Text {
+        x: 44px;
+        y: 12px;
+        height: 22px;
+        text: "Brightness";
+        font-size: 14px;
+        color: #ffffffd0;
+        vertical-alignment: center;
+    }
+    Text {
+        x: parent.width - 16px - self.width;
+        y: 10px;
+        height: 26px;
+        text: root.value;
+        font-size: 20px;
+        font-weight: 700;
+        color: #ffffff;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        x: 16px;
+        y: 44px;
+        width: parent.width - 32px;
+        height: 4px;
+        border-radius: 2px;
+        background: #ffffff40;
+        Rectangle {
+            x: 0px;
+            width: parent.width * root.value / 100;
+            border-radius: 2px;
+            background: Palette.accent-background;
+        }
+    }
+}

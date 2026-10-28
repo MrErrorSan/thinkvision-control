@@ -1,0 +1,16 @@
+import { Slider, Switch, ComboBox, Button, VerticalBox } from "std-widgets.slint";
+export component ProbeWindow inherits Window {
+    title: "probe";
+    preferred-width: 600px;
+    preferred-height: 400px;
+    VerticalBox {
+        alignment: start;
+        padding: 24px;
+        spacing: 12px;
+        Text { text: "Brightness"; }
+        Slider { minimum: 0; maximum: 100; value: 50; }
+        Switch { text: "Auto"; }
+        ComboBox { model: ["sRGB", "DCI-P3", "Custom"]; current-index: 0; }
+        Button { text: "Apply"; }
+    }
+}

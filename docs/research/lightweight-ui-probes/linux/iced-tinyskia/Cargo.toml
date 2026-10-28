@@ -1,0 +1,15 @@
+[package]
+name = "probe-iced-tinyskia"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# iced software renderer only (tiny-skia), no wgpu; an executor feature is mandatory (thread-pool, as in default)
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "x11", "wayland", "thread-pool"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

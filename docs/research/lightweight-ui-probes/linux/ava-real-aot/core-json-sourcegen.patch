@@ -1,0 +1,77 @@
+diff -ru --strip-trailing-cr -x bin -x obj repo/src/ThinkVisionControl.Core/Control/BackupStore.cs repo-aotfix/src/ThinkVisionControl.Core/Control/BackupStore.cs
+--- repo/src/ThinkVisionControl.Core/Control/BackupStore.cs	2026-10-03 18:36:47.957888300 +0500
++++ repo-aotfix/src/ThinkVisionControl.Core/Control/BackupStore.cs	2026-10-28 08:17:35.463077378 +0500
+@@ -7,7 +7,10 @@
+ /// <summary>Timestamped <c>backup-yyyyMMdd-HHmmss.json</c> files of code → value.</summary>
+ public sealed partial class BackupStore(string directory)
+ {
+-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
++    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, TypeInfoResolver = BackupJsonCtx.Default };
++
++    [System.Text.Json.Serialization.JsonSerializable(typeof(Dictionary<string, uint>))]
++    private sealed partial class BackupJsonCtx : System.Text.Json.Serialization.JsonSerializerContext { }
+ 
+     /// <returns>The path written.</returns>
+     public string Save(IReadOnlyDictionary<byte, uint> values)
+@@ -37,7 +40,7 @@
+             .FirstOrDefault();
+         if (latest is null) return null;
+ 
+-        var json = JsonSerializer.Deserialize<Dictionary<string, uint>>(File.ReadAllText(latest)) ?? [];
++        var json = JsonSerializer.Deserialize<Dictionary<string, uint>>(File.ReadAllText(latest), JsonOptions) ?? [];
+         return json.ToDictionary(kv => Convert.ToByte(kv.Key, 16), kv => kv.Value);
+     }
+ 
+diff -ru --strip-trailing-cr -x bin -x obj repo/src/ThinkVisionControl.Core/Profile/ProfileStore.cs repo-aotfix/src/ThinkVisionControl.Core/Profile/ProfileStore.cs
+--- repo/src/ThinkVisionControl.Core/Profile/ProfileStore.cs	2026-10-05 14:04:30.211640900 +0500
++++ repo-aotfix/src/ThinkVisionControl.Core/Profile/ProfileStore.cs	2026-10-28 08:17:35.454489988 +0500
+@@ -5,7 +5,7 @@
+ namespace ThinkVisionControl.Core.Profile;
+ 
+ /// <summary>Embedded P32p-20 profile merged with the user overlay in <c>profile.user.json</c> (overlay wins per code).</summary>
+-public sealed class ProfileStore(string userDirectory)
++public sealed partial class ProfileStore(string userDirectory)
+ {
+     private const string ResourceName = "ThinkVisionControl.Core.p32p20.profile.json";
+ 
+@@ -14,9 +14,13 @@
+         WriteIndented = true,
+         RespectNullableAnnotations = true,
+         RespectRequiredConstructorParameters = true,
+-        Converters = { new JsonStringEnumConverter() },
++        TypeInfoResolver = ProfileJsonCtx.Default,
+     };
+ 
++    [JsonSourceGenerationOptions(UseStringEnumConverter = true)]
++    [JsonSerializable(typeof(ProfileFile))]
++    private sealed partial class ProfileJsonCtx : JsonSerializerContext { }
++
+     private readonly ProfileFile _embedded = LoadEmbedded();
+ 
+     private string OverlayPath => Path.Combine(userDirectory, "profile.user.json");
+diff -ru --strip-trailing-cr -x bin -x obj repo/src/ThinkVisionControl.Core/Settings/SettingsStore.cs repo-aotfix/src/ThinkVisionControl.Core/Settings/SettingsStore.cs
+--- repo/src/ThinkVisionControl.Core/Settings/SettingsStore.cs	2026-10-05 14:04:30.392233100 +0500
++++ repo-aotfix/src/ThinkVisionControl.Core/Settings/SettingsStore.cs	2026-10-28 08:17:35.458709626 +0500
+@@ -5,15 +5,20 @@
+ namespace ThinkVisionControl.Core.Settings;
+ 
+ /// <summary><c>settings.json</c> in <paramref name="directory"/>. Missing → defaults; corrupt → defaults and the file is renamed <c>.bak</c>.</summary>
+-public sealed class SettingsStore(string directory)
++public sealed partial class SettingsStore(string directory)
+ {
+     private static readonly JsonSerializerOptions Options = new()
+     {
+         WriteIndented = true,
+         RespectNullableAnnotations = true,
+-        Converters = { new JsonStringEnumConverter(), new HexByteConverter() },
++        Converters = { new HexByteConverter() },
++        TypeInfoResolver = SettingsJsonCtx.Default,
+     };
+ 
++    [JsonSourceGenerationOptions(UseStringEnumConverter = true)]
++    [JsonSerializable(typeof(AppSettings))]
++    private sealed partial class SettingsJsonCtx : JsonSerializerContext { }
++
+     public static AppSettings Defaults { get; } = new(
+         new Dictionary<HotkeyAction, string>
+         {

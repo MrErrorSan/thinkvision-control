@@ -1,0 +1,338 @@
+// Building blocks that mimic FluentAvalonia's FASettingsExpander cards and FANavigationView items.
+// Sizes come from measuring docs/previews/avalonia/*.png (1 px = 1 logical px at 100 % scale).
+import { Slider, Switch } from "std-widgets.slint";
+import { Theme, Glyphs, Icon } from "theme.slint";
+
+// "Brightness and contrast", "Colour", ...: BodyStrong, 30 px above, 6 px below.
+export component SectionHeader inherits VerticalLayout {
+    in property <string> text;
+    padding-top: 30px;
+    padding-bottom: 6px;
+    padding-left: 1px;
+    Text {
+        text: root.text;
+        font-size: 14px;
+        font-weight: 600;
+        height: 20px;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
+}
+
+// Icon + title + subtitle on the left, the control (children) on the right.
+// Card outline 1 px, radius 4, icon 24 px at 16 px padding, title 18 px after the icon.
+export component Card inherits Rectangle {
+    in property <string> glyph;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <length> card-height: 69px;
+
+    min-height: root.card-height;
+    background: Theme.card-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.card-stroke;
+    accessible-role: groupbox;
+    accessible-label: root.title;
+
+    HorizontalLayout {
+        padding-left: 17px;
+        padding-right: 17px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 0px;
+
+        Icon {
+            text: root.glyph;
+            font-size: 26px;
+            width: 24px;
+        }
+
+        Rectangle { width: 18px; }
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            Text {
+                text: root.title;
+                font-size: 14px;
+                color: Theme.text;
+                overflow: elide;
+            }
+            if root.subtitle != "": Text {
+                text: root.subtitle;
+                font-size: 12px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+            }
+        }
+
+        Rectangle { width: 16px; }
+
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                @children
+            }
+        }
+    }
+}
+
+// Hand-drawn WinUI slider for --exact-accent: 4 px rail, accent track, 20 px thumb with a 12 px accent core.
+export component AccentSlider inherits Rectangle {
+    in-out property <float> value;
+    in property <float> maximum: 100;
+    property <length> travel: self.width - 20px;
+    height: 32px;
+    accessible-role: slider;
+    accessible-value: Math.round(root.value);
+    accessible-value-minimum: 0;
+    accessible-value-maximum: root.maximum;
+    Rectangle { x: 10px; width: root.travel; height: 4px; border-radius: 2px; background: Theme.strong-stroke; }
+    Rectangle { x: 10px; width: root.travel * root.value / root.maximum; height: 4px; border-radius: 2px; background: Theme.accent; }
+    Rectangle {
+        x: root.travel * root.value / root.maximum;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: Theme.control-solid;
+        border-width: 1px;
+        border-color: Theme.dark ? #ffffff17 : #0000000f;
+        Rectangle {
+            width: ta.pressed ? 10px : ta.has-hover ? 14px : 12px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.accent;
+            animate width { duration: 100ms; }
+        }
+    }
+    ta := TouchArea {
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down { root.value = Math.round(Math.clamp((self.mouse-x - 10px) / root.travel, 0, 1) * root.maximum); }
+        }
+        moved => {
+            if self.pressed { root.value = Math.round(Math.clamp((self.mouse-x - 10px) / root.travel, 0, 1) * root.maximum); }
+        }
+    }
+}
+
+// Hand-drawn WinUI radio for --exact-accent: accent ring with an on-accent dot when checked.
+export component AccentRadio inherits HorizontalLayout {
+    in property <string> text;
+    in property <bool> checked;
+    callback clicked;
+    spacing: 8px;
+    accessible-role: radio-button;
+    accessible-checked: root.checked;
+    accessible-label: root.text;
+    Rectangle {
+        width: 20px;
+        height: 20px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 10px;
+        background: root.checked ? Theme.accent : transparent;
+        border-width: root.checked ? 0px : 1px;
+        border-color: Theme.strong-stroke;
+        Rectangle {
+            width: root.checked ? (rta.has-hover ? 10px : 8px) : 0px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.on-accent;
+        }
+        rta := TouchArea { clicked => { root.clicked(); } }
+    }
+    Text { text: root.text; color: Theme.text; font-size: 14px; vertical-alignment: center; }
+}
+
+// Slider (200 px) and its value right-aligned in a 32 px column, 12 px apart.
+export component SliderValue inherits HorizontalLayout {
+    in-out property <float> value;
+    in property <float> maximum: 100;
+    in property <string> name;
+    spacing: 12px;
+    if !Theme.exact-accent: Slider {
+        width: 200px;
+        minimum: 0;
+        maximum: root.maximum;
+        step: 1;
+        value <=> root.value;
+        accessible-label: root.name;
+    }
+    if Theme.exact-accent: AccentSlider {
+        width: 200px;
+        maximum: root.maximum;
+        value <=> root.value;
+        accessible-label: root.name;
+    }
+    Text {
+        min-width: 32px;
+        text: Math.round(root.value);
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        color: Theme.text;
+        font-size: 14px;
+    }
+}
+
+// Windows Settings style: "On"/"Off" label left of a bare switch.
+export component LabelledSwitch inherits HorizontalLayout {
+    in-out property <bool> checked;
+    in property <string> name;
+    spacing: 15px;
+    Text {
+        text: sw.checked ? "On" : "Off";
+        vertical-alignment: center;
+        color: Theme.text;
+        font-size: 14px;
+    }
+    sw := Switch {
+        checked <=> root.checked;
+        accessible-label: root.name;
+    }
+}
+
+// FANavigationView item: 36 px tall, 4 px radius, 3x16 accent pill on the left when selected.
+export component NavItem inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+
+    height: 36px;
+    border-radius: 4px;
+    background: ta.pressed ? Theme.subtle-pressed
+              : root.selected ? (ta.has-hover ? Theme.subtle-selected-hover : Theme.subtle-selected)
+              : ta.has-hover ? Theme.subtle-hover : transparent;
+    animate background { duration: 83ms; }
+    accessible-role: tab;
+    accessible-label: root.label;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: root.selected ? 16px : 0px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        animate height { duration: 167ms; easing: ease-out; }
+    }
+
+    Icon {
+        x: 12px;
+        width: 20px;
+        text: root.glyph;
+        font-size: 17px;
+    }
+
+    Text {
+        x: 45px;
+        width: parent.width - self.x - 8px;
+        text: root.label;
+        font-size: 14px;
+        color: Theme.text;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+// FASettingsExpander with content: a clickable header with a chevron, rows underneath when open.
+export component CustomColourExpander inherits Rectangle {
+    in property <string> glyph;
+    in property <string> title;
+    in property <string> subtitle;
+    in-out property <bool> expanded;
+
+    background: Theme.card-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.card-stroke;
+    clip: true;
+    accessible-role: groupbox;
+    accessible-label: root.title;
+
+    VerticalLayout {
+        Rectangle {
+            height: 69px;
+            background: ta.has-hover ? Theme.subtle-hover : transparent;
+            border-radius: 4px;
+            accessible-role: button;
+            accessible-label: root.title;
+            accessible-expandable: true;
+            accessible-expanded: root.expanded;
+            accessible-action-expand => { root.expanded = !root.expanded; }
+
+            ta := TouchArea {
+                clicked => { root.expanded = !root.expanded; }
+            }
+
+            HorizontalLayout {
+                padding-left: 17px;
+                padding-right: 17px;
+                Icon {
+                    text: root.glyph;
+                    font-size: 26px;
+                    width: 24px;
+                }
+                Rectangle { width: 18px; }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: root.title;
+                        font-size: 14px;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: root.subtitle;
+                        font-size: 12px;
+                        color: Theme.text-secondary;
+                    }
+                }
+                Icon {
+                    text: root.expanded ? Glyphs.chevron-up : Glyphs.chevron-down;
+                    font-size: 13px;
+                    width: 12px;
+                    horizontal-alignment: center;
+                }
+                Rectangle { width: 5px; }
+            }
+        }
+
+        if root.expanded: Rectangle {
+            height: 1px;
+            background: Theme.card-stroke;
+        }
+
+        if root.expanded: Rectangle {
+            background: Theme.card-bg-secondary;
+            VerticalLayout {
+                for row in [{ name: "Red gain", v: 50 }, { name: "Green gain", v: 50 }, { name: "Blue gain", v: 50 }]: HorizontalLayout {
+                    padding-left: 59px;
+                    padding-right: 17px;
+                    height: 52px;
+                    Text {
+                        text: row.name;
+                        font-size: 14px;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        SliderValue { value: row.v; name: row.name; }
+                    }
+                }
+            }
+        }
+    }
+}

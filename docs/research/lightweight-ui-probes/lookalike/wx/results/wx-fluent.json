@@ -1,0 +1,101 @@
+{
+  "name": "wx-fluent",
+  "exe": "W:\\t\\release\\tvc-wx.exe",
+  "args": "--fluent",
+  "tray_only": false,
+  "size_bytes": 6808836.0,
+  "size_mb": 6.49,
+  "zipped_bytes": 2848888,
+  "zipped_mb": 2.72,
+  "files": [
+    {
+      "name": "tvc-wx.exe",
+      "bytes": 3969536
+    },
+    {
+      "name": "FluentSystemIcons-Regular.ttf",
+      "bytes": 2839300
+    }
+  ],
+  "startup_ms": [
+    866,
+    587,
+    495,
+    539
+  ],
+  "first_run_ms": 866,
+  "warm_median_ms": 539,
+  "ws_mb": 18.8,
+  "private_mb": 3.8,
+  "threads": 4.0,
+  "runs": [
+    {
+      "run": 1,
+      "label": "first run",
+      "startup_ms": 866,
+      "samples": [
+        {
+          "ws_mb": 20.1,
+          "private_mb": 4.0,
+          "threads": 4
+        },
+        {
+          "ws_mb": 20.1,
+          "private_mb": 4.0,
+          "threads": 4
+        }
+      ]
+    },
+    {
+      "run": 2,
+      "label": "warm",
+      "startup_ms": 587,
+      "samples": [
+        {
+          "ws_mb": 17.6,
+          "private_mb": 3.7,
+          "threads": 4
+        },
+        {
+          "ws_mb": 17.6,
+          "private_mb": 3.7,
+          "threads": 4
+        }
+      ]
+    },
+    {
+      "run": 3,
+      "label": "warm",
+      "startup_ms": 495,
+      "samples": [
+        {
+          "ws_mb": 20.2,
+          "private_mb": 4.0,
+          "threads": 4
+        },
+        {
+          "ws_mb": 20.2,
+          "private_mb": 4.0,
+          "threads": 4
+        }
+      ]
+    },
+    {
+      "run": 4,
+      "label": "warm",
+      "startup_ms": 539,
+      "samples": [
+        {
+          "ws_mb": 20.2,
+          "private_mb": 4.2,
+          "threads": 4
+        },
+        {
+          "ws_mb": 20.2,
+          "private_mb": 4.2,
+          "threads": 4
+        }
+      ]
+    }
+  ]
+}

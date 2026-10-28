@@ -8,3 +8,6 @@ TestResults/
 docs/brand/icon-size-comparison*.png
 publish-avalonia/
 build/
+
+# Rust
+target/

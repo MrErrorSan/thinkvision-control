@@ -1,0 +1,104 @@
+// The data contract between the Rust controller and the UI. The UI never knows VCP codes by meaning:
+// every code here comes from the monitor profile, so another model renders without UI changes.
+
+export enum Severity { info, success, warning, error }
+
+// Header and banner state.
+export struct Banner {
+    visible: bool,
+    severity: Severity,
+    title: string,
+    message: string,
+    action: string,   // button text; empty = no button
+}
+
+// One input button. `this-pc` marks the input this PC is plugged into.
+export struct InputItem {
+    code: int,
+    label: string,
+    this-pc: bool,
+}
+
+// A continuous control (brightness, contrast, RGB gains).
+export struct RangeRow {
+    code: int,
+    label: string,
+    glyph: string,
+    value: float,
+    maximum: float,
+    enabled: bool,
+    revision: int,      // bump to push `value` into a slider the user has moved
+}
+
+export enum ControlKind { toggle, choice, action }
+
+// One card on the Monitor tab, rendered from the profile.
+export struct ControlRow {
+    code: int,
+    kind: ControlKind,
+    label: string,
+    description: string,
+    glyph: string,
+    options: [string],  // choice: value labels in profile order; toggle: [off, on]
+    index: int,         // selected option, -1 = unknown
+    button: string,     // action: button text
+    enabled: bool,
+    revision: int,      // bump to push `index` back (e.g. the monitor refused a change)
+}
+
+export struct ControlGroup {
+    title: string,
+    rows: [ControlRow],
+}
+
+export struct PresetRow {
+    name: string,
+    glyph: string,
+    summary: string,    // "Brightness 80 · Contrast 70 · Neutral"
+}
+
+export struct HotkeyRow {
+    label: string,
+    keys: [string],     // keycaps; empty = not set
+    warning: string,    // e.g. "Taken by another app"
+}
+
+export struct SetupHint {
+    title: string,
+    message: string,
+    command: string,    // copyable command; empty = none
+}
+
+// Finder: one changed code ("0xC6 (Unknown 0xC6): 1 → 2") and one value-label field of the naming form.
+export struct FinderChange {
+    code: int,
+    text: string,
+}
+
+export struct FinderValue {
+    caption: string,    // "0x01 (before)"
+    label: string,
+}
+
+// Shortcut editor. `keys` are the captured keycaps; `live` = only modifiers held so far.
+export struct ShortcutEditor {
+    visible: bool,
+    action: string,     // "Brightness up"
+    keys: [string],
+    live: bool,
+    severity: Severity,
+    error-title: string,
+    error-message: string,
+    hint: string,
+    can-save: bool,
+    can-clear: bool,
+}
+
+// In-window confirm dialog.
+export struct Dialog {
+    visible: bool,
+    title: string,
+    message: string,
+    primary: string,
+    secondary: string,
+}

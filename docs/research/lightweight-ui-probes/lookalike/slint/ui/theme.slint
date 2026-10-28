@@ -1,0 +1,72 @@
+// Colours, type ramp and icon glyphs for the look-alike.
+// Colours are the neutral (no Mica tint) WinUI 3 / FluentAvalonia tokens the real app resolves to:
+//   window = Mica base, layer = LayerFillColorDefault over it, card = CardBackgroundFillColorDefault over the layer.
+// The accent comes from Slint's Palette, which tints its default blue with the OS accent hue (Windows: DWM accent).
+import { Palette } from "std-widgets.slint";
+
+// --exact-accent: main.rs reads the Windows AccentPalette and sets these. Slint's own Palette.accent-background is an
+// `out` property that keeps Slint's lightness and only borrows the OS hue, so the exact WinUI shades (Light2 on dark,
+// Dark1 on light) can only reach elements drawn by this app: the nav pill, AccentSlider and AccentRadio below.
+export global AccentOverride {
+    in property <bool> enabled;
+    in property <color> on-dark;   // AccentPalette Light2 (WinUI AccentFillColorDefault, dark theme)
+    in property <color> on-light;  // AccentPalette Dark1 (WinUI AccentFillColorDefault, light theme)
+}
+
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    out property <color> window-bg: dark ? #202020 : #f3f3f3;
+    out property <color> layer-bg: dark ? #282828 : #f9f9f9;
+    out property <color> layer-stroke: dark ? #1c1c1c : #e5e5e5;
+    out property <color> card-bg: dark ? #323232 : #fdfdfd;
+    out property <color> card-bg-secondary: dark ? #2c2c2c : #f9f9f9;
+    out property <color> card-stroke: dark ? #1e1e1e : #e8e8e8;
+    out property <color> divider: dark ? #ffffff15 : #00000012;
+
+    out property <color> text: dark ? #ffffff : #1b1b1b;
+    out property <color> text-secondary: dark ? #c5c5c5 : #616161;
+
+    // Navigation item fills (SubtleFillColorSecondary / Tertiary).
+    out property <color> subtle-hover: dark ? #ffffff0f : #0000000a;
+    out property <color> subtle-pressed: dark ? #ffffff0a : #00000006;
+    out property <color> subtle-selected: dark ? #ffffff0f : #0000000a;
+    out property <color> subtle-selected-hover: dark ? #ffffff0a : #00000006;
+
+    out property <brush> accent: AccentOverride.enabled ? (dark ? AccentOverride.on-dark : AccentOverride.on-light) : Palette.accent-background;
+    out property <bool> exact-accent: AccentOverride.enabled;
+    // WinUI ControlStrongStroke / slider rail, ControlSolid (thumb), TextOnAccent.
+    out property <color> strong-stroke: dark ? #ffffff8b : #00000072;
+    out property <color> control-solid: dark ? #454545 : #ffffff;
+    out property <color> on-accent: dark ? #000000 : #ffffff;
+}
+
+// Fluent UI System Icons, _24_regular, the same codepoints the Avalonia app uses (ViewModels/Glyphs.cs).
+export global Glyphs {
+    out property <string> menu: "\u{f561}";          // navigation
+    out property <string> display: "\u{f35a}";       // desktop
+    out property <string> options: "\u{f588}";       // options (sliders)
+    out property <string> settings: "\u{f6aa}";
+    out property <string> brightness: "\u{e1f8}";    // weather_sunny
+    out property <string> contrast: "\u{f2be}";      // circle_half_fill
+    out property <string> colour: "\u{f2f6}";        // color (palette)
+    out property <string> input: "\u{e99a}";
+    out property <string> connected: "\u{f295}";     // checkmark
+    out property <string> chevron-down: "\u{f2a4}";
+    out property <string> chevron-up: "\u{f2b7}";
+    out property <string> overdrive: "\u{f831}";     // top_speed
+    out property <string> dyn-contrast: "\u{f33c}";  // dark_theme
+    out property <string> aspect: "\u{e685}";        // full_screen_maximize
+    out property <string> usb: "\u{edd0}";           // usb_plug
+    out property <string> language: "\u{f4f4}";      // local_language
+    out property <string> power: "\u{f60f}";
+}
+
+// The glyphs fill 0.918 em with no left bearing, so a glyph meant to look N px wide uses font-size N / 0.918.
+export component Icon inherits Text {
+    font-family: "FluentSystemIcons-Regular";
+    color: Theme.text;
+    vertical-alignment: center;
+    horizontal-alignment: left;
+    accessible-role: none;
+}
