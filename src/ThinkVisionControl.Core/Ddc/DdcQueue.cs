@@ -37,6 +37,9 @@ public sealed class DdcQueue : IDisposable
         return tcs.Task;
     }
 
+    /// <summary>True if a write finished less than <paramref name="window"/> ago.</summary>
+    public bool WroteWithin(TimeSpan window) => _lastWriteAt != TimeSpan.MinValue && _clock.Elapsed - _lastWriteAt < window;
+
     /// <summary>Lets the command in flight finish, but waits at most <see cref="DisposeWait"/> so exit never hangs on the monitor.</summary>
     public void Dispose()
     {

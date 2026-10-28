@@ -41,7 +41,6 @@ public partial class App : Application
     ProfileStore _profiles = null!;
     MainViewModel? _vm;
     MainWindow? _window;
-    FlyoutWindow? _flyout;
     AppSettings _settings = SettingsStore.Defaults;
     bool _headless, _residentStarted, _trayShown, _hotkeysWired;
 
@@ -136,23 +135,14 @@ public partial class App : Application
 
     void OnForwarded(string[] args)
     {
-        var (command, _) = CommandLine.Parse(args);
-        if (command is AppCommand.Show) StartResident(showWindow: true);
+        var (command, startup) = CommandLine.Parse(args);
+        if (command is AppCommand.Show) StartResident(showWindow: !startup || !_settings.BackgroundMode);
         else _ = RunCommandAsync(command);
     }
 
-    MainViewModel ViewModel()
-    {
-        if (_vm is not null) return _vm;
-        _vm = new MainViewModel(_control, _settingsStore, _profiles, Services, ApplySettings);
-        _vm.OpenSettingsRequested += () =>
-        {
-            _flyout?.Hide();
-            ShowWindow();
-        };
-        return _vm;
-    }
+    MainViewModel ViewModel() => _vm ??= new MainViewModel(_control, _settingsStore, _profiles, Services, ApplySettings);
 
+    /// <summary>Opens the window, or brings it to the front. Also the tray / menu-bar icon's primary click.</summary>
     void ShowWindow()
     {
         if (_window is null)
@@ -175,33 +165,10 @@ public partial class App : Application
         else UpdateEfficiency();
     }
 
-    void ShowFlyoutOrWindow()
-    {
-        if (_flyout is null)
-        {
-            _flyout = new FlyoutWindow(ViewModel());
-            _flyout.PropertyChanged += (_, e) => { if (e.Property == global::Avalonia.Visual.IsVisibleProperty) UpdateEfficiency(); };
-        }
-        var origin = Services.Tray.FlyoutOrigin(_flyout.PopupSize);
-        if (origin is null && !OperatingSystem.IsWindows())
-        {
-            // No anchored flyout on this OS (Linux): the tray menu holds the quick controls; a click opens the window.
-            ShowWindow();
-            return;
-        }
-        if (_flyout.IsVisible)
-        {
-            _flyout.Hide();
-            return;
-        }
-        ViewModel().OnShowing();
-        _flyout.ShowAt(origin is { } p ? new PixelPoint((int)p.X, (int)p.Y) : null);
-    }
-
     void UpdateEfficiency()
     {
         if (OperatingSystem.IsWindows())
-            Platform.Windows.EfficiencyMode.Set(_window?.IsVisible != true && _flyout?.IsVisible != true);
+            Platform.Windows.EfficiencyMode.Set(_window?.IsVisible != true);
     }
 
     void ApplySettings(AppSettings settings)
@@ -211,7 +178,7 @@ public partial class App : Application
         {
             if (!_trayShown)
             {
-                Services.Tray.Show(TrayMenu, ShowFlyoutOrWindow);
+                Services.Tray.Show(TrayMenu, ShowWindow);
                 _trayShown = true;
             }
             Services.Tray.SetStatus(_control.Status);
@@ -234,7 +201,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Tray / menu-bar menu. Where there is no flyout (Linux) it also carries the quick controls.
+    /// Tray / menu-bar menu. On Linux it also carries brightness up/down.
     /// Actions that can't run while disconnected are left out rather than greyed.
     /// </summary>
     IReadOnlyList<TrayMenuItem> TrayMenu()

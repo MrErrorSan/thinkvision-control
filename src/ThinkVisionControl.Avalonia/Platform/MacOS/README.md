@@ -11,10 +11,9 @@
 | `UnixSingleInstance` | `flock` on `$TMPDIR/thinkvision-control.lock` (via `FileShare.None`). Arguments travel over the Unix socket `$TMPDIR/CoreFxPipe_tvc-cmd`, which is current-user only |
 | `MacThemeInfo` | `NSApp.effectiveAppearance.name`. Accent is null (FluentAvalonia reads it). `Changed` comes from `Application.ActualThemeVariantChanged` |
 | `MacWindowTweaks.MakeOverlay` | `setIgnoresMouseEvents:YES`, `setLevel:25`, `setCollectionBehavior:337` on the OSD's `NSWindow`. Applied again on every `Opened` |
-| `MacMenuBar.FlyoutOriginUnderCursor` | Places the flyout under the cursor and just below the menu bar of the cursor's screen. Returns Avalonia pixels (points × `backingScaleFactor`, top-left origin) |
 | `MacSystemSetup` | One card: `UnsupportedPort`, "Use a USB-C or Thunderbolt port" |
 
-Pure logic lives in `MacRules` (no platform attribute, so it is unit-testable on Windows): VK→kVK, modifiers, the Sequoia rule, appearance names, window flags, bundle path and flyout geometry.
+Pure logic lives in `MacRules` (no platform attribute, so it is unit-testable on Windows): VK→kVK, modifiers, the Sequoia rule, appearance names, window flags and bundle path.
 
 ## Verified vs unverified
 
@@ -34,4 +33,4 @@ Pure logic lives in `MacRules` (no platform attribute, so it is unit-testable on
 5. Unplug and replug the monitor (USB-C). The app reconnects within a few seconds. Do the same after sleep and wake (close the lid, then open it).
 6. While the app is running, run `"ThinkVision Control.app/Contents/MacOS/thinkvision-control" --step brightness=+5`. The running instance applies it and the second process exits.
 7. Switch Appearance between Light and Dark. The app follows.
-8. Click the menu-bar icon. The flyout opens under the icon, inside the screen, and on the screen with the cursor when there are several displays.
+8. Click the menu-bar icon, or choose Open ThinkVision Control from its menu. The main window opens, or comes to the front if it's already open.

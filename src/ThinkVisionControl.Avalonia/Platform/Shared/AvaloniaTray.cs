@@ -11,7 +11,7 @@ namespace ThinkVisionControl.Avalonia.Platform.Shared;
 
 /// <summary>
 /// ITray on Avalonia's TrayIcon (Windows notification area, macOS menu bar, Linux StatusNotifierItem). OS-neutral:
-/// the per-OS parts come in through <paramref name="flyoutOrigin"/> and <paramref name="hostAvailable"/>.
+/// the per-OS part comes in through <paramref name="hostAvailable"/>.
 /// <list type="bullet">
 /// <item>The icon is the app icon; NotFound and NotResponding get a badge at the bottom right (rendered here).</item>
 /// <item>Tooltip "ThinkVision Control – &lt;status&gt;".</item>
@@ -21,9 +21,8 @@ namespace ThinkVisionControl.Avalonia.Platform.Shared;
 /// </list>
 /// Methods may be called from any thread; the work is marshalled to the UI thread.
 /// </summary>
-/// <param name="flyoutOrigin">Flyout size → top-left in the unit the OS implementation documents; null → no flyout.</param>
 /// <param name="hostAvailable">False when nothing can show the icon.</param>
-public sealed class AvaloniaTray(Func<Size, Point?> flyoutOrigin, Func<bool> hostAvailable) : ITray
+public sealed class AvaloniaTray(Func<bool> hostAvailable) : ITray
 {
     const string AppName = "ThinkVision Control";
     const int BadgedIconSize = 32;
@@ -40,8 +39,6 @@ public sealed class AvaloniaTray(Func<Size, Point?> flyoutOrigin, Func<bool> hos
     bool _disposed;
 
     public bool IsHostAvailable => hostAvailable();
-
-    public Point? FlyoutOrigin(Size flyout) => flyoutOrigin(flyout);
 
     public void Show(Func<IReadOnlyList<TrayMenuItem>> menu, Action primaryClick) => OnUiThread(() =>
     {

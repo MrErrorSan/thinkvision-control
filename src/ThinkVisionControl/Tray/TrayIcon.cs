@@ -10,7 +10,7 @@ namespace ThinkVisionControl.Tray;
 
 /// <summary>
 /// Tray icon: the brand glyph for the taskbar's theme with a status badge, a "name – status" tooltip, left click for
-/// the flyout, double click for the window, and a Windows 11-styled right-click menu rebuilt on every open.
+/// the window, and a Windows 11-styled right-click menu rebuilt on every open.
 /// WinForms' NotifyIcon already re-adds itself when Explorer broadcasts "TaskbarCreated" (its hidden top-level
 /// window handles that message), so no extra listener is needed here.
 /// </summary>
@@ -28,7 +28,7 @@ public sealed class TrayIcon : IDisposable
     bool _lightTaskbar;
     MonitorStatus _status = MonitorStatus.Connecting;
 
-    public TrayIcon(Action leftClick, Action open, Func<IEnumerable<(string Label, Action Run)>> presetItems, Action exit)
+    public TrayIcon(Action open, Func<IEnumerable<(string Label, Action Run)>> presetItems, Action exit)
     {
         (_open, _exit, _presetItems) = (open, exit, presetItems);
         _defaultItemFont = new Font(_menuFont, FontStyle.Bold);
@@ -42,8 +42,7 @@ public sealed class TrayIcon : IDisposable
         _menu.Opened += (_, _) => RoundCorners(_menu.Handle);
 
         _icon = new NotifyIcon { ContextMenuStrip = _menu };
-        _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) leftClick(); };
-        _icon.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left) open(); };
+        _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) open(); };
         LoadGlyph();
         _icon.Visible = true;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
@@ -65,11 +64,6 @@ public sealed class TrayIcon : IDisposable
         };
         old?.Dispose();
     }
-
-    /// <summary>Top-left (DIPs) for a popup of <paramref name="popupSize"/> next to the icon, or next to the cursor.</summary>
-    public System.Windows.Point? PopupOrigin(System.Windows.Size popupSize) =>
-        (TrayAnchor.Identify(_icon) is { } id ? TrayAnchor.PopupOrigin(id.hwnd, id.id, popupSize) : null)
-        ?? TrayAnchor.PopupOriginFromCursor(popupSize);
 
     public void Dispose()
     {

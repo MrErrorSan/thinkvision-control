@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using ThinkVisionControl.Core.Logging;
 
 namespace ThinkVisionControl.Platform;
@@ -25,6 +27,9 @@ public sealed class CommandPipe : IDisposable
         {
             using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
             client.Connect(timeout);
+            // This launch came from the user (Start menu, jump list), so it may take the foreground; pass that on, or
+            // Windows opens the running copy's window behind the active one.
+            if (GetNamedPipeServerProcessId(client.SafePipeHandle, out var serverPid)) AllowSetForegroundWindow(serverPid);
             using var writer = new StreamWriter(client);
             writer.Write(string.Join('\n', args));
             return true;
@@ -36,6 +41,12 @@ public sealed class CommandPipe : IDisposable
     }
 
     public void Dispose() => _cts.Cancel();
+
+    [DllImport("kernel32.dll")]
+    static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
+
+    [DllImport("user32.dll")]
+    static extern bool AllowSetForegroundWindow(uint processId);
 
     static async Task ListenAsync(Action<string[]> received, CancellationToken ct)
     {

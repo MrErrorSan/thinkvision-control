@@ -20,8 +20,7 @@ public static class LinuxPlatform
 
         IHotkeys hotkeys = wayland ? new PortalHotkeys() : x11 ? new X11Hotkeys() : new NullHotkeys();
         IOsd osd = wayland ? new NotificationOsd() : overlayOsd;
-        // No flyout on Linux: SNI gives no icon position, so the quick controls go in the tray menu.
-        var tray = new AvaloniaTray(flyoutOrigin: _ => null, hostAvailable: SniHost.IsAvailable);
+        var tray = new AvaloniaTray(hostAvailable: SniHost.IsAvailable);
 
         return new PlatformServices(new LinuxMonitorEvents(), hotkeys, tray, osd, new LinuxAutostart(), new LinuxQuickActions(),
             new UnixSingleInstance(), new LinuxThemeInfo(), new LinuxSystemSetup(), createLink);

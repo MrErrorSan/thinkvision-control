@@ -33,15 +33,16 @@ The P32p-20's menu buttons sit behind the bottom edge of the screen. They're har
 - **Live sliders:** the monitor follows as you drag, and the value is checked once you let go. If the monitor keeps an old value (some colour modes lock brightness), the app tells you why.
 - **Day and Night presets:** one click or one key sets brightness, contrast and colour mode together. Save your own from the current settings.
 - **Global keyboard shortcuts**, with an on-screen level indicator: brightness and contrast up/down, presets, input switching, and "switch the monitor to this computer". You can rebind any of them.
-- **Quick access** without opening the window: a tray flyout on Windows, a menu-bar menu on macOS, a tray menu on Linux, plus taskbar jump-list actions on Windows.
+- **Quick access** without opening the window: keyboard shortcuts, the tray menu (the menu-bar menu on macOS) with presets and "Switch to this PC", and taskbar jump-list actions on Windows. Clicking the tray icon opens the app.
 - **Two computers, one monitor:** each machine knows its own input, so "Switch to this PC" always brings the screen back to the one you're at.
+- **Stays in sync:** while the window is open it re-reads the monitor every few seconds, so changes made with the monitor's buttons or from the other computer show up.
 - **Safe by design:**
   - factory reset, reset brightness and contrast, reset colour, and power off all ask first;
   - a backup is saved before any reset, and "Restore backup" undoes it;
   - the app never writes settings it doesn't understand.
 - **Hidden settings finder:** watch the monitor's undocumented codes change while you press its buttons, then name them so they appear in the app. This is how Over Drive, Dynamic Contrast and USB Charging were mapped.
 - **Native look and theme-aware:** Windows 11 Fluent design with Mica, light and dark mode, and your accent colour. A clear message when the monitor isn't connected, isn't answering, or needs a one-time setup step.
-- **Light on resources:** by default the app exits when you close the window. "Run in background" keeps the tray and shortcuts alive, uses about 25 MB of memory, and doesn't poll.
+- **Light on resources:** by default the app exits when you close the window. "Run in background" keeps the tray and shortcuts alive, uses about 15 MB of memory on Windows, and doesn't poll while the window is closed.
 - **Command line** for scripts, launchers and Stream Deck: `--preset night`, `--input usbc`, `--step brightness=+5`.
 
 ## Screenshots
@@ -56,11 +57,9 @@ The P32p-20's menu buttons sit behind the bottom edge of the screen. They're har
 | **Not connected:** everything stays visible, with the reason and a fix | **Linux** (Ubuntu), light theme |
 
 <p align="center">
-  <img src="docs/screenshots/flyout.png" width="300" alt="Quick flyout from the tray">
-  &nbsp;&nbsp;
   <img src="docs/screenshots/osd.png" width="290" alt="On-screen brightness indicator">
 </p>
-<p align="center"><b>Tray flyout</b> and the <b>on-screen indicator</b> shown by shortcuts</p>
+<p align="center">The <b>on-screen indicator</b> shown by shortcuts</p>
 
 ## Supported monitors
 
@@ -82,7 +81,7 @@ There are two apps that share the same core:
 | Feature | Windows | macOS | Linux (X11 / KDE) | Linux (GNOME on Wayland) |
 |---|---|---|---|---|
 | Monitor control | ✅ | ✅ USB-C, Thunderbolt, DP | ✅ after one-time setup | ✅ after one-time setup |
-| Tray / menu bar | ✅ with flyout | ✅ menu bar | ✅ | AppIndicator extension needed |
+| Tray / menu bar | ✅ | ✅ menu bar | ✅ | AppIndicator extension needed |
 | Global shortcuts | ✅ | ✅ | ✅ | GNOME 48+; otherwise bind desktop shortcuts to commands |
 | On-screen indicator | ✅ | ✅ | ✅ on X11; notification on Wayland | notification |
 | Start at login | ✅ | ✅ | ✅ | ✅ |

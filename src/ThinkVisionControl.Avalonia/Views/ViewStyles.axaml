@@ -1,7 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:FluentAvalonia.UI.Controls">
-  <!-- Layout A page styles, shared by MainWindow, the flyout, the finder and dialog contents. Each of those includes this
+  <!-- Layout A page styles, shared by MainWindow, the finder and dialog contents. Each of those includes this
        file itself, so it works without being merged into App.axaml. Type ramp classes (Title, Body, ...) and IconFont
        come from Styles/Theme.axaml. -->
 

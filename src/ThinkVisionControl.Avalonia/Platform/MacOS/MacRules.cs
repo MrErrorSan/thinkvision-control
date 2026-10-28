@@ -7,7 +7,7 @@ namespace ThinkVisionControl.Avalonia.Platform.MacOS;
 
 /// <summary>
 /// The pure decisions behind the macOS platform layer: key and modifier mapping, the Sequoia hotkey rule,
-/// appearance names, window flags and flyout geometry. No native calls, so it runs (and is testable) anywhere.
+/// appearance names and window flags. No native calls, so it runs (and is testable) anywhere.
 /// </summary>
 internal static class MacRules
 {
@@ -101,37 +101,4 @@ internal static class MacRules
     /// <summary>True when the process runs from an application bundle (<c>NSBundle.mainBundle.bundlePath</c> ends in .app).</summary>
     public static bool IsAppBundlePath(string? bundlePath) =>
         bundlePath is not null && bundlePath.TrimEnd('/').EndsWith(".app", StringComparison.OrdinalIgnoreCase);
-
-    // ---- Flyout geometry -----------------------------------------------------------------------------------------
-
-    /// <summary>Gap (points) between the menu bar / screen edges and the flyout.</summary>
-    public const double FlyoutGap = 6;
-
-    /// <summary>True when the Cocoa point lies on the screen frame (edges inclusive: the cursor can sit on the top row).</summary>
-    public static bool Contains(double x, double y, double frameX, double frameY, double frameWidth, double frameHeight) =>
-        x >= frameX && x <= frameX + frameWidth && y >= frameY && y <= frameY + frameHeight;
-
-    /// <summary>
-    /// Top-left of a flyout centred under the cursor's x and just below the menu bar, kept inside the visible frame.
-    /// Inputs are Cocoa global coordinates in points (origin bottom-left of the primary screen, y up); the visible
-    /// frame excludes the menu bar and the Dock. The result is top-left-origin (y down from the primary screen's
-    /// top) and multiplied by <paramref name="scale"/>, which is how Avalonia expresses macOS screen pixels.
-    /// </summary>
-    /// <param name="flyoutWidth">Flyout width in points (Avalonia DIPs).</param>
-    public static (double X, double Y) FlyoutOrigin(double cursorX,
-        double visibleX, double visibleY, double visibleWidth, double visibleHeight,
-        double primaryScreenHeight, double flyoutWidth, double scale)
-    {
-        var minX = visibleX + FlyoutGap;
-        var maxX = visibleX + visibleWidth - FlyoutGap - flyoutWidth;
-        var left = cursorX - flyoutWidth / 2;
-        left = maxX < minX ? minX : Math.Clamp(left, minX, maxX);
-
-        // Cocoa y of the visible area's top edge → distance from the primary screen's top edge.
-        // A flyout taller than the visible area still starts under the menu bar (its top stays reachable).
-        var top = primaryScreenHeight - (visibleY + visibleHeight) + FlyoutGap;
-
-        if (scale <= 0) scale = 1;
-        return (left * scale, top * scale);
-    }
 }
