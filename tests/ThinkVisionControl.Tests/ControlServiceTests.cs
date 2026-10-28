@@ -229,4 +229,72 @@ public sealed class ControlServiceTests : IDisposable
 
         Assert.Equal(MonitorStatus.NotFound, _control.Status);
     }
+
+    [Fact]
+    public async Task Poll_reports_a_change_made_elsewhere()
+    {
+        await _control.StartAsync();
+        var changes = new List<(byte, uint)>();
+        _control.ValueChanged += (code, value) => changes.Add((code, value));
+        _link.Values[0x60] = new(0x0F, 49); // the other PC switched to DisplayPort
+
+        await _control.PollAsync([0x10, 0x60]);
+
+        Assert.Equal([((byte)0x60, 0x0Fu)], changes);
+    }
+
+    [Fact]
+    public async Task Poll_reads_nothing_during_a_drag()
+    {
+        await _control.StartAsync();
+        _control.BeginDrag(0x10);
+        var reads = _link.ReadCount;
+
+        await _control.PollAsync([0x12, 0x60]);
+
+        Assert.Equal(reads, _link.ReadCount);
+    }
+
+    [Fact]
+    public async Task Poll_reads_nothing_right_after_a_write()
+    {
+        await _control.StartAsync();
+        await _control.SetAsync(0x12, 50);
+        var reads = _link.ReadCount;
+
+        await _control.PollAsync([0x10, 0x60]);
+
+        Assert.Equal(reads, _link.ReadCount);
+    }
+
+    [Fact]
+    public async Task Failed_poll_keeps_the_monitor_connected()
+    {
+        await _control.StartAsync();
+        var connects = _link.ConnectCount;
+        _link.Dead = true; // standby, or its own menu is open
+
+        await _control.PollAsync([0x10, 0x12]);
+        await Task.Delay(300);
+
+        Assert.Equal(MonitorStatus.Connected, _control.Status);
+        Assert.Equal(connects, _link.ConnectCount);
+    }
+
+    [Fact]
+    public async Task WhenQuiet_waits_for_a_recent_write_and_returns_at_once_otherwise()
+    {
+        await _control.StartAsync();
+        var idle = System.Diagnostics.Stopwatch.StartNew();
+        await _control.WhenQuietAsync(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5));
+        idle.Stop();
+
+        await _control.SetAsync(0x12, 50);
+        var busy = System.Diagnostics.Stopwatch.StartNew();
+        await _control.WhenQuietAsync(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5));
+        busy.Stop();
+
+        Assert.True(idle.ElapsedMilliseconds < 100, $"idle wait {idle.ElapsedMilliseconds} ms");
+        Assert.InRange(busy.ElapsedMilliseconds, 200, 1500);
+    }
 }

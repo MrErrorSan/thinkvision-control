@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Threading;
 using FluentAvalonia.Styling;
 using FluentAvalonia.UI.Controls;
 using ThinkVisionControl.Avalonia.Theming;
@@ -19,8 +20,11 @@ namespace ThinkVisionControl.Avalonia;
 /// </summary>
 public partial class MainWindow : Window
 {
+    static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
+
     readonly MainViewModel? _vm;
     readonly Func<DialogSpec, Task<bool>>? _confirm;
+    readonly DispatcherTimer? _poll;
     readonly Dictionary<FANavigationViewItem, Control> _pages = [];
     FinderWindow? _finder;
     bool _dialogOpen;
@@ -42,6 +46,10 @@ public partial class MainWindow : Window
         DataContext = _vm = vm;
         vm.ConfirmAsync = _confirm = ConfirmAsync;
         Closed += OnClosed;
+        // Another PC (or the monitor's own buttons) can change values while the window is open: re-read them.
+        _poll = new DispatcherTimer { Interval = PollInterval };
+        _poll.Tick += (_, _) => vm.PollDisplay();
+        Activated += (_, _) => vm.PollDisplay();
     }
 
     /// <summary>Shows the window, restores it if minimized and brings it to the foreground.</summary>
@@ -57,8 +65,17 @@ public partial class MainWindow : Window
     public void ShowPage(string page) =>
         Nav.SelectedItem = page switch { "monitor" => NavMonitor, "app" => NavApp, _ => NavDisplay };
 
+    // Polls only while the window can be seen.
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (_poll is not null && (change.Property == IsVisibleProperty || change.Property == WindowStateProperty))
+            _poll.IsEnabled = IsVisible && WindowState != WindowState.Minimized;
+    }
+
     void OnClosed(object? sender, EventArgs e)
     {
+        _poll?.Stop();
         if (_vm is not null && Equals(_vm.ConfirmAsync, _confirm)) _vm.ConfirmAsync = null;
         _finder?.Close();
         _pages.Clear();

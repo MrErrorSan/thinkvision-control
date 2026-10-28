@@ -1,13 +1,14 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using ThinkVisionControl.Ui.Controls;
 using ThinkVisionControl.Ui.Pages;
 
 namespace ThinkVisionControl.Ui;
 
 /// <summary>
-/// The settings window (layout A). It always really closes; the shared <see cref="PanelViewModel"/> outlives it and the
-/// app shell creates a new window on the next show.
+/// The settings window (layout A). It always really closes; in background mode the app then restarts into the tray,
+/// so the next show builds a new window in a fresh process.
 /// </summary>
 public partial class PanelWindow : Window
 {
@@ -22,6 +23,8 @@ public partial class PanelWindow : Window
     readonly Action _resumeHotkeys;
     readonly Func<DialogSpec, Task<bool>> _confirm;
     readonly Dictionary<NavigationItem, FrameworkElement> _pages = [];
+    // Keeps the page in step with the monitor while it's on screen; nothing polls once the window is gone.
+    readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(3) };
     FinderWindow? _finder;
     bool _narrow, _collapsed, _overlayOpen;
 
@@ -35,9 +38,15 @@ public partial class PanelWindow : Window
         CurrentPage = DisplayItem;
         SizeChanged += (_, _) => UpdatePane();
         PageHost.PreviewMouseDown += (_, _) => ClosePaneOverlay();
+        _poll.Tick += (_, _) => vm.PollDisplay();
+        Activated += (_, _) => vm.PollDisplay();
+        IsVisibleChanged += (_, _) => UpdatePolling();
+        StateChanged += (_, _) => UpdatePolling();
         Closed += OnClosed;
         UpdatePane();
     }
+
+    void UpdatePolling() => _poll.IsEnabled = IsVisible && WindowState != WindowState.Minimized;
 
     /// <summary>The selected navigation item; setting it shows that page.</summary>
     public NavigationItem? CurrentPage
@@ -57,6 +66,7 @@ public partial class PanelWindow : Window
 
     void OnClosed(object? sender, EventArgs e)
     {
+        _poll.Stop();
         if (Equals(_vm.ConfirmAsync, _confirm)) _vm.ConfirmAsync = null;
         _pages.Clear();
         PageHost.Content = null;

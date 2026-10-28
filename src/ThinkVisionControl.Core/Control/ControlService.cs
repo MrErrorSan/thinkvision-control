@@ -142,6 +142,45 @@ public sealed class ControlService : IDisposable
     public Task RefreshAsync(IEnumerable<byte> codes) =>
         Status == MonitorStatus.Connected ? RefreshCoreAsync(codes, recover: true) : Task.CompletedTask;
 
+    /// <summary>
+    /// Re-reads <paramref name="codes"/> for a window that is on screen. Stops while a change is being made, since its
+    /// reads would only hold that change up (reads wait for writes to settle). A failed read ends the poll quietly: a
+    /// monitor in standby or showing its own menu must not be reported as lost by a background poll.
+    /// </summary>
+    public async Task PollAsync(IEnumerable<byte> codes)
+    {
+        foreach (var code in codes.ToList())
+        {
+            if (Status != MonitorStatus.Connected || IsChanging(PollQuiet)) return;
+            try
+            {
+                UpdateCache(code, await queue.Run(l => l.Read(code)));
+            }
+            catch (DdcException ex)
+            {
+                FileLog.Write($"Poll 0x{code:X2} failed: {ex.Message}");
+                return;
+            }
+        }
+    }
+
+    /// <summary>Waits until nothing has changed for <paramref name="quiet"/>, or at most <paramref name="limit"/>.</summary>
+    public async Task WhenQuietAsync(TimeSpan quiet, TimeSpan limit)
+    {
+        var deadline = DateTime.UtcNow + limit;
+        while (IsChanging(quiet) && DateTime.UtcNow < deadline) await Task.Delay(100);
+    }
+
+    private static readonly TimeSpan PollQuiet = TimeSpan.FromSeconds(1);
+
+    // A drag in progress, or a write that finished within the window.
+    private bool IsChanging(TimeSpan window)
+    {
+        lock (gate)
+            if (drags.Count > 0) return true;
+        return queue.WroteWithin(window);
+    }
+
     /// <returns>False if every requested code failed.</returns>
     private async Task<bool> RefreshCoreAsync(IEnumerable<byte> codes, bool recover)
     {

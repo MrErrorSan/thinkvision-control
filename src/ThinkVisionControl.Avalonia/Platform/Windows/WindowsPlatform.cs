@@ -14,7 +14,7 @@ public static class WindowsPlatform
     public static PlatformServices Create(Func<IMonitorLink> createLink, IOsd overlayOsd) => new(
         new WindowsMonitorEvents(),
         new WindowsHotkeys(),
-        new AvaloniaTray(WindowsTrayAnchor.FromCursor, static () => true),
+        new AvaloniaTray(static () => true),
         overlayOsd,
         new WindowsAutostart(),
         new WindowsQuickActions(),

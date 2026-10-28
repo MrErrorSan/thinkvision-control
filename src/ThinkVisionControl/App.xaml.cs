@@ -40,10 +40,10 @@ public partial class App : Application
     MonitorArrivalWatcher? _arrival;
     PanelViewModel? _vm;
     PanelWindow? _panel;
-    FlyoutWindow? _flyout;
     AppSettings _settings = SettingsStore.Defaults;
     bool _headless;
     bool _residentStarted;
+    bool _exiting, _relaunch;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -89,15 +89,39 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _pipe?.Dispose();
-        _arrival?.Dispose();
-        _displayEvents?.Dispose();
-        _hotkeys?.Dispose();
-        _tray?.Dispose();
-        _control?.Dispose();
-        _link?.Dispose();
-        _singleInstance?.Dispose();
+        try
+        {
+            _pipe?.Dispose();
+            _arrival?.Dispose();
+            _displayEvents?.Dispose();
+            _hotkeys?.Dispose();
+            _tray?.Dispose();
+            _control?.Dispose();
+            _link?.Dispose();
+            _singleInstance?.Dispose();
+        }
+        finally
+        {
+            // Last, so the new copy finds the hotkeys, pipe and mutex free.
+            if (_relaunch && Environment.ProcessPath is { } exe)
+            {
+                try { System.Diagnostics.Process.Start(exe, "--startup"); }
+                catch (Exception ex) { FileLog.Write($"Relaunch failed: {ex.Message}"); }
+            }
+        }
         base.OnExit(e);
+    }
+
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        _exiting = true;
+        base.OnSessionEnding(e);
+    }
+
+    void ExitApp()
+    {
+        _exiting = true;
+        Shutdown();
     }
 
     /// <summary>
@@ -162,8 +186,9 @@ public partial class App : Application
 
     void OnForwardedCommand(string[] args)
     {
-        var (command, _) = CommandLine.Parse(args);
-        if (command is AppCommand.Show) StartResident(showWindow: true);
+        var (command, startup) = CommandLine.Parse(args);
+        // A forwarded --startup comes from a restart that lost the race to another launch: keep the tray, no window.
+        if (command is AppCommand.Show) StartResident(showWindow: !startup || !_settings.BackgroundMode);
         else _ = RunCommandAsync(command);
     }
 
@@ -171,11 +196,6 @@ public partial class App : Application
     {
         if (_vm is not null) return _vm;
         _vm = new PanelViewModel(_control!, _settingsStore!, _profiles!, () => _hotkeys?.Failed ?? [], ApplySettings);
-        _vm.OpenSettingsRequested += () =>
-        {
-            _flyout?.Hide();
-            ShowWindow();
-        };
         return _vm;
     }
 
@@ -191,34 +211,26 @@ public partial class App : Application
         _panel.ShowMainWindow();
     }
 
-    // The window is released on close (a hidden WPF window still holds its visuals). The view model stays.
-    void OnPanelClosed(object? sender, EventArgs e)
+    // Closing the window ends this process. In background mode a fresh copy takes over the tray: once a WPF window has
+    // shown, the GPU driver and theme resources stay loaded (~45 MB), while a tray-only process holds ~15 MB.
+    async void OnPanelClosed(object? sender, EventArgs e)
     {
         _panel = null;
         MainWindow = null;
-        if (!_settings.BackgroundMode) Shutdown();
-        else UpdateEfficiency();
+        if (_exiting) return;
+        if (_settings.BackgroundMode)
+        {
+            // Let changes still on their way finish first: a debounced slider step, a preset, a backup restore.
+            await Task.Delay(400);
+            await _control!.WhenQuietAsync(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(10));
+            if (_panel is not null || _exiting) return; // reopened, or exited, meanwhile
+            _relaunch = true;
+        }
+        Shutdown();
     }
 
-    void ShowFlyout()
-    {
-        if (_flyout is null)
-        {
-            _flyout = new FlyoutWindow(ViewModel(), ShowWindow);
-            _flyout.IsVisibleChanged += (_, _) => UpdateEfficiency();
-        }
-        if (_flyout.IsVisible)
-        {
-            _flyout.Hide();
-            return;
-        }
-        ViewModel().OnShowing();
-        _flyout.ShowAt(_tray?.PopupOrigin(FlyoutWindow.PopupSize) ?? new Point(SystemParameters.WorkArea.Right - FlyoutWindow.PopupSize.Width - 12,
-            SystemParameters.WorkArea.Bottom - FlyoutWindow.PopupSize.Height - 12));
-    }
-
-    // EcoQoS while nothing is on screen; full speed while the window or flyout is open.
-    void UpdateEfficiency() => EfficiencyMode.Set(_panel?.IsVisible != true && _flyout?.IsVisible != true);
+    // EcoQoS while nothing is on screen; full speed while the window is open.
+    void UpdateEfficiency() => EfficiencyMode.Set(_panel?.IsVisible != true);
 
     void ApplySettings(AppSettings settings)
     {
@@ -226,7 +238,7 @@ public partial class App : Application
         if (settings.BackgroundMode)
         {
             _hotkeys ??= new HotkeyManager(OnHotkey);
-            _tray ??= new TrayIcon(ShowFlyout, ShowWindow, TrayPresetItems, Shutdown);
+            _tray ??= new TrayIcon(ShowWindow, TrayPresetItems, ExitApp);
             _tray.SetStatus(_control?.Status ?? MonitorStatus.Connecting);
             _hotkeys.Register(settings.Hotkeys);
         }
@@ -236,7 +248,6 @@ public partial class App : Application
             _hotkeys = null;
             _tray?.Dispose();
             _tray = null;
-            _flyout?.Hide();
         }
         try { StartupRegistration.Apply(settings.StartWithWindows); }
         catch (Exception ex) { FileLog.Write($"Start-with-Windows update failed: {ex.Message}"); }

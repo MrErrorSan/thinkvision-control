@@ -4,7 +4,7 @@
                     xmlns:p="clr-namespace:ThinkVisionControl.Ui.Pages"
                     xmlns:c="clr-namespace:ThinkVisionControl.Ui.Controls">
 
-    <!-- Shared by the settings pages (merged into PanelWindow) and QuickControlsView. Colours are Fluent keys only. -->
+    <!-- Shared by the settings pages (merged into PanelWindow). Colours are Fluent keys only. -->
 
     <!-- 4 px between top-level cards. Cards inside a SettingsExpander keep the expander's own row style. -->
     <Style TargetType="c:SettingsCard" BasedOn="{StaticResource {x:Type c:SettingsCard}}">

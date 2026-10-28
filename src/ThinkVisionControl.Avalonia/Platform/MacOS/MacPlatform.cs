@@ -15,8 +15,8 @@ public static class MacPlatform
         return new PlatformServices(
             MonitorEvents: new MacMonitorEvents(),
             Hotkeys: new MacHotkeys(),
-            // The menu bar always exists; the flyout opens under the clicked status item (cursor position).
-            Tray: new AvaloniaTray(flyoutOrigin: size => MacMenuBar.FlyoutOriginUnderCursor(size), hostAvailable: () => true),
+            // The menu bar always exists.
+            Tray: new AvaloniaTray(hostAvailable: () => true),
             Osd: overlayOsd,
             Autostart: new MacAutostart(),
             QuickActions: new MacQuickActions(),

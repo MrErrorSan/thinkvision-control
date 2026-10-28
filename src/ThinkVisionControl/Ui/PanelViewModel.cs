@@ -42,7 +42,7 @@ public sealed record InputChoice(byte Value, string Label)
 public sealed record SettingsGroup(string Header, IReadOnlyList<ControlItem> Items);
 
 /// <summary>
-/// State shared by the main window and the tray flyout; it outlives both. Every card is built from
+/// State behind the main window. Every card is built from
 /// <see cref="ControlService.Controls"/> (never empty), monitor cards are usable only while <see cref="IsConnected"/>,
 /// and one InfoBar explains any other state.
 /// </summary>
@@ -117,14 +117,9 @@ public sealed class PanelViewModel : Observable
 
     /// <summary>
     /// Asks the user to confirm a guarded write (the window sets this to its ContentDialogHost). With no confirmer
-    /// the write is cancelled. A view can pass its own confirmer to <see cref="SelectInputAsync"/> instead.
+    /// the write is cancelled.
     /// </summary>
     public Func<DialogSpec, Task<bool>>? ConfirmAsync { get; set; }
-
-    /// <summary>Raised by <see cref="RequestOpenSettings"/> (the flyout's "All settings").</summary>
-    public event Action? OpenSettingsRequested;
-
-    public void RequestOpenSettings() => OpenSettingsRequested?.Invoke();
 
     // ---------------------------------------------------------------- connection state
 
@@ -248,7 +243,6 @@ public sealed class PanelViewModel : Observable
     public IReadOnlyList<RangeItem> RgbItems { get; private set; } = [];
     public EnumItem? InputItem { get; private set; }
     public bool HasInput => InputItem is not null;
-    public bool HasColourMode => ColourModeItem is not null;
     public EnumItem? PowerItem { get; private set; }
     public IReadOnlyList<SettingsGroup> MonitorGroups { get; private set; } = [];
     public IReadOnlyList<ActionItem> ResetItems { get; private set; } = [];
@@ -341,8 +335,26 @@ public sealed class PanelViewModel : Observable
         def.ValueLabels.Count == 2 && def.ValueLabels.GetValueOrDefault((byte)0) == "Off" && def.ValueLabels.GetValueOrDefault((byte)1) == "On"
         && values.All(v => v <= 1);
 
-    /// <summary>Re-reads the Display page codes (the user may have used the monitor's own buttons). Never rebuilds.</summary>
+    /// <summary>
+    /// Re-reads the Display page codes on show: the monitor's own buttons or another PC may have changed them. Never rebuilds.
+    /// </summary>
     public void OnShowing() => _ = RefreshAsync(DisplayCodes.Where(_items.ContainsKey));
+
+    /// <summary>
+    /// The same re-read while the window stays open (activation, poll timer), through <see cref="ControlService.PollAsync"/>:
+    /// it yields to changes in progress and never reports the monitor lost. Skipped while the previous poll is running.
+    /// </summary>
+    public async void PollDisplay()
+    {
+        if (_polling) return;
+        _polling = true;
+        var codes = DisplayCodes.Where(_items.ContainsKey).ToList();
+        try { await Task.Run(() => _control.PollAsync(codes)); }
+        catch (Exception ex) { FileLog.Write($"Poll failed: {ex.Message}"); }
+        finally { _polling = false; }
+    }
+
+    bool _polling;
 
     /// <summary>Rebuilds the cards if the profile changed (a code was named in the finder).</summary>
     internal void RebuildIfControlsChanged()
@@ -387,21 +399,20 @@ public sealed class PanelViewModel : Observable
 
     uint? Cached(byte code) => _control.TryGetCached(code, out var r) ? r.Current : null;
 
-    /// <summary>Selects an input from a view; switching away from this PC's input asks <paramref name="confirm"/> first.</summary>
-    public Task SelectInputAsync(EnumOption option, Func<DialogSpec, Task<bool>>? confirm = null)
+    /// <summary>Selects an input from a view; switching away from this PC's input asks <see cref="ConfirmAsync"/> first.</summary>
+    public Task SelectInputAsync(EnumOption option)
     {
         if (InputItem is not { } input || !IsConnected || option == input.Selected) return Task.CompletedTask;
         input.Mark(option);
-        return WriteAsync(input, option.Value, confirm);
+        return WriteAsync(input, option.Value);
     }
 
-    internal async Task WriteAsync(ControlItem item, uint value, Func<DialogSpec, Task<bool>>? confirm = null)
+    internal async Task WriteAsync(ControlItem item, uint value)
     {
         var confirmed = false;
         if (ConfirmationFor(item.Definition, value) is { } spec)
         {
-            confirm ??= ConfirmAsync;
-            if (confirm is null || !await confirm(spec))
+            if (ConfirmAsync is not { } confirm || !await confirm(spec))
             {
                 SyncFromCache(item);
                 return;

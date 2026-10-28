@@ -1,0 +1,317 @@
+{
+  "date": "2026-10-28",
+  "machine": "Windows 11 Home 26200, Ryzen 5 5500U, AMD Radeon iGPU + GTX 1650, .NET WindowsDesktop 10.0.14",
+  "app": "WPF app (src/ThinkVisionControl), Release publish as in scripts/make-windows-setup.ps1 (framework-dependent, R2R)",
+  "method": "measure.ps1: start --startup with BackgroundMode=true, wait 12 s; second launch (as a Start-menu click) opens the window, wait 10 s; WM_CLOSE; sample +10 s and +40 s. taskmgr_mb = Win32_PerfFormattedData_PerfProc_Process.WorkingSetPrivate (Task Manager Memory column).",
+  "variants": {
+    "baseline": {
+      "description": "shipped build, 2 cycles",
+      "samples": [
+        {
+          "phase": "tray, never shown",
+          "taskmgr_mb": 16.3,
+          "private_bytes_mb": 21.6,
+          "ws_mb": 85.8,
+          "threads": 19,
+          "modules": 132,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 1)",
+          "taskmgr_mb": 65.1,
+          "private_bytes_mb": 91.3,
+          "ws_mb": 168.3,
+          "threads": 30,
+          "modules": 167,
+          "visible_windows": "722624:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 1)",
+          "taskmgr_mb": 65.7,
+          "private_bytes_mb": 91.6,
+          "ws_mb": 170.5,
+          "threads": 30,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 1)",
+          "taskmgr_mb": 65.5,
+          "private_bytes_mb": 91.4,
+          "ws_mb": 170.3,
+          "threads": 25,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 2)",
+          "taskmgr_mb": 54.8,
+          "private_bytes_mb": 79.0,
+          "ws_mb": 163.3,
+          "threads": 27,
+          "modules": 168,
+          "visible_windows": "3475496:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 2)",
+          "taskmgr_mb": 54.8,
+          "private_bytes_mb": 79.0,
+          "ws_mb": 163.7,
+          "threads": 25,
+          "modules": 168,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 2)",
+          "taskmgr_mb": 54.8,
+          "private_bytes_mb": 79.0,
+          "ws_mb": 163.7,
+          "threads": 25,
+          "modules": 168,
+          "visible_windows": "",
+          "main_is_foreground": false
+        }
+      ]
+    },
+    "hw": {
+      "description": "experiment build, defaults",
+      "samples": [
+        {
+          "phase": "tray, never shown",
+          "taskmgr_mb": 14.5,
+          "private_bytes_mb": 19.8,
+          "ws_mb": 84.9,
+          "threads": 19,
+          "modules": 132,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 1)",
+          "taskmgr_mb": 63.4,
+          "private_bytes_mb": 88.8,
+          "ws_mb": 167.7,
+          "threads": 29,
+          "modules": 167,
+          "visible_windows": "4786410:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 1)",
+          "taskmgr_mb": 64.5,
+          "private_bytes_mb": 90.0,
+          "ws_mb": 170.4,
+          "threads": 29,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 1)",
+          "taskmgr_mb": 64.3,
+          "private_bytes_mb": 89.8,
+          "ws_mb": 170.3,
+          "threads": 24,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        }
+      ],
+      "in_process_after_close": "gc_heap_mb=3.8 gc_committed_mb=9.5 jit_mb=0.41 jit_methods=4141 assemblies=71"
+    },
+    "sw": {
+      "description": "RenderOptions.ProcessRenderMode = SoftwareOnly",
+      "samples": [
+        {
+          "phase": "tray, never shown",
+          "taskmgr_mb": 14.9,
+          "private_bytes_mb": 20.3,
+          "ws_mb": 86.0,
+          "threads": 19,
+          "modules": 134,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 1)",
+          "taskmgr_mb": 41.8,
+          "private_bytes_mb": 56.6,
+          "ws_mb": 138.7,
+          "threads": 22,
+          "modules": 167,
+          "visible_windows": "4327034:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 1)",
+          "taskmgr_mb": 42.8,
+          "private_bytes_mb": 57.8,
+          "ws_mb": 141.4,
+          "threads": 22,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 1)",
+          "taskmgr_mb": 42.7,
+          "private_bytes_mb": 57.6,
+          "ws_mb": 141.3,
+          "threads": 17,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        }
+      ],
+      "in_process_after_close": "gc_heap_mb=3.8 gc_committed_mb=9.5 jit_mb=0.41 jit_methods=4148 assemblies=71"
+    },
+    "nofluent": {
+      "description": "Application.ThemeMode = None (Fluent theme off)",
+      "samples": [
+        {
+          "phase": "tray, never shown",
+          "taskmgr_mb": 14.6,
+          "private_bytes_mb": 19.8,
+          "ws_mb": 85.0,
+          "threads": 19,
+          "modules": 132,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 1)",
+          "taskmgr_mb": 48.2,
+          "private_bytes_mb": 71.6,
+          "ws_mb": 152.1,
+          "threads": 29,
+          "modules": 167,
+          "visible_windows": "4983018:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 1)",
+          "taskmgr_mb": 34.3,
+          "private_bytes_mb": 57.5,
+          "ws_mb": 139.6,
+          "threads": 30,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 1)",
+          "taskmgr_mb": 33.0,
+          "private_bytes_mb": 57.3,
+          "ws_mb": 138.2,
+          "threads": 24,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        }
+      ],
+      "in_process_after_close": "gc_heap_mb=3.0 gc_committed_mb=10.1 jit_mb=0.40 jit_methods=3897 assemblies=71"
+    },
+    "sw_nofluent": {
+      "description": "both",
+      "samples": [
+        {
+          "phase": "tray, never shown",
+          "taskmgr_mb": 14.8,
+          "private_bytes_mb": 20.3,
+          "ws_mb": 86.0,
+          "threads": 19,
+          "modules": 134,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 1)",
+          "taskmgr_mb": 41.0,
+          "private_bytes_mb": 55.8,
+          "ws_mb": 137.6,
+          "threads": 23,
+          "modules": 167,
+          "visible_windows": "1573924:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 1)",
+          "taskmgr_mb": 27.8,
+          "private_bytes_mb": 41.3,
+          "ws_mb": 125.8,
+          "threads": 23,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 1)",
+          "taskmgr_mb": 27.7,
+          "private_bytes_mb": 41.0,
+          "ws_mb": 125.7,
+          "threads": 17,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        }
+      ],
+      "in_process_after_close": "gc_heap_mb=3.0 gc_committed_mb=10.1 jit_mb=0.40 jit_methods=3897 assemblies=71"
+    },
+    "hw_trim": {
+      "description": "defaults + SetProcessWorkingSetSize(-1,-1) 3 s after close",
+      "samples": [
+        {
+          "phase": "tray, never shown",
+          "taskmgr_mb": 14.6,
+          "private_bytes_mb": 19.9,
+          "ws_mb": 85.0,
+          "threads": 19,
+          "modules": 132,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "window open (cycle 1)",
+          "taskmgr_mb": 46.2,
+          "private_bytes_mb": 71.5,
+          "ws_mb": 146.6,
+          "threads": 29,
+          "modules": 167,
+          "visible_windows": "6162654:'ThinkVision Control'",
+          "main_is_foreground": true
+        },
+        {
+          "phase": "closed to tray +10s (cycle 1)",
+          "taskmgr_mb": 4.2,
+          "private_bytes_mb": 72.7,
+          "ws_mb": 13.5,
+          "threads": 30,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        },
+        {
+          "phase": "closed to tray +40s (cycle 1)",
+          "taskmgr_mb": 5.3,
+          "private_bytes_mb": 56.9,
+          "ws_mb": 15.8,
+          "threads": 24,
+          "modules": 167,
+          "visible_windows": "",
+          "main_is_foreground": false
+        }
+      ],
+      "in_process_after_close": "gc_heap_mb=3.8 gc_committed_mb=9.5 jit_mb=0.41 jit_methods=4148 assemblies=71"
+    }
+  },
+  "modules_loaded_on_first_window": {
+    "hw": "35 new, 65 MB image; largest atiumd6a/atiumd64/aticfx64 (AMD user-mode driver), D3DCompiler_47_cor3, wpfgfx_cor3, d3d9, UIAutomationCore",
+    "sw": "33 new, 59 MB image; AMD driver DLLs still load under SoftwareOnly"
+  }
+}

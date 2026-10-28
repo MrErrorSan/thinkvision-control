@@ -35,10 +35,6 @@ internal static class ObjC
     [DllImport(Lib, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr(IntPtr receiver, IntPtr selector);
 
-    // id objc_msgSend(id self, SEL op, NSUInteger arg);   e.g. -[NSArray objectAtIndex:]
-    [DllImport(Lib, EntryPoint = "objc_msgSend")]
-    public static extern IntPtr SendIntPtr(IntPtr receiver, IntPtr selector, ulong arg);
-
     // id objc_msgSend(id self, SEL op, const char *arg);   e.g. -[NSString initWithUTF8String:]
     [DllImport(Lib, EntryPoint = "objc_msgSend")]
     public static extern IntPtr SendIntPtr(IntPtr receiver, IntPtr selector, [MarshalAs(UnmanagedType.LPUTF8Str)] string arg);
@@ -49,13 +45,8 @@ internal static class ObjC
     public static extern bool SendBoolWithError(IntPtr receiver, IntPtr selector, out IntPtr error);
 
     // NSInteger objc_msgSend(id self, SEL op);   e.g. -[SMAppService status]
-    // NSUInteger objc_msgSend(id self, SEL op);  e.g. -[NSArray count]  (same register, read as long and cast)
     [DllImport(Lib, EntryPoint = "objc_msgSend")]
     public static extern long SendLong(IntPtr receiver, IntPtr selector);
-
-    // CGFloat objc_msgSend(id self, SEL op);   e.g. -[NSScreen backingScaleFactor]   (returned in d0 on arm64)
-    [DllImport(Lib, EntryPoint = "objc_msgSend")]
-    public static extern double SendDouble(IntPtr receiver, IntPtr selector);
 
     // void objc_msgSend(id self, SEL op);   e.g. +[SMAppService openSystemSettingsLoginItems], -[NSObject release]
     [DllImport(Lib, EntryPoint = "objc_msgSend")]
@@ -68,31 +59,6 @@ internal static class ObjC
     // which satisfies Apple's arm64 rule that callers extend sub-32-bit arguments.
     [DllImport(Lib, EntryPoint = "objc_msgSend")]
     public static extern void SendVoid(IntPtr receiver, IntPtr selector, long arg);
-
-    // NSPoint objc_msgSend(id self, SEL op);   e.g. +[NSEvent mouseLocation]
-    // NSPoint is two CGFloats (an HFA): d0/d1 on arm64, xmm0/xmm1 on x86-64, so plain objc_msgSend on both.
-    [DllImport(Lib, EntryPoint = "objc_msgSend")]
-    public static extern NSPoint SendPoint(IntPtr receiver, IntPtr selector);
-
-    // NSRect objc_msgSend(id self, SEL op);   e.g. -[NSScreen frame], -[NSScreen visibleFrame]
-    // arm64: four CGFloats (an HFA) come back in d0–d3, so plain objc_msgSend.
-    [DllImport(Lib, EntryPoint = "objc_msgSend")]
-    private static extern NSRect SendRectArm64(IntPtr receiver, IntPtr selector);
-
-    // void objc_msgSend_stret(NSRect *result, id self, SEL op);   x86-64 only: 32-byte structs return through memory.
-    [DllImport(Lib, EntryPoint = "objc_msgSend_stret")]
-    private static extern void SendRectStretX64(out NSRect result, IntPtr receiver, IntPtr selector);
-
-    /// <summary>A method returning NSRect, on either architecture (the app ships arm64; x64 is a courtesy).</summary>
-    public static NSRect SendRect(IntPtr receiver, IntPtr selector)
-    {
-        if (RuntimeInformation.ProcessArchitecture == Architecture.X64)
-        {
-            SendRectStretX64(out var rect, receiver, selector);
-            return rect;
-        }
-        return SendRectArm64(receiver, selector);
-    }
 
     /// <summary><c>[[cls alloc] initWithUTF8String:text]</c>: an owned NSString (+1). Release with <see cref="Release"/>.</summary>
     public static IntPtr CreateNSString(string text)
@@ -134,18 +100,4 @@ internal static class ObjC
             if (_context != IntPtr.Zero) AutoreleasePoolPop(_context);
         }
     }
-}
-
-/// <summary>CGPoint/NSPoint: two CGFloats (double on 64-bit).</summary>
-[StructLayout(LayoutKind.Sequential)]
-internal struct NSPoint
-{
-    public double X, Y;
-}
-
-/// <summary>CGRect/NSRect: origin then size, four CGFloats. Cocoa screen coordinates: origin bottom-left, y up.</summary>
-[StructLayout(LayoutKind.Sequential)]
-internal struct NSRect
-{
-    public double X, Y, Width, Height;
 }
