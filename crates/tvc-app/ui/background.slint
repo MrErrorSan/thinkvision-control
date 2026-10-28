@@ -9,7 +9,7 @@ export component Tray inherits SystemTrayIcon {
     out property <image> glyph-on-light: @image-url("glyph-dark-32.png");
     in property <image> image: root.glyph-on-dark;
     in property <string> tip: "ThinkVision Control";
-    in property <bool> connected;          // monitor actions only while connected (INV §2)
+    in property <bool> connected;          // monitor actions only while connected
     in property <bool> brightness-items;   // Linux: tray menus there have no left click
     callback open();
     callback preset(int);                  // 0 = Day, 1 = Night

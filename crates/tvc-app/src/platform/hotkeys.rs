@@ -1,5 +1,5 @@
 //! Global hotkeys through the `global-hotkey` crate: Windows `RegisterHotKey`, X11 key grabs, macOS Carbon
-//! (INV §3.3). Wayland sessions report unavailable until the xdg-desktop-portal follow-up.
+//!. Wayland sessions report unavailable until the xdg-desktop-portal follow-up.
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};

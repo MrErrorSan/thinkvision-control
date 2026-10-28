@@ -1,12 +1,12 @@
 //! The DDC engine: one worker thread owns the link, the value cache, drag state, status and the retry burst.
 //! The app sends [`Command`]s and receives [`Event`]s through its sink; nothing else touches monitor state.
 //!
-//! Pacing (INV §8.3): ≥ `gap` between link calls; reads and capability reads wait until `settle` after the last
+//! Pacing: ≥ `gap` between link calls; reads and capability reads wait until `settle` after the last
 //! write (writes are not held, so drags stream); a call failing with [`LinkError::Transient`] is tried up to
-//! `attempts` times, `retry` apart. `Unsupported` is final; `Gone` marks the monitor lost and reconnects at once (A2).
+//! `attempts` times, `retry` apart. `Unsupported` is final; `Gone` marks the monitor lost and reconnects at once.
 //!
-//! While the display is off, the session is locked or the PC sleeps there is no monitor traffic at all (A1).
-//! After a crash inside a capability read or the finder the app starts the engine in safe mode (C1).
+//! While the display is off, the session is locked or the PC sleeps there is no monitor traffic at all.
+//! After a crash inside a capability read or the finder the app starts the engine in safe mode.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
@@ -49,11 +49,11 @@ pub struct Timing {
     pub burst: Vec<Duration>,
     /// Polls read nothing within this long of a write.
     pub poll_quiet: Duration,
-    /// After the last wake event (display on, unlock, resume): no traffic for this long, then reconnect (A1).
+    /// After the last wake event (display on, unlock, resume): no traffic for this long, then reconnect.
     pub wake_delay: Duration,
-    /// After an input write: wait this long, then re-read once to confirm (A3).
+    /// After an input write: wait this long, then re-read once to confirm.
     pub input_confirm: Duration,
-    /// A hotkey step re-reads a cached value older than this first (A4).
+    /// A hotkey step re-reads a cached value older than this first.
     pub stale_after: Duration,
     /// "Permission denied" this soon after resume is retried by the burst, not reported (Linux, as ddcutil).
     pub resume_grace: Duration,
@@ -109,11 +109,11 @@ pub enum Origin {
     Hotkey,
     Tray,
     Cli,
-    /// Automatic Day/Night (B1).
+    /// Automatic Day/Night.
     Schedule,
 }
 
-/// Display, session and system power changes the app forwards (A1).
+/// Display, session and system power changes the app forwards.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PowerState {
     DisplayOff,
@@ -137,7 +137,7 @@ pub struct WriteResult {
     pub outcome: WriteOutcome,
     /// Why it ended this way; set on every result.
     pub kind: ResultKind,
-    /// User-facing text: "Brightness 60", "Input → HDMI", "Day preset", "Brightness remains 50; ...".
+    /// User-facing text: "Brightness 60", "Input → HDMI", "Day preset", "Brightness remains 50;...".
     pub message: String,
     /// The value written, on Ok (single writes only).
     pub value: Option<u16>,
@@ -202,9 +202,9 @@ pub enum Command {
     FinderCompare,
     /// Saves a definition to the user overlay, then re-resolves and emits `Controls`.
     SaveOverlay(ControlDefinition),
-    /// A display, session or system power change (A1).
+    /// A display, session or system power change.
     Power(PowerState),
-    /// Enter or leave safe mode (C1). Leaving doesn't reconnect; the next reconnect reads the capabilities.
+    /// Enter or leave safe mode. Leaving doesn't reconnect; the next reconnect reads the capabilities.
     SetSafeMode(bool),
     /// Reads the capability string from the monitor if this process hasn't yet. Connecting uses the cached copy
     /// when there is one (the live read takes ~2.3 s on the P32p-20), so a resident app sends this once it is
@@ -359,7 +359,7 @@ struct Worker {
     caps: MonitorCapabilities,
     controls: BTreeMap<u8, ControlDefinition>,
     cache: BTreeMap<u8, VcpReading>,
-    /// When each cached value was last read or written (A4).
+    /// When each cached value was last read or written.
     read_at: BTreeMap<u8, Instant>,
     drags: BTreeSet<u8>,
     status: MonitorStatus,
@@ -373,7 +373,7 @@ struct Worker {
     locked: bool,
     suspended: bool,
     resumed_at: Option<Instant>,
-    /// Set after the last wake event: the wake recheck runs then (A1).
+    /// Set after the last wake event: the wake recheck runs then.
     wake_at: Option<Instant>,
 }
 
@@ -533,7 +533,7 @@ impl Worker {
         }
     }
 
-    /// The result for a write that is held back: only while asleep. Safe mode (C1) skips the operations that
+    /// The result for a write that is held back: only while asleep. Safe mode skips the operations that
     /// crashed (capability read, finder), not ordinary writes, so a false alarm (the app killed mid-read) costs
     /// nothing the user notices.
     fn hold(&self) -> Option<WriteResult> {
@@ -604,7 +604,7 @@ impl Worker {
     }
 
     /// Reads and caches the capability string, re-resolving the controls; reads values for codes it adds. Guarded
-    /// by the crash marker (C1). False if the monitor didn't answer or the string didn't parse.
+    /// by the crash marker. False if the monitor didn't answer or the string didn't parse.
     fn read_capabilities(&mut self) -> bool {
         let attempts = self.timing.attempts;
         self.crash.arm("capability read");
@@ -770,7 +770,7 @@ impl Worker {
         WriteResult::ok(describe(&def, v), Some(v))
     }
 
-    /// A3: read first and skip the write if the monitor is already there; write once (the link often drops
+    /// read first and skip the write if the monitor is already there; write once (the link often drops
     /// mid-switch, so a retry could switch twice); confirm with one re-read after `input_confirm`.
     fn switch_input(&mut self, def: &ControlDefinition, v: u16) -> WriteResult {
         match self.read(INPUT) {
@@ -879,7 +879,7 @@ impl Worker {
         if self.status != MonitorStatus::Connected {
             return self.not_connected();
         }
-        // A4: another PC or the monitor's buttons may have changed it since (uncached codes have no time).
+        // another PC or the monitor's buttons may have changed it since (uncached codes have no time).
         let fresh = self.read_at.get(&code).is_some_and(|at| at.elapsed() < self.timing.stale_after);
         if !fresh {
             match self.read(code) {
@@ -927,7 +927,7 @@ impl Worker {
         WriteResult::ok("Backup restored".into(), None)
     }
 
-    /// Reads the finder's codes inside the crash marker (C1).
+    /// Reads the finder's codes inside the crash marker.
     fn take_snapshot(&mut self, operation: &str) -> BTreeMap<u8, u16> {
         let codes = finder::snapshot_codes(&self.controls);
         if self.status == MonitorStatus::Connected {
@@ -998,7 +998,7 @@ impl Worker {
         self.request_reconnect();
     }
 
-    /// The connection is gone (A2): report it and reconnect at once, then on the burst's schedule.
+    /// The connection is gone: report it and reconnect at once, then on the burst's schedule.
     fn gone(&mut self) {
         self.set_status(MonitorStatus::NotResponding, None);
         self.burst = Some(Burst { step: 0, due: Instant::now() });
@@ -1030,7 +1030,7 @@ impl Worker {
         self.read_with(code, attempts)
     }
 
-    /// Every input (0x60) reading keeps only its low byte: some monitors put junk in the high byte (A3).
+    /// Every input (0x60) reading keeps only its low byte: some monitors put junk in the high byte.
     fn read_with(&mut self, code: u8, attempts: u32) -> Result<VcpReading, LinkError> {
         self.run_op(OpKind::Read, attempts, |l| l.read(code))
             .map(|r| if code == INPUT { VcpReading { current: r.current & 0xFF, ..r } } else { r })
@@ -1041,7 +1041,7 @@ impl Worker {
         self.run_op(OpKind::Write, attempts, |l| l.write(code, value))
     }
 
-    /// One link call, paced; only `Transient` failures are retried (A2). A `Gone` marks the monitor lost.
+    /// One link call, paced; only `Transient` failures are retried. A `Gone` marks the monitor lost.
     fn run_op<T>(&mut self, kind: OpKind, attempts: u32,
         mut op: impl FnMut(&mut dyn MonitorLink) -> Result<T, LinkError>) -> Result<T, LinkError> {
         sleep_until(self.ready_at);

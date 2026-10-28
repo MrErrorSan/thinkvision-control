@@ -1,4 +1,4 @@
-//! `thinkvision://` links (B5). The installer, `.desktop` file and Info.plist register the scheme; on Windows the
+//! `thinkvision://` links. The installer, `.desktop` file and Info.plist register the scheme; on Windows the
 //! app also registers itself per user, so a portable copy (or a moved install) still opens links.
 
 /// Windows: `HKCU\Software\Classes\thinkvision` → `"<exe>" "%1"`, writing only values that differ (idempotent;

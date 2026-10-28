@@ -1,4 +1,4 @@
-//! The step OSD (INV §1.6). One window, created on first use and then kept: it stays "visible" to Slint and winit and
+//! The step OSD. One window, created on first use and then kept: it stays "visible" to Slint and winit and
 //! is shown and hidden by layered alpha on Windows. winit's own show after the first one activates the window and
 //! rewrites its ex-styles, and hiding through Win32 behind Slint's back makes Slint's loop spin (background NOTES).
 

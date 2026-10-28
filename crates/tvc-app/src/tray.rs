@@ -1,4 +1,4 @@
-//! Tray icon image: the glyph for the taskbar theme, with a status badge when the monitor isn't reachable (INV §2).
+//! Tray icon image: the glyph for the taskbar theme, with a status badge when the monitor isn't reachable.
 
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 use tvc_core::engine::MonitorStatus;

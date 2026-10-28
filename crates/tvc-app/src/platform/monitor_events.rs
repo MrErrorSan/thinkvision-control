@@ -1,4 +1,4 @@
-//! System events the engine reacts to (INV §7, learnings A1): display changes (debounced, trigger a reconnect),
+//! System events the engine reacts to: display changes (debounced, trigger a reconnect),
 //! display off/on, session lock/unlock and suspend/resume (delivered at once, once per transition).
 //!
 //! Windows: one hidden top-level window on its own thread — `WM_DISPLAYCHANGE`, `WM_DEVICECHANGE` for the monitor

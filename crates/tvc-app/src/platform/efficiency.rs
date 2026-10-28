@@ -1,4 +1,4 @@
-//! Windows "Efficiency mode": EcoQoS and low memory priority while no window is visible (INV §7).
+//! Windows "Efficiency mode": EcoQoS and low memory priority while no window is visible.
 
 /// Call whenever a window shows or the last one hides. Hidden: EcoQoS + memory priority 2 (low);
 /// visible: HighQoS + memory priority 5 (normal). Repeated calls with the same value do nothing. No-op off Windows.

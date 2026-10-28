@@ -58,7 +58,7 @@ fn main() -> Result<(), slint::PlatformError> {
     } else {
         tvc_ddc::open(MonitorMatch { edid_id: profile.edid_id.clone(), description_hint: Some(profile.short_name.clone()) })
     };
-    // C1: a marker left by a crash during a risky monitor operation starts this run in safe mode.
+    // a marker left by a crash during a risky monitor operation starts this run in safe mode.
     let marker = Marker::new(&data_dir);
     let safe_mode = marker.left_over().inspect(|op| log::write(&format!("Safe mode: crashed during {op}"))).is_some();
     marker.clear();
@@ -83,7 +83,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     app.send(Command::Connect);
     if parsed.command != CliCommand::Show && !demo {
-        // A verb with no resident copy: connect once, run it, show the OSD, exit (INV §6.2).
+        // A verb with no resident copy: connect once, run it, show the OSD, exit.
         app.start_headless(parsed.command, parsed.json);
     } else {
         // Also starts the retry burst and the display/power event watcher.
@@ -98,7 +98,7 @@ fn main() -> Result<(), slint::PlatformError> {
     if let Some(engine) = controller.and_then(|c| c.into_engine()) {
         engine.shutdown();
     }
-    // An orderly exit, even one that cut a capability read short, is not a crash (C1).
+    // An orderly exit, even one that cut a capability read short, is not a crash.
     marker.clear();
     if exit_code != 0 {
         std::process::exit(exit_code);

@@ -141,7 +141,7 @@ fn failure(call: &str, code: Option<u8>) -> LinkError {
     classify(error, format!("{call}{code} failed (Win32 error 0x{error:08X})"))
 }
 
-/// Sorts a dxva2 error (A2, after PowerToys' `DdcErrorClassifier`, MIT):
+/// Sorts a dxva2 error (after PowerToys' `DdcErrorClassifier`, MIT):
 /// - `Unsupported`: the monitor answered that it doesn't implement the code (`ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED`).
 /// - `Gone`: the physical-monitor handle is dead (invalid handle, monitor no longer exists); reconnect.
 /// - `Transient`: everything else. That covers the I²C transmit/receive errors, the DDC/CI framing errors (invalid

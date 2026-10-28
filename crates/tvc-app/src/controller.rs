@@ -1,7 +1,7 @@
 //! The UI-thread side of the app. Owns what the window, tray, hotkeys and OSD show, turns their actions into engine
 //! commands, and routes engine events back by origin: window → card notes and toasts; hotkey, tray, CLI → OSD.
 //!
-//! Background-mode rules (docs/research/lightweight-ui-probes/background/NOTES.md): the main window is dropped on
+//! Background-mode rules (measured on Slint): the main window is dropped on
 //! close and rebuilt on open; values are pushed into it only while it is shown; the OSD window is kept.
 
 use std::cell::{Cell, RefCell};
@@ -98,9 +98,9 @@ pub struct State {
     pub hotkeys_available: bool,
     pub failed_hotkeys: Vec<Action>,
     pub finder: FinderState,
-    /// Display off, session locked or PC asleep: the engine sends nothing (A1).
+    /// Display off, session locked or PC asleep: the engine sends nothing.
     pub asleep: bool,
-    /// Started after a crash during a risky monitor operation: no writes until the user leaves it (C1).
+    /// Started after a crash during a risky monitor operation: no writes until the user leaves it.
     pub safe_mode: bool,
     /// Last error from the Automatic Day/Night form, shown under it.
     pub auto_note: String,
@@ -158,10 +158,10 @@ pub struct Controller {
     watcher: RefCell<Option<platform::monitor_events::Watcher>>,
     /// `--json` for command-line output.
     json: Cell<bool>,
-    /// Process exit code for a headless run (B5).
+    /// Process exit code for a headless run.
     exit_code: Cell<i32>,
     auto_timer: slint::Timer,
-    /// The Day/Night phase last applied by the schedule; a preset is applied only when it changes (B1).
+    /// The Day/Night phase last applied by the schedule; a preset is applied only when it changes.
     auto_phase: Cell<Option<Phase>>,
     /// The one live capability read per run has been asked for.
     caps_requested: Cell<bool>,
@@ -269,7 +269,7 @@ impl Controller {
         self.arm_banner_hold();
     }
 
-    /// One CLI command without a resident app (INV §6.2): connect once, run, show the OSD, exit.
+    /// One CLI command without a resident app: connect once, run, show the OSD, exit.
     pub fn start_headless(self: &Rc<Self>, command: CliCommand, json: bool) {
         self.headless.set(true);
         self.json.set(json);
@@ -287,7 +287,7 @@ impl Controller {
         }
     }
 
-    /// Exit code for a headless run that ended without a result: not found or not responding (B5).
+    /// Exit code for a headless run that ended without a result: not found or not responding.
     fn exit_for_status(&self) {
         let kind = match self.st.borrow().status {
             MonitorStatus::NotFound => ResultKind::NotFound,
@@ -303,7 +303,7 @@ impl Controller {
         }
     }
 
-    /// `--get` (B5): prints the values the connect just read. Headless: then exits. Forwarded link: OSD.
+    /// `--get`: prints the values the connect just read. Headless: then exits. Forwarded link: OSD.
     fn print_get(&self, target: GetTarget) {
         if self.st.borrow().status != MonitorStatus::Connected {
             self.exit_for_status();
@@ -352,7 +352,7 @@ impl Controller {
     /// Args forwarded by a second launch.
     pub fn on_forwarded(self: &Rc<Self>, args: Vec<String>) {
         let parsed = tvc_core::cli::parse(&args);
-        // A forward during a headless run makes this process the resident app (INV §6.2). A verb with Run in
+        // A forward during a headless run makes this process the resident app. A verb with Run in
         // background off stays headless: resident without a window or tray would linger invisibly.
         if self.headless.get() && (parsed.command == CliCommand::Show || self.background_mode()) {
             self.start_resident(false);
@@ -575,7 +575,7 @@ impl Controller {
             Event::Asleep(asleep) => {
                 self.st.borrow_mut().asleep = asleep;
                 if !asleep {
-                    self.auto_tick(); // catch up on a Day/Night change missed while asleep (B1)
+                    self.auto_tick(); // catch up on a Day/Night change missed while asleep
                 }
                 self.update_tray();
                 self.render();
@@ -640,7 +640,7 @@ impl Controller {
         log::write(&format!("{origin:?} {code:?} {preset:?}: {:?} {}", result.outcome, result.message));
         match origin {
             Origin::Window => self.result_in_window(code, preset, &result),
-            // B1: automatic presets stay quiet; only a failure is worth a word, and only in an open window.
+            // automatic presets stay quiet; only a failure is worth a word, and only in an open window.
             Origin::Schedule => {
                 if result.outcome != WriteOutcome::Ok {
                     self.auto_phase.set(None); // try again on the next tick
@@ -685,7 +685,7 @@ impl Controller {
                 if ok {
                     st.notes.remove(&c);
                     if action {
-                        // A reset changes many values: re-read every non-action card (INV §1.4).
+                        // A reset changes many values: re-read every non-action card.
                         let codes: Vec<u8> = st
                             .controls
                             .iter()
@@ -902,7 +902,7 @@ impl Controller {
     }
 
     /// Slint's slider reports `released` on pointer up and on every arrow/Home/End key release. Finish the change
-    /// 300 ms after the last one, so a run of key presses (or a click on the track) is one verified write (INV §1.3).
+    /// 300 ms after the last one, so a run of key presses (or a click on the track) is one verified write.
     fn range_released(&self, code: u8, value: u16) {
         let timer = slint::Timer::default();
         // A fired timer stays in the map (not dropped inside its own callback) until the next release replaces it.
@@ -986,7 +986,7 @@ impl Controller {
     }
 
     // ---------------------------------------------------------------------------------------------------------
-    // Shortcut editor (INV §3.4)
+    // Shortcut editor
 
     fn edit_hotkey(self: &Rc<Self>, index: usize) {
         let Some(action) = Action::ALL.get(index).copied() else { return };
@@ -1124,7 +1124,7 @@ impl Controller {
         };
         self.render_editor();
         if let Some((this, other)) = conflict {
-            // The conflict dialog (INV §1.8): one OK button, the result is left unchanged.
+            // The conflict dialog: one OK button, the result is left unchanged.
             let dialog = Dialog {
                 visible: true,
                 title: format!("{} can't use its default shortcut", this.label()).into(),
@@ -1142,7 +1142,7 @@ impl Controller {
     }
 
     // ---------------------------------------------------------------------------------------------------------
-    // Finder (INV §1.7)
+    // Finder
 
     fn on_finder(&self, event: FinderEvent) {
         let mut st = self.st.borrow_mut();
@@ -1243,7 +1243,7 @@ impl Controller {
 }
 
 // -------------------------------------------------------------------------------------------------------------
-// Automatic Day/Night (B1)
+// Automatic Day/Night
 
 impl Controller {
     /// Runs the 60 s schedule tick while a mode is on; stops it otherwise.

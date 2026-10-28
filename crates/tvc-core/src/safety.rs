@@ -1,5 +1,5 @@
 //! Pure write rules: never write OSD-enable (0xCA), power (0xD6) or unnamed vendor codes, only values the monitor
-//! advertises, clamp ranges, and confirm guarded actions. Rule order is INV §8.5.
+//! advertises, clamp ranges, and confirm guarded actions. Rule order is
 
 use crate::hex;
 use crate::mccs::MonitorCapabilities;

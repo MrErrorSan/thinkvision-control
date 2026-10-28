@@ -1,4 +1,4 @@
-//! One instance per user (per session on Windows); later launches forward their arguments (INV §6.2).
+//! One instance per user (per session on Windows); later launches forward their arguments.
 //!
 //! Windows: mutex `ThinkVisionControl.SingleInstance` (the installer's AppMutex) and the pipe
 //! `\\.\pipe\ThinkVisionControl.Commands.{user}.{session}`, current user only. Linux: `flock` on

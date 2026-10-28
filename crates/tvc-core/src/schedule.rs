@@ -1,4 +1,4 @@
-//! B1: automatic Day/Night. The app asks for [`current`] every 60 s and on wake, and applies the preset only when
+//! automatic Day/Night. The app asks for [`current`] every 60 s and on wake, and applies the preset only when
 //! the phase changes, so a manual change in between sticks.
 
 use crate::solar;

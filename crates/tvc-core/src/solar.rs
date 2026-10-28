@@ -1,4 +1,4 @@
-//! B1: sunrise and sunset from NOAA's published solar-position formulas (General Solar Position Calculations,
+//! sunrise and sunset from NOAA's published solar-position formulas (General Solar Position Calculations,
 //! NOAA Global Monitoring Division), standard zenith 90.833° (refraction plus the sun's radius). Good to about a
 //! minute between the polar circles.
 

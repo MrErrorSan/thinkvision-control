@@ -1,4 +1,4 @@
-//! Why a write ended the way it did, in a form the CLI can turn into an exit code (B5) and the UI into a message.
+//! Why a write ended the way it did, in a form the CLI can turn into an exit code and the UI into a message.
 
 /// Set on every `WriteResult` by the engine.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -11,11 +11,11 @@ pub enum ResultKind {
     Refused,
     /// The value isn't one the monitor accepts for this code.
     OutOfRange,
-    /// The monitor says it doesn't support the code (A2: never retried).
+    /// The monitor says it doesn't support the code (never retried).
     Unsupported,
-    /// The display is off, the session is locked or the PC is sleeping: no monitor traffic (A1).
+    /// The display is off, the session is locked or the PC is sleeping: no monitor traffic.
     Asleep,
-    /// Safe mode after a crash: no monitor writes (C1).
+    /// Safe mode after a crash: no monitor writes.
     SafeMode,
     /// No monitor attached.
     NotFound,

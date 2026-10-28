@@ -1,4 +1,4 @@
-//! Wake the monitor before an input switch (learnings A3): a monitor in standby may ignore DDC/CI until the PC
+//! Wake the monitor before an input switch: a monitor in standby may ignore DDC/CI until the PC
 //! signals activity.
 
 /// Windows: a 1 px relative mouse move and back (`SendInput`). macOS: `caffeinate -u -t 1` (declares user

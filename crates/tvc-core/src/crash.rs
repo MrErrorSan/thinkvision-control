@@ -1,4 +1,4 @@
-//! C1: a marker file around risky monitor operations (capability read, finder snapshot/compare). The engine writes
+//! a marker file around risky monitor operations (capability read, finder snapshot/compare). The engine writes
 //! it before the operation and removes it after; a file still there at the next start means the app died inside one,
 //! so the app starts in safe mode.
 //!

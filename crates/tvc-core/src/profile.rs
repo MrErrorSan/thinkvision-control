@@ -62,7 +62,7 @@ pub struct ControlDefinition {
     pub confirm_message: Option<String>,
     pub group: Option<Group>,
     pub description: Option<String>,
-    /// A glyph name from the UI's `Glyphs` global ("brightness", "reset", ...).
+    /// A glyph name from the UI's `Glyphs` global ("brightness", "reset",...).
     pub icon: Option<String>,
     /// May contain `{label}` (the target value's label), as the input confirm does.
     pub confirm_title: Option<String>,
@@ -90,7 +90,7 @@ impl ControlDefinition {
         }
     }
 
-    /// Shown as a card: not Hidden and writable once named (INV §1.0).
+    /// Shown as a card: not Hidden and writable once named.
     pub fn is_visible(&self) -> bool {
         self.section != Section::Hidden
             && !matches!(self.safety, SafetyClass::NeverWrite | SafetyClass::ReadOnlyUntilNamed)

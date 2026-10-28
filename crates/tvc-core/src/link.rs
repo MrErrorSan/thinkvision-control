@@ -36,7 +36,7 @@ pub enum LinkFailure {
     UnsupportedPort,
 }
 
-/// A failed command. Phase 1 retries every kind; phase 2 (A2) retries only `Transient`.
+/// A failed command. The engine retries only `Transient`; `Unsupported` is final and `Gone` means reconnect.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LinkError {
     /// Worth retrying: no reply, bad checksum, bus busy.
@@ -72,7 +72,7 @@ pub trait MonitorLink: Send {
     fn connect(&mut self) -> Result<(), LinkFailure>;
     /// Releases the handle; the next command fails with `Gone` until `connect` succeeds again.
     fn disconnect(&mut self);
-    /// The raw capability string, e.g. "(prot(monitor)type(LCD)model(P32p-20)...vcp(02 04 ...))".
+    /// The raw capability string, e.g. "(prot(monitor)type(LCD)model(P32p-20)...vcp(02 04...))".
     fn capabilities(&mut self) -> Result<String, LinkError>;
     fn read(&mut self, code: u8) -> Result<VcpReading, LinkError>;
     fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError>;

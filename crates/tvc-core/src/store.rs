@@ -32,7 +32,7 @@ pub struct Settings {
     pub this_machine_input: u8,
     pub start_with_windows: bool,
     pub background_mode: bool,
-    /// B1: automatic Day/Night; Off unless the user turns it on.
+    /// automatic Day/Night; Off unless the user turns it on.
     pub auto_day_night: AutoMode,
     /// The last Day/Night times chosen (minutes after local midnight), kept while another mode is on so the
     /// settings UI can offer them again. Saved from `auto_day_night` when that is `Times`.

@@ -1,4 +1,4 @@
-//! Start with the OS (INV §7). Re-applied on every settings save, so `apply` must be idempotent.
+//! Start with the OS. Re-applied on every settings save, so `apply` must be idempotent.
 
 use std::io;
 
@@ -13,7 +13,7 @@ pub fn label() -> &'static str {
 
 /// Turns start-at-login on or off. Windows: HKCU Run value `ThinkVisionControl` = `"<exe>" --startup`.
 /// Linux: `~/.config/autostart/thinkvision-control.desktop`. macOS: `SMAppService.mainAppService` (13+, only from
-/// a .app bundle; opens System Settings → Login Items while approval is pending).
+/// a.app bundle; opens System Settings → Login Items while approval is pending).
 pub fn apply(enabled: bool) -> io::Result<()> {
     imp::apply(enabled)
 }

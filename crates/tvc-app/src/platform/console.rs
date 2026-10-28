@@ -1,4 +1,4 @@
-//! Command-line output from the GUI-subsystem Windows exe (B5).
+//! Command-line output from the GUI-subsystem Windows exe.
 
 /// Windows: attaches to the calling terminal's console (`AttachConsole(ATTACH_PARENT_PROCESS)`) so `println!`
 /// reaches it. Std handles the parent redirected (`> file`, pipes) are kept; missing ones are pointed at the

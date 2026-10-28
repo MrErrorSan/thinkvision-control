@@ -1,4 +1,4 @@
-//! B1: sunrise/sunset and the automatic Day/Night phase. Reference times: sunrise-sunset.org (UTC).
+//! sunrise/sunset and the automatic Day/Night phase. Reference times: sunrise-sunset.org (UTC).
 
 use crate::schedule::{current, AutoMode, Phase};
 use crate::solar::{days_from_civil, sun_times};

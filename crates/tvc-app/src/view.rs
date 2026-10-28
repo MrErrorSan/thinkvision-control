@@ -20,7 +20,7 @@ pub const CONTRAST: u8 = 0x12;
 pub const COLOUR_MODE: u8 = 0x14;
 pub const GAINS: [u8; 3] = [0x16, 0x18, 0x1A];
 pub const INPUT: u8 = 0x60;
-/// The codes the Display tab shows; refreshed on show and polled while visible (INV §1.0).
+/// The codes the Display tab shows; refreshed on show and polled while visible.
 pub const DISPLAY_CODES: [u8; 7] = [BRIGHTNESS, CONTRAST, COLOUR_MODE, 0x16, 0x18, 0x1A, INPUT];
 
 pub mod glyph {
@@ -138,7 +138,7 @@ pub fn status_line(st: &State) -> (&'static str, String) {
     }
 }
 
-/// The state banner (INV §1.2), for the status the hold timer has let through.
+/// The state banner, for the status the hold timer has let through.
 pub fn banner(st: &State) -> Banner {
     if st.safe_mode {
         return Banner {
@@ -231,7 +231,7 @@ fn monitor_groups(st: &State) -> Vec<ControlGroup> {
     let Some(rc) = st.controls.as_ref() else { return vec![] };
     let mut groups: Vec<(&str, Vec<ControlRow>)> =
         vec![("Picture", vec![]), ("Ports", vec![]), ("On-screen menu", vec![]), ("More settings", vec![]), ("Reset and restore", vec![])];
-    // Known codes in profile order, the rest by code (INV §1.4).
+    // Known codes in profile order, the rest by code.
     let mut defs: Vec<&ControlDefinition> = rc.controls.values().collect();
     defs.sort_by_cached_key(|d| profile_rank(d.code));
     for def in defs {
@@ -288,7 +288,7 @@ pub fn render(app: &App, st: &State) {
 
     // Display tab
     let inputs = inputs(st);
-    // The Display tab's input buttons only while 0x60 is a visible control (INV §1.3).
+    // The Display tab's input buttons only while 0x60 is a visible control.
     let input_visible = st.def(INPUT).is_some_and(ControlDefinition::is_visible);
     sync(
         app.get_inputs(),
@@ -458,7 +458,7 @@ fn render_finder(app: &App, st: &State) {
     }
 }
 
-/// Automatic Day/Night (B1): the mode, the remembered times and place, and a line saying what happens next.
+/// Automatic Day/Night: the mode, the remembered times and place, and a line saying what happens next.
 fn render_auto(app: &App, st: &State) {
     use tvc_core::schedule::AutoMode;
     let hhmm = |m: u16| format!("{:02}:{:02}", m / 60, m % 60);

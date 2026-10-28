@@ -605,7 +605,7 @@ fn failed_calls_are_retried_five_times() {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// 0.0.5 phase 2: A1 asleep, A2 error classes, A3 input switch, A4 stale steps, C1 safe mode.
+// Asleep, error classes, input switch, stale steps, safe mode.
 
 /// Errors a test scripts per code, in front of a `FakeLink`.
 #[derive(Default)]

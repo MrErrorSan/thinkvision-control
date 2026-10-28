@@ -1,4 +1,4 @@
-//! MCCS capability strings: `(prot(monitor)type(LCD)model(P32p-20)...vcp(02 04(4C 42) 10 ...))`.
+//! MCCS capability strings: `(prot(monitor)type(LCD)model(P32p-20)...vcp(02 04(4C 42) 10...))`.
 
 use std::collections::BTreeMap;
 use std::fmt;

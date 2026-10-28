@@ -1,4 +1,4 @@
-//! Ports of the 0.0.4 xUnit tests (INV §13), run against `FakeLink`.
+//! Ports of the 0.0.4 xUnit tests, run against `FakeLink`.
 
 mod cli_tests;
 mod crash_tests;

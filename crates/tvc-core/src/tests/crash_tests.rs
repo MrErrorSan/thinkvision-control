@@ -1,4 +1,4 @@
-//! C1: the crash marker.
+//! the crash marker.
 
 use super::*;
 use crate::crash::Marker;

@@ -1,4 +1,4 @@
-//! "System setup" cards (INV §9.2 Linux, §9.3 macOS). Windows has none.
+//! "System setup" cards. Windows has none.
 
 use tvc_core::link::LinkFailure;
 
