@@ -4502,7 +4502,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "tvc-app"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "global-hotkey",
  "libc",
@@ -4511,11 +4511,12 @@ dependencies = [
  "tvc-core",
  "tvc-ddc",
  "windows-sys 0.61.2",
+ "winresource",
 ]
 
 [[package]]
 name = "tvc-core"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -4523,7 +4524,7 @@ dependencies = [
 
 [[package]]
 name = "tvc-ddc"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "libc",
  "tvc-core",
@@ -5416,6 +5417,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "toml",
+ "version_check",
 ]
 
 [[package]]
