@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/previews/slint/display-dark.png" width="460" alt="The Display tab: input, brightness and contrast, Day and Night presets and colour mode, connected to a P32p-20 over HDMI">
+  <img src="docs/screenshots/display.png" width="460" alt="The Display tab: input, brightness and contrast, Day and Night presets and colour mode, connected to a P32p-20 over HDMI">
 </p>
 
 ## Why
@@ -53,11 +53,11 @@ The P32p-20's menu buttons sit behind the bottom edge of the screen. They're har
 
 | | |
 |---|---|
-| ![Monitor tab](docs/previews/slint/monitor-dark.png) | ![Settings tab](docs/previews/slint/settings-dark.png) |
+| ![Monitor tab](docs/screenshots/monitor.png) | ![Settings tab](docs/screenshots/settings.png) |
 | **Monitor tab:** Over Drive, Dynamic Contrast, aspect ratio, USB Charging, menu language, resets | **Settings tab:** run in background, start with Windows, this PC's input, presets, keyboard shortcuts |
-| ![Hidden settings finder](docs/previews/slint/finder-dark.png) | ![Shortcut editor](docs/previews/slint/editor-light.png) |
+| ![Hidden settings finder](docs/screenshots/finder.png) | ![Shortcut editor](docs/screenshots/shortcut-editor.png) |
 | **Hidden settings finder:** snapshot, change one setting on the monitor, compare | **Shortcut editor:** press the keys you want; clashes are caught |
-| ![Switch input confirmation](docs/previews/slint/dialog-dark.png) | ![Monitor not found](docs/previews/slint/notfound-light.png) |
+| ![Switch input confirmation](docs/screenshots/switch-input.png) | ![Monitor not found](docs/screenshots/not-connected.png) |
 | **Asks first** before switching the monitor away from this PC | **Not connected:** everything stays visible, with the reason and a fix |
 
 ## Supported monitors
@@ -294,7 +294,6 @@ All commands go through one worker thread that paces them for the monitor. A rea
 | `scripts/subset-icon-font.py` | Cuts the icon font down to the glyphs the UI uses. Run it after adding an icon (`pip install fonttools`, then `python -I scripts/subset-icon-font.py`) |
 | `packaging/` | Windows installer script, Linux udev rule and launcher entry |
 | `assets/brand/` | App icon (SVG, PNG, ICO, ICNS) |
-| `src/`, `tests/` | The .NET app of 0.0.4 and earlier, kept until it's removed in a later change |
 
 </details>
 
