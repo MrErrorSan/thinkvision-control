@@ -56,11 +56,33 @@ fi
 echo "Installed. Start \"ThinkVision Control\" from your app launcher, or run: thinkvision-control"
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "Note: ~/.local/bin is not on your PATH." ;; esac
 echo
-echo "To allow access to the monitor (once), run these, then log out and back in:"
-echo "  sudo modprobe i2c-dev"
-echo "  echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf"
-echo "  sudo cp \"$PWD/60-thinkvision-i2c.rules\" /etc/udev/rules.d/"
-echo "  sudo udevadm control --reload && sudo udevadm trigger"
+# Monitor access (once): the i2c-dev module and a udev rule that gives the logged-in user /dev/i2c-*.
+if [ -e /etc/udev/rules.d/60-thinkvision-i2c.rules ] && [ -e /etc/modules-load.d/i2c-dev.conf ]; then
+    echo "Monitor access is already set up."
+    exit 0
+fi
+echo "The app needs access to the monitor's control channel (/dev/i2c-*). This is set up once, with sudo."
+answer=y
+if [ -t 0 ]; then
+    printf "Set it up now? [Y/n] "
+    read -r answer || answer=n
+fi
+case "$answer" in
+    n|N|no|No)
+        echo "Later, run:"
+        echo "  sudo modprobe i2c-dev"
+        echo "  echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf"
+        echo "  sudo cp \"$PWD/60-thinkvision-i2c.rules\" /etc/udev/rules.d/"
+        echo "  sudo udevadm control --reload && sudo udevadm trigger"
+        ;;
+    *)
+        sudo modprobe i2c-dev
+        echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf >/dev/null
+        sudo cp 60-thinkvision-i2c.rules /etc/udev/rules.d/
+        sudo udevadm control --reload && sudo udevadm trigger
+        echo "Done. Log out and back in once, then start ThinkVision Control."
+        ;;
+esac
 INSTALL
 chmod 755 "$STAGE/install.sh" "$STAGE/$EXE_NAME"
 

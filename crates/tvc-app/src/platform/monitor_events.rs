@@ -23,6 +23,8 @@ pub enum SystemEvent {
     Unlocked,
     Suspending,
     Resumed,
+    /// The light/dark theme changed (Windows: the taskbar's, which picks the tray icon variant).
+    ThemeChanged,
 }
 
 /// Keeps the event sources alive; dropping it stops them (macOS: they live for the process).
@@ -80,7 +82,7 @@ impl Transitions {
     fn accept(&mut self, event: SystemEvent) -> bool {
         use SystemEvent::*;
         let (flag, value) = match event {
-            DisplayChanged => return true,
+            DisplayChanged | ThemeChanged => return true,
             DisplayOff => (&mut self.display_off, true),
             DisplayOn => (&mut self.display_off, false),
             Locked => (&mut self.locked, true),
@@ -103,6 +105,7 @@ fn console_display_event(state: u32) -> Option<SystemEvent> {
 
 /// Whether a kernel uevent datagram (`ACTION@DEVPATH\0KEY=VALUE\0…`) is a display change: `SUBSYSTEM=drm` with
 /// `HOTPLUG=1` or `ACTION=change|add|remove` (add/remove cover MST connectors).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn is_drm_change(message: &[u8]) -> bool {
     let (mut subsystem, mut action, mut hotplug) = (None, None, None);
     for part in message.split(|&b| b == 0) {
@@ -121,6 +124,7 @@ fn is_drm_change(message: &[u8]) -> bool {
 
 /// One line of `gdbus monitor --system --dest org.freedesktop.login1` as an event. `session` is our session's
 /// object path; lock changes of other sessions are ignored.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn logind_event(line: &str, session: Option<&str>) -> Option<SystemEvent> {
     let (path, rest) = line.split_once(": ")?;
     let (signal, args) = rest.split_once(' ').unwrap_or((rest, ""));
@@ -145,6 +149,7 @@ fn logind_event(line: &str, session: Option<&str>) -> Option<SystemEvent> {
 
 /// logind's object path for session `id` (sd-bus label escaping: everything but `[A-Za-z0-9]`, and a leading digit,
 /// becomes `_xx`).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn session_path(id: &str) -> String {
     let mut path = String::from("/org/freedesktop/login1/session/");
     if id.is_empty() {
@@ -161,6 +166,7 @@ fn session_path(id: &str) -> String {
 }
 
 /// The object path in `gdbus call … User Display` output: `(<('2', objectpath '/org/…/session/_32')>,)`.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn parse_display_session(output: &str) -> Option<String> {
     let start = output.find("objectpath '")? + "objectpath '".len();
     let len = output[start..].find('\'')?;
@@ -189,7 +195,7 @@ mod imp {
         DBT_DEVICEREMOVECOMPLETE, DBT_DEVTYP_DEVICEINTERFACE, DEVICE_NOTIFY_WINDOW_HANDLE,
         DEV_BROADCAST_DEVICEINTERFACE_W, DEV_BROADCAST_HDR, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND,
         PBT_APMSUSPEND, PBT_POWERSETTINGCHANGE, WM_CLOSE, WM_DESTROY, WM_DEVICECHANGE, WM_DISPLAYCHANGE,
-        WM_POWERBROADCAST, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_OVERLAPPED, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
+        WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_OVERLAPPED, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
     };
 
     pub const DEBOUNCE_MS: u64 = 500;
@@ -312,6 +318,18 @@ mod imp {
                 }
                 _ => {}
             },
+            // Theme switches broadcast "ImmersiveColorSet".
+            WM_SETTINGCHANGE if lparam != 0 => {
+                // SAFETY: for WM_SETTINGCHANGE a non-null lParam points at a NUL-terminated UTF-16 string.
+                let area = unsafe {
+                    let p = lparam as *const u16;
+                    let len = (0..64).take_while(|&i| *p.add(i) != 0).count();
+                    String::from_utf16_lossy(std::slice::from_raw_parts(p, len))
+                };
+                if area == "ImmersiveColorSet" {
+                    send(SystemEvent::ThemeChanged);
+                }
+            }
             WM_WTSSESSION_CHANGE => match wparam as u32 {
                 WTS_SESSION_LOCK => send(SystemEvent::Locked),
                 WTS_SESSION_UNLOCK => send(SystemEvent::Unlocked),

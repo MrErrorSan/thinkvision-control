@@ -158,6 +158,9 @@ pub fn banner(st: &State) -> Banner {
             action: s(""),
         };
     }
+    if st.retrying && st.status != MonitorStatus::Connected {
+        return Banner { visible: true, severity: Severity::Info, title: s("Looking for your monitor…"), ..Default::default() };
+    }
     let (status, failure) = st.shown_status;
     let (severity, title, message, action): (Severity, String, &str, &str) = match (status, failure) {
         (None, _) | (Some(MonitorStatus::Connected), _) => return Banner::default(),
@@ -376,7 +379,7 @@ pub fn render(app: &App, st: &State) {
     sync(app.get_hotkeys(), hotkey_rows(st), |m| app.set_hotkeys(m));
     app.set_version(s(env!("CARGO_PKG_VERSION")));
     let fw = st.firmware().map(|f| format!(" · Firmware {f}")).unwrap_or_default();
-    app.set_profile_text(s(format!("Monitor profile: {}{fw}", st.profile.display_name)));
+    app.set_profile_text(s(format!("Monitor profile: {}{fw} · Built with Slint", st.profile.display_name)));
 
     render_auto(app, st);
     render_finder(app, st);

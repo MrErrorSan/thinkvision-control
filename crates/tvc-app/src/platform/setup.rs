@@ -39,10 +39,12 @@ pub fn hints(failure: Option<LinkFailure>, hotkeys_ok: bool) -> Vec<Hint> {
     }
 }
 
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 fn hint(id: &'static str, title: &str, message: &str, command: &str) -> Hint {
     Hint { id, title: title.into(), message: message.into(), command: command.into() }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn mac_hints(failure: Option<LinkFailure>) -> Vec<Hint> {
     if failure != Some(LinkFailure::UnsupportedPort) {
         return Vec::new();
@@ -57,6 +59,7 @@ fn mac_hints(failure: Option<LinkFailure>) -> Vec<Hint> {
 }
 
 /// What the Linux cards depend on besides the failure, gathered live by `hints`.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 struct LinuxFacts {
     gnome_without_tray: bool,
     powerdevil_ddc: bool,
@@ -65,6 +68,7 @@ struct LinuxFacts {
     command: String,
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn linux_hints(failure: Option<LinkFailure>, hotkeys_ok: bool, facts: &LinuxFacts) -> Vec<Hint> {
     let mut hints = Vec::new();
     if failure == Some(LinkFailure::PermissionDenied) {
@@ -132,6 +136,7 @@ fn linux_hints(failure: Option<LinkFailure>, hotkeys_ok: bool, facts: &LinuxFact
     hints
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn shortcut_commands(cmd: &str) -> String {
     [
         "--step brightness=+5    # Brightness up",
@@ -153,11 +158,13 @@ fn shortcut_commands(cmd: &str) -> String {
 }
 
 /// `XDG_CURRENT_DESKTOP` is a colon-separated list; GNOME matches case-insensitively.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn is_gnome(desktop: Option<&str>) -> bool {
     desktop.is_some_and(|d| d.split(':').any(|p| p.eq_ignore_ascii_case("GNOME")))
 }
 
 /// The command to bind: the running binary's full path, single-quoted if it contains a space.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn command_name(exe: Option<&str>) -> String {
     match exe {
         None | Some("") => "thinkvision-control".into(),
@@ -167,12 +174,14 @@ fn command_name(exe: Option<&str>) -> String {
 }
 
 /// PowerDevil's comm is cut to 15 characters by the kernel ("org_kde_powerde"), so the cmdline confirms it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn is_powerdevil_process(comm: &str, cmdline: &str) -> bool {
     let comm = comm.trim();
     comm == "org_kde_powerdevil" || (comm == "org_kde_powerde" && cmdline.contains("org_kde_powerdevil"))
 }
 
 /// Whether a NUL-separated environ sets `POWERDEVIL_NO_DDCUTIL` to a non-zero value.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn has_ddc_disabled(environ: &str) -> bool {
     environ
         .split('\0')

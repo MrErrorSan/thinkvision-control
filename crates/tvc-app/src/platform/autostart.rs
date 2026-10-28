@@ -181,6 +181,7 @@ mod imp {
 }
 
 /// The XDG autostart entry for `exe` (`LinuxAutostart.Entry` in 0.0.4).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn desktop_entry(exe: &str) -> String {
     format!(
         "[Desktop Entry]\nType=Application\nName=ThinkVision Control\n\
@@ -194,6 +195,7 @@ fn desktop_entry(exe: &str) -> String {
 
 /// One Exec argument per the Desktop Entry spec: double-quoted with `" ` $ \` backslash-escaped, then the general
 /// string escaping on top (a literal backslash becomes four), and `%` doubled.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn quote_exec_argument(arg: &str) -> String {
     let mut quoted = String::from("\"");
     for c in arg.chars() {
@@ -207,6 +209,7 @@ fn quote_exec_argument(arg: &str) -> String {
 }
 
 /// The general escaping for desktop-file string values.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn escape_string(value: &str) -> String {
     value.replace('\\', r"\\").replace('\n', r"\n").replace('\t', r"\t").replace('\r', r"\r")
 }

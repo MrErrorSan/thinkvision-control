@@ -96,7 +96,7 @@ PLIST
 echo "==> Signing (ad-hoc)"
 codesign --force --deep -s - "$APP_DIR"
 
-echo
-echo "Built: $APP_DIR"
-echo "Install: ditto \"$APP_DIR\" \"/Applications/$APP_NAME.app\""
-echo "Start:   open \"/Applications/$APP_NAME.app\""
+echo "==> Installing to /Applications"
+ditto "$APP_DIR" "/Applications/$APP_NAME.app"
+open "/Applications/$APP_NAME.app"
+echo "Installed and started: /Applications/$APP_NAME.app (look for it in the menu bar)"

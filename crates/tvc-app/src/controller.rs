@@ -104,6 +104,8 @@ pub struct State {
     pub safe_mode: bool,
     /// Last error from the Automatic Day/Night form, shown under it.
     pub auto_note: String,
+    /// "Try again" was pressed: the banner shows progress until the status changes or 16 s pass.
+    pub retrying: bool,
 }
 
 impl State {
@@ -193,6 +195,7 @@ impl Controller {
                 asleep: false,
                 safe_mode: false,
                 auto_note: String::new(),
+                retrying: false,
             }),
             window: RefCell::new(None),
             osd: Rc::new(RefCell::new(OsdHost::default())),
@@ -252,6 +255,10 @@ impl Controller {
                     SystemEvent::Unlocked => Command::Power(PowerState::Unlocked),
                     SystemEvent::Suspending => Command::Power(PowerState::Suspending),
                     SystemEvent::Resumed => Command::Power(PowerState::Resumed),
+                    SystemEvent::ThemeChanged => {
+                        let _ = slint::invoke_from_event_loop(|| with(|c| c.update_tray()));
+                        return;
+                    }
                 };
                 let _ = tx.send(command);
             });
@@ -590,6 +597,9 @@ impl Controller {
     fn on_status(self: &Rc<Self>, status: MonitorStatus, failure: Option<LinkFailure>) {
         {
             let mut st = self.st.borrow_mut();
+            if st.status != status {
+                st.retrying = false;
+            }
             st.status = status;
             st.failure = failure;
             if status == MonitorStatus::Connected {
@@ -1377,6 +1387,11 @@ fn vk_of(text: &str) -> Option<u16> {
     if chars.next().is_some() {
         return None;
     }
+    // With Shift held, Slint reports the shifted character ("!" for Shift+1): map the US-layout symbols back to
+    // their digit keys so Shift+digit shortcuts can be recorded.
+    if let Some(i) = ")!@#$%^&*(".find(c) {
+        return Some(0x30 + i as u16);
+    }
     Some(match c {
         'a'..='z' => c.to_ascii_uppercase() as u16,
         'A'..='Z' | '0'..='9' => c as u16,
@@ -1414,7 +1429,15 @@ fn wire(ui: &MainWindow) {
                 c.send(Command::SetSafeMode(false));
                 c.send(Command::RecheckAfterEvent); // read the capabilities skipped in safe mode
             } else {
+                c.st.borrow_mut().retrying = true;
+                c.render();
                 c.send(Command::RequestReconnect);
+                slint::Timer::single_shot(Duration::from_secs(16), || {
+                    with(|c| {
+                        c.st.borrow_mut().retrying = false;
+                        c.render();
+                    })
+                });
             }
         })
     });

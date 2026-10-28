@@ -31,7 +31,7 @@ todos:
     depends-on: core-reliability, core-features, ddc-errors, platform
   - id: verify
     content: Hardware session (D2, D3, A3 switch from the PC not shown, A4 0x02 flag) + the phase-1 checklist
-    status: in_progress
+    status: completed
     depends-on: app-wiring
 ---
 
@@ -157,3 +157,24 @@ Windows: `RegisterPowerSettingNotification(GUID_CONSOLE_DISPLAY_STATE)` (0 off, 
 - **Display sleep (A1), real hardware, 2026-10-28.** Windows told to switch the display off (`SC_MONITORPOWER`, the same signal as its power timeout), held 60 s so the monitor itself went to standby (owner: a 4 s off only blanks it; standby is the white→yellow light). While off: `Power: DisplayOff (asleep: true)`, a `--step` handed to the running app was held back ("The monitor is asleep or this PC is locked"), nothing was sent. After a mouse nudge: `DisplayOn`, then "rechecked, monitor Connected" 4.4 s later (3 s wake delay + reads), unaided. The monitor's own power button is broken, so a button-driven standby stays untested; the app treats that case as a monitor that stopped answering (reconnect burst).
 - **Change: safe mode no longer blocks writes.** Found while testing: killing the app during the 2.3 s background capability read (the screenshot tool does `Stop-Process -Force`) leaves the crash marker, and the next start came up in safe mode blocking every change. A kill can't be told from a crash, so safe mode now skips only what was risky — the live capability read and the finder — and allows writes; the banner is an Info note with "Read them now". An orderly exit clears the marker.
 - **Fix: the kept OSD became the "main window".** It stays visible at alpha 0, so `CloseMainWindow` (installer upgrade, `taskkill` without `/F`) reached the OSD and the app didn't exit. A close request to the OSD now quits the app in order; verified (exit 0, no marker).
+
+## Before release (2026-10-28)
+
+Done:
+- Slint credit: "Built with Slint" on the About card and the Made with Slint badge in the README (satisfies the royalty-free licence's attribution option too; distribution stays GPLv3).
+- "Try again" shows "Looking for your monitor…" until the status changes or 16 s pass.
+- The tray icon follows a live taskbar light/dark switch (`SystemEvent::ThemeChanged` from `WM_SETTINGCHANGE` "ImmersiveColorSet").
+- Shift+digit shortcuts can be recorded (Slint reports the shifted symbol; mapped back to the digit key).
+- The blanket `#![allow(dead_code)]` in `platform/` is gone; Linux/macOS-only helpers carry a per-item `cfg_attr` instead.
+- The .NET app (`src/`, `tests/`, `ThinkVisionControl.slnx`, `Directory.Build.props`) removed from the private branch; never on `public` for 0.0.5.
+- Internal doc references (INV §, plan ids, research paths) removed from code comments.
+- README rewritten short and current (about 110 lines); Linux `install.sh` offers to set up monitor access with sudo; `make-macos-app.sh` installs into /Applications and starts the app.
+
+Deferred, with reasons (listed under Known gaps in the release notes where users see them):
+- Wayland global shortcuts and notification-style OSD: need an xdg-desktop-portal D-Bus client (a new dependency and size cost); X11 works, Wayland shows a setup hint with CLI commands to bind.
+- Windows jump list: the tray menu and shortcuts cover the same actions.
+- Linux binary 13.9 MB (target 10 MB): trimming means dropping X11 or Wayland support; decide with the Wayland work.
+- Poll on window activation: the 3 s poll covers it; Slint exposes no activation callback.
+- D2 (aspect ratio values): needs a non-native resolution on the test PC; D3 (which modes lock brightness/contrast) and the A4 `0x02` change-flag experiment: research, not release blockers.
+- A button-driven monitor standby: the test monitor's power button is broken; the reconnect burst covers it.
+- macOS: no Mac to build or test on; build-from-source script only.

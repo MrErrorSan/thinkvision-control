@@ -1,8 +1,6 @@
 //! OS integration: data folder, single instance, autostart, system events (display, lock, power), efficiency mode,
 //! taskbar theme, setup hints, global hotkeys, monitor wake, console attach and the `thinkvision://` scheme. One
 //! module per concern, `#[cfg(target_os)]` inside each.
-// The controller that consumes this API lands later.
-#![allow(dead_code)]
 
 pub mod autostart;
 pub mod console;
