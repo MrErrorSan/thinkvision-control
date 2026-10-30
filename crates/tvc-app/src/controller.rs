@@ -259,6 +259,11 @@ impl Controller {
                         let _ = slint::invoke_from_event_loop(|| with(|c| c.update_tray()));
                         return;
                     }
+                    SystemEvent::SessionEnding => {
+                        log::write("Closing: Windows asked (sign-out, shutdown or an installer)");
+                        let _ = slint::invoke_from_event_loop(|| with(|c| c.quit()));
+                        return;
+                    }
                 };
                 let _ = tx.send(command);
             });

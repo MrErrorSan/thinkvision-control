@@ -4502,7 +4502,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "tvc-app"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "global-hotkey",
  "libc",
@@ -4516,7 +4516,7 @@ dependencies = [
 
 [[package]]
 name = "tvc-core"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -4524,7 +4524,7 @@ dependencies = [
 
 [[package]]
 name = "tvc-ddc"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "libc",
  "tvc-core",

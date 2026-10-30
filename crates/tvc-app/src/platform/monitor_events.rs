@@ -7,6 +7,9 @@
 //! 1.5 s; logind `PrepareForSleep` and the session's `LockedHint` read from a `gdbus monitor` child process.
 //! macOS: display reconfiguration + IOKit system power on a CFRunLoop thread, NSWorkspace screens sleep/wake and the
 //! `com.apple.screenIsLocked`/`Unlocked` distributed notifications; 500 ms.
+//!
+//! Windows also: `WM_QUERYENDSESSION`/`WM_ENDSESSION`, which Restart Manager sends when an installer needs the exe.
+//! The installer finds this window by its class name, `ThinkVisionControl.MonitorEvents`: keep the two in step.
 
 use super::Debouncer;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -25,6 +28,8 @@ pub enum SystemEvent {
     Resumed,
     /// The light/dark theme changed (Windows: the taskbar's, which picks the tray icon variant).
     ThemeChanged,
+    /// Windows asks us to exit: sign-out, shutdown, or an installer through Restart Manager. Quit now.
+    SessionEnding,
 }
 
 /// Keeps the event sources alive; dropping it stops them (macOS: they live for the process).
@@ -82,7 +87,7 @@ impl Transitions {
     fn accept(&mut self, event: SystemEvent) -> bool {
         use SystemEvent::*;
         let (flag, value) = match event {
-            DisplayChanged | ThemeChanged => return true,
+            DisplayChanged | ThemeChanged | SessionEnding => return true,
             DisplayOff => (&mut self.display_off, true),
             DisplayOn => (&mut self.display_off, false),
             Locked => (&mut self.locked, true),
@@ -195,7 +200,8 @@ mod imp {
         DBT_DEVICEREMOVECOMPLETE, DBT_DEVTYP_DEVICEINTERFACE, DEVICE_NOTIFY_WINDOW_HANDLE,
         DEV_BROADCAST_DEVICEINTERFACE_W, DEV_BROADCAST_HDR, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND,
         PBT_APMSUSPEND, PBT_POWERSETTINGCHANGE, WM_CLOSE, WM_DESTROY, WM_DEVICECHANGE, WM_DISPLAYCHANGE,
-        WM_POWERBROADCAST, WM_SETTINGCHANGE, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_OVERLAPPED, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
+        WM_ENDSESSION, WM_POWERBROADCAST, WM_QUERYENDSESSION, WM_SETTINGCHANGE, WM_WTSSESSION_CHANGE, WNDCLASSW,
+        WS_OVERLAPPED, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK,
     };
 
     pub const DEBOUNCE_MS: u64 = 500;
@@ -348,6 +354,14 @@ mod imp {
                     send(SystemEvent::DisplayChanged);
                     return 1;
                 }
+            }
+            WM_QUERYENDSESSION => return 1,
+            WM_ENDSESSION if wparam != 0 => {
+                send(SystemEvent::SessionEnding);
+                // Windows may end the process once this returns; main needs about a second to stop the engine
+                // and exits the process itself, so this normally never returns.
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                return 0;
             }
             WM_DESTROY => {
                 // SAFETY: our live window; then end this thread's message loop.
