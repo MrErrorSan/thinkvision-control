@@ -1,0 +1,74 @@
+# Builds the Windows setup and the Linux tarball.
+# - Run by hand (Actions → Release → Run workflow): builds both and keeps them as workflow artifacts, a dry run.
+# - Push a tag vX.Y.Z matching the version in Cargo.toml: also creates a draft pre-release with both files and
+#   SHA256SUMS.txt. Review it, add the release notes, then publish it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+      - name: Build setup
+        shell: pwsh
+        run: ./scripts/make-windows-setup.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build/ThinkVisionControl-Setup-*.exe
+          if-no-files-found: error
+
+  linux:
+    # The oldest supported runner, so the binary runs on older glibc (Ubuntu 22.04, Debian 12).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libudev-dev libxkbcommon-dev
+      - name: Build tarball
+        run: ./scripts/make-linux-tarball.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: build/thinkvision-control-*-linux-x64.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "::error::Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum ThinkVisionControl-Setup-*.exe thinkvision-control-*-linux-x64.tar.gz > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --prerelease --verify-tag \
+            --title "ThinkVision Control $VERSION (preview)" \
+            --notes "Built by GitHub Actions from $GITHUB_SHA."
