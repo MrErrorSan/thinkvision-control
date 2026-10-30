@@ -11,8 +11,12 @@ $iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFile
 if (-not $iscc) { throw 'Inno Setup 6 not found. Install it with: winget install JRSoftware.InnoSetup' }
 
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-cargo build --release -p tvc-app --manifest-path "$root\Cargo.toml"
+# From the repo root, so cargo picks up .cargo\config.toml (static C runtime).
+Push-Location $root
+try { cargo build --release -p tvc-app } finally { Pop-Location }
 if ($LASTEXITCODE) { throw 'cargo build failed' }
+$exe = [IO.File]::ReadAllBytes("$root\target\release\thinkvision-control.exe")
+if ([Text.Encoding]::ASCII.GetString($exe) -match 'VCRUNTIME140') { throw 'The exe needs VCRUNTIME140.dll; the static C runtime setting did not apply' }
 
 & $iscc /Q "/DAppVersion=$version" "$root\packaging\windows\ThinkVisionControl.iss"
 if ($LASTEXITCODE) { throw 'Inno Setup failed' }

@@ -1,0 +1,4 @@
+# Link the C runtime statically on Windows: without this the exe needs VCRUNTIME140.dll, which a clean Windows
+# doesn't have (the Visual C++ Redistributable), and fails to start with 0xC0000135.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
