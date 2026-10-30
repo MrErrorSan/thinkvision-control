@@ -30,9 +30,11 @@ WizardStyle=modern dynamic
 SetupIconFile=..\..\assets\brand\ico\ThinkVisionControl.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
-; The app's single-instance mutex: setup and uninstall ask the user to close a running copy.
-AppMutex=ThinkVisionControl.SingleInstance
-CloseApplications=yes
+; Restart Manager closes a running copy, also in a silent install (winget): 0.0.8 and later exit cleanly when asked,
+; older ones are ended. No AppMutex: in a silent install its prompt defaults to Cancel and setup gives up.
+; [Run] starts the app again if it was running; the uninstaller closes it in [Code].
+CloseApplications=force
+RestartApplications=no
 OutputDir=..\..\build
 OutputBaseFilename=ThinkVisionControl-Setup-{#AppVersion}
 Compression=lzma2/max
@@ -72,12 +74,56 @@ Root: HKA; Subkey: "Software\Classes\thinkvision\DefaultIcon"; ValueType: string
 Root: HKA; Subkey: "Software\Classes\thinkvision\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
 
 [Run]
-; runasoriginaluser: setup runs elevated, the app must not.
-Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; runasoriginaluser: setup runs elevated, the app must not. Running before the upgrade: back in the tray, also silently.
+Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser; Check: not AppWasRunning
+Filename: "{app}\{#AppExe}"; Parameters: "--startup"; Flags: nowait runasoriginaluser; Check: AppWasRunning
 
 [Code]
+const
+  // The app's single-instance mutex (platform/instance.rs) and hidden event window (platform/monitor_events.rs).
+  AppMutexName = 'ThinkVisionControl.SingleInstance';
+  EventsWindowClass = 'ThinkVisionControl.MonitorEvents';
+  WM_ENDSESSION = $0016;
+  ENDSESSION_CLOSEAPP = 1;
+
+var
+  WasRunning: Boolean;
+
+function InitializeSetup(): Boolean;
+begin
+  WasRunning := CheckForMutexes(AppMutexName);
+  Result := True;
+end;
+
+function AppWasRunning(): Boolean;
+begin
+  Result := WasRunning;
+end;
+
+// Asks a running copy to exit the way Windows does at sign-out, and waits up to 5 s for it.
+procedure CloseRunningApp();
+var
+  Wnd: HWND;
+  I: Integer;
+begin
+  if not CheckForMutexes(AppMutexName) then
+    Exit;
+  Wnd := FindWindowByClassName(EventsWindowClass);
+  if Wnd <> 0 then
+    PostMessage(Wnd, WM_ENDSESSION, 1, ENDSESSION_CLOSEAPP);
+  for I := 1 to 50 do
+  begin
+    if not CheckForMutexes(AppMutexName) then
+      Exit;
+    Sleep(100);
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  // After the user confirmed, before any file is removed.
+  if CurUninstallStep = usUninstall then
+    CloseRunningApp();
   // "Start with Windows" lives in the app's settings; remove its Run entry with the app.
   if CurUninstallStep = usPostUninstall then
   begin
