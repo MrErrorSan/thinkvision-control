@@ -1,6 +1,6 @@
 //! One instance per user (per session on Windows); later launches forward their arguments.
 //!
-//! Windows: mutex `ThinkVisionControl.SingleInstance` (the installer's AppMutex) and the pipe
+//! Windows: mutex `ThinkVisionControl.SingleInstance` (the installer checks it: keep the names in step) and the pipe
 //! `\\.\pipe\ThinkVisionControl.Commands.{user}.{session}`, current user only. Linux: `flock` on
 //! `$XDG_RUNTIME_DIR/thinkvision-control.lock` with the socket `$XDG_RUNTIME_DIR/tvc-cmd` (fallback
 //! `/tmp/thinkvision-control-{user}.lock`, `/tmp/CoreFxPipe_tvc-cmd`). macOS: `$TMPDIR/thinkvision-control.lock`
