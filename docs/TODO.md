@@ -18,7 +18,6 @@
 
 ## Next
 
-
 - [ ] **Code signing via SignPath Foundation** (free for open source; signs only artifacts built in CI, which the
   workflow now does). Apply at signpath.org, then add their signing step to the `windows` job. Stops the SmartScreen
   warning on direct downloads once reputation builds.
