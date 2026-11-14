@@ -36,6 +36,48 @@ pub enum LinkFailure {
     UnsupportedPort,
 }
 
+/// Where a display the OS reports is: the laptop's own panel, a monitor plugged into a port, or a screen that
+/// exists only in software (a virtual machine, a remote session). Only `External` can be the monitor this app controls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DisplayKind {
+    BuiltIn,
+    External,
+    Virtual,
+}
+
+/// A display the OS reports, for explaining why the target wasn't found.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttachedDisplay {
+    /// The name the monitor gives itself in its EDID ("P32p-20"); empty when it gives none.
+    pub name: String,
+    /// PNP manufacturer id + product code ("LEN62A2"); empty when unknown.
+    pub edid_id: String,
+    pub kind: DisplayKind,
+    /// True when it's the monitor the link looks for (same EDID id): there, but it couldn't be opened.
+    pub target: bool,
+}
+
+impl AttachedDisplay {
+    /// The name the display gives, else what kind it is (with its EDID id when known).
+    pub fn label(&self) -> String {
+        match (self.name.trim(), self.edid_id.as_str(), self.kind) {
+            ("", _, DisplayKind::BuiltIn) => "the built-in display".into(),
+            ("", "", _) => "an unnamed display".into(),
+            ("", id, _) => format!("a display ({id})"),
+            (name, _, _) => name.into(),
+        }
+    }
+}
+
+/// PNP manufacturer ids of the screens hypervisors and remote-desktop drivers present: Hyper-V, QEMU/virtio,
+/// VirtualBox, VMware, Parallels, Citrix, Microsoft's remote display.
+pub const VIRTUAL_VENDORS: [&str; 8] = ["MSH", "RHT", "QEM", "VBX", "VMW", "PRL", "CTX", "RDP"];
+
+/// True when `edid_id` starts with one of [`VIRTUAL_VENDORS`].
+pub fn is_virtual_vendor(edid_id: &str) -> bool {
+    edid_id.get(..3).is_some_and(|pnp| VIRTUAL_VENDORS.iter().any(|v| v.eq_ignore_ascii_case(pnp)))
+}
+
 /// A failed command. The engine retries only `Transient`; `Unsupported` is final and `Gone` means reconnect.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LinkError {
@@ -76,4 +118,9 @@ pub trait MonitorLink: Send {
     fn capabilities(&mut self) -> Result<String, LinkError>;
     fn read(&mut self, code: u8) -> Result<VcpReading, LinkError>;
     fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError>;
+    /// Every display the OS reports right now, matched or not, so a `NotFound` can say what *is* there.
+    /// None = this backend can't list them.
+    fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
+        None
+    }
 }

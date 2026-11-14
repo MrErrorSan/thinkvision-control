@@ -5,6 +5,8 @@ mod i2c;
 #[cfg(target_os = "linux")]
 pub(crate) use i2c::I2cLink;
 
+use tvc_core::link::{is_virtual_vendor, DisplayKind};
+
 /// Adapter-name prefixes (`/sys/bus/i2c/devices/i2c-N/name`) that are never a display's DDC lines, as ddcutil matches
 /// them. Probing these would write an address byte to unrelated chips (SPD EEPROMs sit at 0x50 on SMBus).
 const IGNORABLE_ADAPTER_PREFIXES: [&str; 8] =
@@ -34,6 +36,20 @@ pub fn bus_name(device_or_name: &str) -> &str {
     device_or_name.trim_end_matches('/').rsplit('/').next().unwrap_or_default()
 }
 
+/// What a DRM connector is, from its sysfs name (`card1-eDP-1`, `card0-HDMI-A-2`, `card0-Virtual-1`) and EDID id:
+/// laptop panels (eDP, LVDS, DSI) are built in; virtio/QXL connectors and hypervisor vendors are virtual.
+pub fn connector_kind(connector: &str, edid_id: &str) -> DisplayKind {
+    // Drop "cardN-" to get the connector type ("eDP-1").
+    let port = connector.split_once('-').map_or(connector, |(_, rest)| rest);
+    if ["eDP", "LVDS", "DSI"].iter().any(|p| port.starts_with(p)) {
+        DisplayKind::BuiltIn
+    } else if port.starts_with("Virtual") || is_virtual_vendor(edid_id) {
+        DisplayKind::Virtual
+    } else {
+        DisplayKind::External
+    }
+}
+
 fn bus_number(device: &str) -> Option<u32> {
     bus_name(device).strip_prefix("i2c-")?.parse().ok()
 }
@@ -49,6 +65,15 @@ mod tests {
             &["i2c-7", "i2c-3", "i2c-99"],
         );
         assert_eq!(buses, ["/dev/i2c-3", "/dev/i2c-7", "/dev/i2c-1", "/dev/i2c-2", "/dev/i2c-10"]);
+    }
+
+    #[test]
+    fn connectors_sort_into_built_in_external_and_virtual() {
+        assert_eq!(connector_kind("card1-eDP-1", "BOE0A1B"), DisplayKind::BuiltIn);
+        assert_eq!(connector_kind("card0-HDMI-A-2", "LEN62A2"), DisplayKind::External);
+        assert_eq!(connector_kind("card0-DP-3", ""), DisplayKind::External);
+        assert_eq!(connector_kind("card0-Virtual-1", "RHT1234"), DisplayKind::Virtual);
+        assert_eq!(connector_kind("card0-HDMI-A-1", "VBX0000"), DisplayKind::Virtual);
     }
 
     #[test]

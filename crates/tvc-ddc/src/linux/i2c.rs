@@ -9,9 +9,9 @@ use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use tvc_core::link::{LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
+use tvc_core::link::{AttachedDisplay, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
 
-use super::{bus_name, candidate_buses, is_ignorable_adapter};
+use super::{bus_name, candidate_buses, connector_kind, is_ignorable_adapter};
 use crate::{ascii, edid, not_connected, packet};
 
 const REPLY_DELAY: Duration = Duration::from_millis(50); // spec minimum is 40 ms between request and reply
@@ -128,6 +128,30 @@ impl MonitorLink for I2cLink {
 
     fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError> {
         self.with_bus(|bus| write_vcp(bus, code, value))
+    }
+
+    /// The connected DRM connectors, named from the EDID the kernel already read (no bus traffic, no permissions).
+    /// None when there's no DRM sysfs to read (no KMS driver).
+    fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
+        let entries = fs::read_dir("/sys/class/drm").ok()?;
+        let mut displays: Vec<(String, AttachedDisplay)> = entries
+            .flatten()
+            .filter_map(|e| {
+                let connector = e.file_name().to_str()?.to_owned();
+                let status = fs::read_to_string(e.path().join("status")).ok()?;
+                if status.trim() != "connected" {
+                    return None;
+                }
+                let data = fs::read(e.path().join("edid")).unwrap_or_default();
+                let edid_id = edid::id(&data).unwrap_or_default();
+                let kind = connector_kind(&connector, &edid_id);
+                let name = edid::display_name(&data).unwrap_or_default();
+                let target = !edid_id.is_empty() && edid_id.eq_ignore_ascii_case(&self.target.edid_id);
+                Some((connector, AttachedDisplay { name, edid_id, kind, target }))
+            })
+            .collect();
+        displays.sort_by(|a, b| a.0.cmp(&b.0));
+        Some(displays.into_iter().map(|(_, d)| d).collect())
     }
 }
 

@@ -28,6 +28,31 @@ pub fn pnp_letters(packed: u16) -> Option<String> {
         .collect()
 }
 
+/// The id `MonitorMatch::edid_id` uses: manufacturer + product code in hex, e.g. "LEN62A2". None without a header.
+pub fn id(edid: &[u8]) -> Option<String> {
+    if edid.len() < 12 || edid[..8] != HEADER {
+        return None;
+    }
+    manufacturer(edid).map(|m| format!("{m}{:04X}", u16::from_le_bytes([edid[10], edid[11]])))
+}
+
+/// The monitor's own name: the display product name descriptor (tag 0xFC) of the base block, up to 13 characters
+/// ended by a line feed. None when there is none.
+pub fn display_name(edid: &[u8]) -> Option<String> {
+    (0..4)
+        .map(|i| 54 + i * 18)
+        .filter_map(|at| edid.get(at..at + 18))
+        // A display descriptor starts 00 00 00 <tag> 00; a detailed timing starts with a non-zero pixel clock.
+        .find(|d| d[..3] == [0, 0, 0] && d[3] == 0xFC)
+        .map(|d| {
+            let text = &d[5..];
+            let end = text.iter().position(|&b| b == 0x0A).unwrap_or(text.len());
+            text[..end].iter().map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '?' }).collect::<String>()
+        })
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+}
+
 /// Packs three PNP letters into the vendor number CoreGraphics reports: "LEN" → 0x30AE. None unless three ASCII letters.
 pub fn pack_pnp(pnp: &str) -> Option<u16> {
     let bytes = pnp.as_bytes();
@@ -57,6 +82,21 @@ mod tests {
         bad_header[0] = 0x01;
         assert!(!matches(&bad_header, "LEN", 0x62A2));
         assert!(!matches(&[0u8; 11], "LEN", 0x62A2));
+    }
+
+    #[test]
+    fn id_and_name_come_from_the_base_block() {
+        let mut edid = edid_header(0x30, 0xAE, 0xA2, 0x62);
+        assert_eq!(id(&edid).as_deref(), Some("LEN62A2"));
+        assert_eq!(display_name(&edid), None);
+        // Descriptor 1: a detailed timing (non-zero clock) whose bytes would otherwise look like a name.
+        edid[54..56].copy_from_slice(&[0x01, 0x1D]);
+        edid[57] = 0xFC;
+        // Descriptor 3: the name, padded the way monitors pad it.
+        edid[90..95].copy_from_slice(&[0, 0, 0, 0xFC, 0]);
+        edid[95..108].copy_from_slice(b"P32p-20\n     ");
+        assert_eq!(display_name(&edid).as_deref(), Some("P32p-20"));
+        assert_eq!(id(&[0u8; 128]), None);
     }
 
     #[test]

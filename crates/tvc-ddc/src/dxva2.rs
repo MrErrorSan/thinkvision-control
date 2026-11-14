@@ -4,16 +4,24 @@
 use std::mem::size_of;
 use std::ptr::{null, null_mut};
 
-use tvc_core::link::{LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
+use tvc_core::link::{
+    is_virtual_vendor, AttachedDisplay, DisplayKind, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading,
+};
 use windows_sys::core::BOOL;
 use windows_sys::Win32::Devices::Display::{
-    CapabilitiesRequestAndCapabilitiesReply, DestroyPhysicalMonitors, GetCapabilitiesStringLength,
-    GetNumberOfPhysicalMonitorsFromHMONITOR, GetPhysicalMonitorsFromHMONITOR, GetVCPFeatureAndVCPFeatureReply,
-    SetVCPFeature, PHYSICAL_MONITOR,
+    CapabilitiesRequestAndCapabilitiesReply, DestroyPhysicalMonitors, DisplayConfigGetDeviceInfo,
+    GetCapabilitiesStringLength, GetDisplayConfigBufferSizes, GetNumberOfPhysicalMonitorsFromHMONITOR,
+    GetPhysicalMonitorsFromHMONITOR, GetVCPFeatureAndVCPFeatureReply, QueryDisplayConfig, SetVCPFeature,
+    DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
+    DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_TARGET_DEVICE_NAME, DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY, PHYSICAL_MONITOR,
+    QDC_ONLY_ACTIVE_PATHS,
 };
 use windows_sys::Win32::Foundation::{
     GetLastError, ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED, ERROR_GRAPHICS_INVALID_PHYSICAL_MONITOR_HANDLE,
-    ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS, ERROR_INVALID_HANDLE, HANDLE, LPARAM, RECT,
+    ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS, ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_HANDLE, ERROR_SUCCESS, HANDLE,
+    LPARAM, RECT,
 };
 use windows_sys::Win32::Graphics::Gdi::{
     EnumDisplayDevicesW, EnumDisplayMonitors, GetMonitorInfoW, DISPLAY_DEVICEW, HDC, HMONITOR, MONITORINFOEXW,
@@ -91,6 +99,20 @@ impl MonitorLink for Dxva2Link {
         } else {
             Err(LinkFailure::NotFound)
         }
+    }
+
+    fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
+        active_targets().map(|targets| {
+            targets
+                .iter()
+                .map(|t| {
+                    let edid_id = edid_id_from_path(&wide_to_string(&t.monitorDevicePath)).unwrap_or_default();
+                    let kind = display_kind(t.outputTechnology, &edid_id);
+                    let target = !edid_id.is_empty() && edid_id.eq_ignore_ascii_case(&self.target.edid_id);
+                    AttachedDisplay { name: wide_to_string(&t.monitorFriendlyDeviceName), edid_id, kind, target }
+                })
+                .collect()
+        })
     }
 
     fn disconnect(&mut self) {
@@ -225,6 +247,69 @@ fn device_ids(monitor: HMONITOR) -> Vec<String> {
     ids
 }
 
+/// The target name (EDID name, ids, connector type) of every active display path. None if the query fails.
+fn active_targets() -> Option<Vec<DISPLAYCONFIG_TARGET_DEVICE_NAME>> {
+    // The path count can grow between the size query and the query itself (a monitor plugged in): retry then.
+    for _ in 0..3 {
+        let (mut path_count, mut mode_count) = (0u32, 0u32);
+        // SAFETY: valid out-pointers.
+        if unsafe { GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut path_count, &mut mode_count) } != ERROR_SUCCESS {
+            return None;
+        }
+        // SAFETY: both are plain C structs (integers, LUIDs, unions of integers); all-zero is a valid value.
+        let mut paths: Vec<DISPLAYCONFIG_PATH_INFO> = vec![unsafe { std::mem::zeroed() }; path_count as usize];
+        let mut modes: Vec<DISPLAYCONFIG_MODE_INFO> = vec![unsafe { std::mem::zeroed() }; mode_count as usize];
+        // SAFETY: the arrays hold the counts passed; the topology pointer may be null without QDC_DATABASE_CURRENT.
+        let status = unsafe {
+            QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &mut path_count, paths.as_mut_ptr(), &mut mode_count,
+                modes.as_mut_ptr(), null_mut())
+        };
+        if status == ERROR_INSUFFICIENT_BUFFER {
+            continue;
+        }
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        paths.truncate(path_count as usize);
+        let targets = paths
+            .iter()
+            .filter_map(|path| {
+                // SAFETY: zeroed POD; the header names the request, its size and the target it is for.
+                let mut name: DISPLAYCONFIG_TARGET_DEVICE_NAME = unsafe { std::mem::zeroed() };
+                name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+                name.header.size = size_of::<DISPLAYCONFIG_TARGET_DEVICE_NAME>() as u32;
+                name.header.adapterId = path.targetInfo.adapterId;
+                name.header.id = path.targetInfo.id;
+                // SAFETY: the header starts a DISPLAYCONFIG_TARGET_DEVICE_NAME of the size it states.
+                (unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } == ERROR_SUCCESS as i32).then_some(name)
+            })
+            .collect();
+        return Some(targets);
+    }
+    None
+}
+
+/// "LEN62A2" from a monitor device path such as `\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352#{e6f07b5f-...}`.
+fn edid_id_from_path(path: &str) -> Option<String> {
+    let id = path.split('#').nth(1)?;
+    (id.len() == 7 && id.is_ascii()).then(|| id.to_ascii_uppercase())
+}
+
+/// Built in for laptop panels (internal, embedded DisplayPort/UDI, LVDS); virtual for indirect-virtual targets,
+/// unclassified ones without an EDID id, and hypervisor/remote-desktop vendors; otherwise external.
+fn display_kind(technology: DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY, edid_id: &str) -> DisplayKind {
+    match technology {
+        DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL
+        | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED
+        | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED
+        | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS => DisplayKind::BuiltIn,
+        DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL => DisplayKind::Virtual,
+        DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER if edid_id.is_empty() => DisplayKind::Virtual,
+        _ if is_virtual_vendor(edid_id) => DisplayKind::Virtual,
+        _ => DisplayKind::External,
+    }
+}
+
 fn wide_to_string(wide: &[u16]) -> String {
     let end = wide.iter().position(|&c| c == 0).unwrap_or(wide.len());
     String::from_utf16_lossy(&wide[..end])
@@ -248,6 +333,26 @@ mod tests {
             LinkError::Unsupported(_) => "unsupported",
             LinkError::Gone(_) => "gone",
         }
+    }
+
+    #[test]
+    fn display_kinds_follow_the_connector_and_vendor() {
+        use windows_sys::Win32::Devices::Display::{
+            DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EXTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_HDMI,
+        };
+        assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, "BOE0A1B"), DisplayKind::BuiltIn);
+        assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_HDMI, "LEN62A2"), DisplayKind::External);
+        assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EXTERNAL, "DEL4123"), DisplayKind::External);
+        assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, ""), DisplayKind::Virtual);
+        assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, "MSH062E"), DisplayKind::Virtual);
+        assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL, "LEN62A2"), DisplayKind::Virtual);
+    }
+
+    #[test]
+    fn edid_id_is_the_second_path_segment() {
+        let path = r"\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}";
+        assert_eq!(edid_id_from_path(path).as_deref(), Some("LEN62A2"));
+        assert_eq!(edid_id_from_path("garbage"), None);
     }
 
     #[test]

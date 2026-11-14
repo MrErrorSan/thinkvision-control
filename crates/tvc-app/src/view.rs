@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
 use tvc_core::engine::MonitorStatus;
-use tvc_core::link::LinkFailure;
+use tvc_core::link::{DisplayKind, LinkFailure};
 use tvc_core::profile::{ControlDefinition, ControlKind, Group, Section};
 
 use crate::controller::State;
@@ -118,6 +118,88 @@ pub fn inputs(st: &State) -> Vec<(u16, String)> {
         .collect()
 }
 
+/// The monitor's own name as it reported it over DDC/CI (now, or when this PC last reached it); "" if no monitor
+/// has ever answered.
+pub fn monitor_name(st: &State) -> String {
+    st.controls.as_ref().map(|rc| rc.capabilities.model.trim().to_owned()).unwrap_or_default()
+}
+
+/// The window's title line: the monitor's own name, else a plain description of the state.
+pub fn header_name(st: &State) -> String {
+    match monitor_name(st) {
+        name if !name.is_empty() => name,
+        _ if st.status == MonitorStatus::Connected => "Your display".into(),
+        _ if st.status == MonitorStatus::NotFound => not_found(st).header.into(),
+        _ => "Display".into(),
+    }
+}
+
+/// What a `NotFound` means, worked out from the displays the OS reports.
+pub struct NotFound {
+    /// The header's title when no monitor name is known.
+    pub header: &'static str,
+    /// The header's status line.
+    pub status: &'static str,
+    pub title: String,
+    pub message: String,
+}
+
+pub fn not_found(st: &State) -> NotFound {
+    let name = monitor_name(st);
+    let Some(displays) = st.displays.as_deref() else {
+        // The backend can't list displays: say only what is known.
+        return NotFound {
+            header: "No supported display",
+            status: "Not connected",
+            title: if name.is_empty() { "No supported display found".into() } else { format!("{name} isn't connected") },
+            message: "Connect a display that supports DDC/CI and it will be found automatically.".into(),
+        };
+    };
+    if let Some(found) = displays.iter().find(|d| d.target) {
+        let label = if name.is_empty() { found.label() } else { name };
+        return NotFound {
+            header: "Display can't be reached",
+            status: "Can't be reached",
+            title: format!("{label} can't be reached"),
+            message: "The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu.".into(),
+        };
+    }
+    // Every real display counts (a laptop panel too); only software screens are left out.
+    let physical: Vec<String> = displays.iter().filter(|d| d.kind != DisplayKind::Virtual).map(|d| d.label()).collect();
+    let message = match physical.as_slice() {
+        [] if !displays.is_empty() => "This PC is only showing a virtual display, such as a remote session or a virtual machine. Display controls need a display connected to this PC.".into(),
+        [] => "No display is connected. Connect a display that supports DDC/CI and it will be found automatically.".into(),
+        [one] => format!("{} is connected, but it isn't supported yet.", capitalised(one)),
+        [rest @ .., last] => format!("{} and {last} are connected, but none of them is supported yet.", capitalised(&rest.join(", "))),
+    };
+    let title = match name.as_str() {
+        "" => "No supported display found".to_owned(),
+        name => format!("{name} isn't connected"),
+    };
+    NotFound { header: "No supported display", status: "No supported display", title, message }
+}
+
+/// "the built-in display" → "The built-in display" at the start of a sentence.
+fn capitalised(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// The one-line reason the monitor can't be reached, for the OSD and the command line.
+pub fn unreachable_text(st: &State) -> String {
+    match st.status {
+        MonitorStatus::NotResponding => not_responding_title(st),
+        _ => not_found(st).title,
+    }
+}
+
+fn not_responding_title(st: &State) -> String {
+    match monitor_name(st) {
+        name if name.is_empty() => "Your display isn't responding".into(),
+        name => format!("{name} isn't responding"),
+    }
+}
+
 pub fn status_line(st: &State) -> (&'static str, String) {
     if st.asleep && st.status == MonitorStatus::Connected {
         return (glyph::MOON, "Asleep".into());
@@ -133,7 +215,7 @@ pub fn status_line(st: &State) -> (&'static str, String) {
             (glyph::CONNECTED, input + &fw)
         }
         MonitorStatus::Connecting => (glyph::CONNECTING, "Looking for your monitor…".into()),
-        MonitorStatus::NotFound => (glyph::NOT_FOUND, "Not connected".into()),
+        MonitorStatus::NotFound => (glyph::NOT_FOUND, not_found(st).status.into()),
         MonitorStatus::NotResponding => (glyph::ERROR, "Not responding".into()),
     }
 }
@@ -162,39 +244,37 @@ pub fn banner(st: &State) -> Banner {
         return Banner { visible: true, severity: Severity::Info, title: s("Looking for your monitor…"), ..Default::default() };
     }
     let (status, failure) = st.shown_status;
-    let (severity, title, message, action): (Severity, String, &str, &str) = match (status, failure) {
+    let (severity, title, message, action): (Severity, String, String, &str) = match (status, failure) {
         (None, _) | (Some(MonitorStatus::Connected), _) => return Banner::default(),
-        (Some(MonitorStatus::Connecting), _) => (Severity::Info, "Looking for your monitor…".into(), "", ""),
+        (Some(MonitorStatus::Connecting), _) => (Severity::Info, "Looking for your monitor…".into(), String::new(), ""),
         (_, Some(LinkFailure::PermissionDenied)) => (
             Severity::Warning,
             "This app isn't allowed to use the monitor controls".into(),
-            "Your system blocks access to the monitor's DDC/CI bus. See Settings → System setup.",
+            "Your system blocks access to the monitor's DDC/CI bus. See Settings → System setup.".into(),
             "Try again",
         ),
         (_, Some(LinkFailure::ModuleMissing)) => (
             Severity::Warning,
             "Monitor controls aren't turned on in your system".into(),
-            "The i2c-dev kernel module isn't loaded, so the monitor can't be reached. See Settings → System setup.",
+            "The i2c-dev kernel module isn't loaded, so the monitor can't be reached. See Settings → System setup.".into(),
             "Try again",
         ),
         (_, Some(LinkFailure::UnsupportedPort)) => (
             Severity::Warning,
             "This port can't control the monitor".into(),
-            "Connect the monitor to a USB-C or Thunderbolt port. See Settings → System setup.",
+            "Connect the monitor to a USB-C or Thunderbolt port. See Settings → System setup.".into(),
             "Try again",
         ),
         (Some(MonitorStatus::NotResponding), _) => (
             Severity::Error,
-            "Your monitor isn't responding".into(),
-            "DDC/CI might be off. Hold the monitor's Exit key for 10 seconds, then try again. If this started after a graphics driver update, the previous driver may help.",
+            not_responding_title(st),
+            "It's connected but isn't answering monitor controls (DDC/CI). Check that DDC/CI is turned on in the monitor's own menu, then try again. If this started after a graphics driver update, the previous driver may help.".into(),
             "Try again",
         ),
-        (Some(MonitorStatus::NotFound), _) => (
-            Severity::Info,
-            format!("{} isn't connected", st.profile.display_name),
-            "Connect it and we'll find it automatically.",
-            "Check again",
-        ),
+        (Some(MonitorStatus::NotFound), _) => {
+            let NotFound { title, message, .. } = not_found(st);
+            (Severity::Info, title, message, "Check again")
+        }
     };
     Banner { visible: true, severity, title: s(title), message: s(message), action: s(action) }
 }
@@ -283,7 +363,7 @@ fn monitor_groups(st: &State) -> Vec<ControlGroup> {
 
 pub fn render(app: &App, st: &State) {
     let (status_glyph, status_text) = status_line(st);
-    app.set_model_name(s(&st.profile.display_name));
+    app.set_model_name(s(header_name(st)));
     app.set_status_glyph(s(status_glyph));
     app.set_status_text(s(status_text));
     app.set_connected(st.status == MonitorStatus::Connected);

@@ -21,7 +21,7 @@ use tvc_core::result::ResultKind;
 use tvc_core::schedule::{self, AutoMode, Phase};
 use tvc_core::finder::CodeChange;
 use tvc_core::hotkey::{Action, Gesture};
-use tvc_core::link::{LinkFailure, VcpReading};
+use tvc_core::link::{AttachedDisplay, LinkFailure, VcpReading};
 use tvc_core::profile::{ControlDefinition, ControlKind, Profile, SafetyClass, Section};
 use tvc_core::store::{Preset, Settings, SettingsStore};
 use tvc_core::log;
@@ -88,6 +88,8 @@ pub struct State {
     pub values: BTreeMap<u8, VcpReading>,
     pub status: MonitorStatus,
     pub failure: Option<LinkFailure>,
+    /// The displays the OS reported at the last failed connect; None = unknown.
+    pub displays: Option<Vec<AttachedDisplay>>,
     /// What the banner shows: non-connected states wait `BANNER_HOLD` so the bar never flashes.
     pub shown_status: (Option<MonitorStatus>, Option<LinkFailure>),
     pub range_note: String,
@@ -183,6 +185,7 @@ impl Controller {
                 values: BTreeMap::new(),
                 status: MonitorStatus::Connecting,
                 failure: None,
+                displays: None,
                 shown_status: (None, None),
                 range_note: String::new(),
                 notes: BTreeMap::new(),
@@ -353,12 +356,7 @@ impl Controller {
     }
 
     fn not_connected_text(&self) -> String {
-        let st = self.st.borrow();
-        if st.status == MonitorStatus::NotResponding {
-            "Your monitor isn't responding".to_string()
-        } else {
-            format!("{} isn't connected", st.profile.display_name)
-        }
+        view::unreachable_text(&self.st.borrow())
     }
 
     /// Args forwarded by a second launch.
@@ -478,7 +476,7 @@ impl Controller {
         let Some(tray) = tray.as_ref() else { return };
         let st = self.st.borrow();
         tray.set_connected(st.status == MonitorStatus::Connected);
-        tray.set_tip(crate::tray::tooltip(st.status, &st.profile.short_name).into());
+        tray.set_tip(crate::tray::tooltip(st.status, &view::header_name(&st)).into());
         tray.set_image(crate::tray::icon(tray, st.status, platform::taskbar::is_light()));
     }
 
@@ -590,6 +588,10 @@ impl Controller {
                     self.auto_tick(); // catch up on a Day/Night change missed while asleep
                 }
                 self.update_tray();
+                self.render();
+            }
+            Event::Displays(displays) => {
+                self.st.borrow_mut().displays = displays;
                 self.render();
             }
             Event::SafeMode(on) => {

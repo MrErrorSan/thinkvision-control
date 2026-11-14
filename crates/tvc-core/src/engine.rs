@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use crate::crash::Marker;
 use crate::finder::{self, CodeChange};
-use crate::link::{LinkError, LinkFailure, MonitorLink, VcpReading};
+use crate::link::{AttachedDisplay, LinkError, LinkFailure, MonitorLink, VcpReading};
 use crate::mccs::{self, MonitorCapabilities};
 use crate::profile::{ControlDefinition, ControlKind, Profile, ProfileStore, SafetyClass, Section};
 use crate::result::ResultKind;
@@ -245,6 +245,9 @@ pub enum Event {
     Asleep(bool),
     /// Sent at start when spawned in safe mode, and whenever it changes.
     SafeMode(bool),
+    /// The displays the OS reports, refreshed on every connect that ends `NotFound` and sent (before that
+    /// `Status`) when the list changes. None = the backend can't list them.
+    Displays(Option<Vec<AttachedDisplay>>),
 }
 
 pub struct Engine;
@@ -283,6 +286,7 @@ impl Engine {
             drags: BTreeSet::new(),
             status: MonitorStatus::Connecting,
             failure: None,
+            displays: None,
             ready_at: Instant::now(),
             last_write: None,
             burst: None,
@@ -364,6 +368,8 @@ struct Worker {
     drags: BTreeSet<u8>,
     status: MonitorStatus,
     failure: Option<LinkFailure>,
+    /// The last display list sent in `Event::Displays`.
+    displays: Option<Vec<AttachedDisplay>>,
     ready_at: Instant,
     last_write: Option<Instant>,
     burst: Option<Burst>,
@@ -583,6 +589,9 @@ impl Worker {
                     self.request_reconnect();
                 }
                 return;
+            }
+            if failure == LinkFailure::NotFound {
+                self.report_displays();
             }
             self.set_status(MonitorStatus::NotFound, Some(failure));
             return;
@@ -1002,6 +1011,16 @@ impl Worker {
     fn gone(&mut self) {
         self.set_status(MonitorStatus::NotResponding, None);
         self.burst = Some(Burst { step: 0, due: Instant::now() });
+    }
+
+    /// Asks the link which displays are attached and sends the list when it changed.
+    fn report_displays(&mut self) {
+        let displays = self.link.displays();
+        if displays != self.displays && !self.stopping() {
+            log::write(&format!("Displays: {displays:?}"));
+            self.displays = displays.clone();
+            self.emit(Event::Displays(displays));
+        }
     }
 
     fn set_status(&mut self, status: MonitorStatus, failure: Option<LinkFailure>) {
