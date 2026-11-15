@@ -1,3 +1,6 @@
 *.sh text eol=lf
 *.desktop text eol=lf
 *.rules text eol=lf
+# Translation catalogs: LF on every OS (slint-build and the core reader parse them byte-for-byte).
+*.po text eol=lf
+*.pot text eol=lf
