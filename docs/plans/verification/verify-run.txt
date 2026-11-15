@@ -1,0 +1,65 @@
+   Compiling tvc-core v0.0.8 (C:\Users\MrError\AppData\Local\Temp\claude\9446043aa4c45138\82604929-332d-47a5-aaa4-87d8df35c7cf\scratchpad\wt-verify\crates\tvc-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.56s
+     Running unittests src\lib.rs (C:/Users/MrError/AppData/Local/Temp/claude/9446043aa4c45138/82604929-332d-47a5-aaa4-87d8df35c7cf/scratchpad/target-verify1\debug\build\tvc-core/7ae025c799f53e49\out\tvc_core-7ae025c799f53e49.exe)
+
+running 17 tests
+test tests::verify_tests::verify_a1_1_restore_order_and_input ... A1.1: backup = {16: 0, 18: 70, 20: 6, 22: 100, 24: 100, 26: 100, 96: 17, 134: 2, 204: 2, 224: 1, 234: 0, 236: 0}
+A1.1 locked: result Blocked / "Brightness remains 50; the monitor did not apply 0. The current color mode may lock brightness."; writes [(16, 0)]
+A1.1 unlocked: result Ok; writes [(16, 0), (18, 70), (20, 6), (22, 100), (24, 100), (26, 100), (96, 17), (134, 2), (204, 2), (224, 1), (234, 0), (236, 0)]
+ok
+test tests::verify_tests::verify_a1_2_corrupt_cache_skips_live_read ... A1.2 safe=false: status [Connecting, Connected], capability reads after Connect 0, after ReadCapabilities 1; caps model Some("")
+A1.2 safe=true: status [Connecting, Connected], capability reads after Connect 0, after ReadCapabilities 0; caps model Some("")
+ok
+test tests::verify_tests::verify_a1_3_synth_caps_authorize_writes_in_safe_mode ... A1.3: status [Connecting, Connected]; capability reads 0; engine caps supports(0x60)=Some(true) supports(0x14)=Some(true)
+A1.3: Set 60=0F -> Ok; Set 14=0E -> Ok; writes [(96, 15), (20, 14)]
+ok
+test tests::verify_tests::verify_a1_6_input_switch_without_confirmation ... A1.6: Set 60=0F unconfirmed -> Ok "Input → DisplayPort"; Step +0x22 -> Ok "Input → USB-C"; writes [(96, 15), (96, 49)]
+ok
+test tests::verify_tests::verify_a1_7_no_hard_floor_in_safety ... A1.7: evaluate(D6 Normal, 5) = Allow; evaluate(CA Normal, 1) = Allow
+A1.7: overlay-named F7 Set 04 -> Ok; writes [(247, 4)]
+ok
+test tests::verify_tests::verify_a2_1_drag_without_end_sticks ... A2.1: poll reads after stuck drag []; Value events for hotkey Set 10=70: []; result Some(Ok)
+ok
+test tests::verify_tests::verify_a2_2_coalesce_reorders_set ... A2.2: sent DragTo30, Set50, DragTo70 -> 0x10 writes [(16, 70), (16, 50)]; final 50
+ok
+test tests::verify_tests::verify_a2_5_shared_crash_marker ... A2.5: after A armed, B armed+disarmed: left_over = None
+ok
+test tests::verify_tests::verify_a3_1_engine_death_is_silent ... 
+thread 'tvc-engine' (9096) panicked at crates\tvc-core\src\tests\verify_tests.rs:285:30:
+sink panics (deliberate)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+A3.1: send() after death returned (); Flush reply = Err(Disconnected); shutdown took 7.1µs
+ok
+test tests::verify_tests::verify_a3_3_all_unsupported_is_connected ... A3.3: every read Unsupported -> statuses [Connecting, Connected]
+ok
+test tests::verify_tests::verify_a3_7_settings_missing_day_resets_and_overwrites_bak ... A3.7: input 0x11, start_with_windows false, .bak now = "{\"Night\":{\"Name\":\"Night\",\"Brightness\":5,\"Contrast\":50},\"ThisMachineInput\":\"0x0F\",\"StartWithWindows\":true}"
+ok
+test tests::verify_tests::verify_a3_8_one_bad_overlay_entry_drops_all ... A3.8: 0xF7 resolves to "Unknown 0xF7"
+ok
+test tests::verify_tests::verify_a4_2_backups_never_pruned ... A4.2: backup files after 3 resets: 3
+ok
+test tests::verify_tests::verify_c_fragility ... C1 single digit: Err(ParseError("Expected a two-digit hex value at position 0 in the vcp section."))
+C1 three digit:  Err(ParseError("Expected a two-digit hex value at position 2 in the vcp section."))
+C1 four digit:   Ok({223: Some([2, 1])})
+C2 NUL:          Err(ParseError("Expected a two-digit hex value at position 5 in the vcp section."))
+C2 tab/CRLF:     Ok(3)
+C3 bad model:    Err(ParseError("Unbalanced parentheses at position 29."))
+C4 unbalanced:   Err(ParseError("Capability string has no vcp(...) section."))
+C4 'vcp (':      Err(ParseError("Capability string has no vcp(...) section."))
+C5 two vcp:      Ok({16: None, 18: None})
+C8 position:     Err(ParseError("Expected a two-digit hex value at position 3 in the vcp section."))
+C9 firmware:     Ok(Some("AB"))
+ok
+test tests::verify_tests::verify_c_nested_list_makes_engine_not_responding ... A1.5: statuses [Connecting, NotResponding], capability reads 1
+A1.5: value reads during connect: []
+ok
+test tests::verify_tests::verify_c_p40w_string_is_rejected_whole ... C: parse(P40w-20) = Err(ParseError("Expected a two-digit hex value at position 14 in the vcp section."))
+C: error text "Expected a two-digit hex value at position 14 in the vcp section."; '(' of the nested list is at 296 in the vcp slice, 363 in the whole string
+ok
+test tests::verify_tests::verify_c_p40w_without_nested_list_last_60_wins ... C: 0x60 = Some([15, 17, 18, 27, 49])
+C: 0xF7 = Some([4, 7, 8, 18, 20, 21, 23])
+C: reversed duplicate 0x60 = Some([15, 17, 255])
+ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 129 filtered out; finished in 0.90s
+
