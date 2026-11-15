@@ -37,7 +37,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     let _ = std::fs::create_dir_all(&data_dir);
-    clock::set_utc_offset(localtime::utc_offset());
+    clock::set_utc_offset_source(localtime::utc_offset);
     log::init(&data_dir);
 
     // `--get` always reads on its own connection: a forwarded command can't return output.

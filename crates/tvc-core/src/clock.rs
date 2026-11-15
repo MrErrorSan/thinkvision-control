@@ -1,14 +1,26 @@
-//! Local wall-clock time for file stamps and log lines. The core makes no OS calls, so the app sets the UTC offset
-//! once at start ([`set_utc_offset`]); until then stamps are UTC.
+//! Local wall-clock time for file stamps and log lines. The core makes no OS calls, so the app hands it a function
+//! that reads the current UTC offset ([`set_utc_offset_source`]), asked on every call so a DST change or a new time
+//! zone shows up without a restart. Without one, [`set_utc_offset`]'s fixed value (0, UTC, by default) is used.
 
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static OFFSET_SECONDS: AtomicI32 = AtomicI32::new(0);
+static OFFSET_SOURCE: OnceLock<fn() -> i32> = OnceLock::new();
 
-/// The local time zone's offset from UTC in seconds (east positive), e.g. 18000 for UTC+5.
+/// A fixed offset from UTC in seconds (east positive), e.g. 18000 for UTC+5. Ignored once a source is set.
 pub fn set_utc_offset(seconds: i32) {
     OFFSET_SECONDS.store(seconds, Ordering::Relaxed);
+}
+
+/// Reads the offset from `source` on every call from now on. The first source set wins.
+pub fn set_utc_offset_source(source: fn() -> i32) {
+    let _ = OFFSET_SOURCE.set(source);
+}
+
+fn utc_offset() -> i32 {
+    OFFSET_SOURCE.get().map_or_else(|| OFFSET_SECONDS.load(Ordering::Relaxed), |source| source())
 }
 
 /// Local civil time.
@@ -25,7 +37,7 @@ pub(crate) struct DateTime {
 
 pub(crate) fn now() -> DateTime {
     let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    from_unix_millis(since.as_millis() as i64 + i64::from(OFFSET_SECONDS.load(Ordering::Relaxed)) * 1000)
+    from_unix_millis(since.as_millis() as i64 + i64::from(utc_offset()) * 1000)
 }
 
 pub(crate) fn from_unix_millis(ms: i64) -> DateTime {
