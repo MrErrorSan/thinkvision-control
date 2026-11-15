@@ -118,7 +118,7 @@ With [Rust](https://rustup.rs): `cargo run --release -p tvc-app`. The toolchain 
 sudo apt-get install pkg-config libfontconfig1-dev libudev-dev libxkbcommon-dev
 ```
 
-Installers: `scripts/make-windows-setup.ps1` (needs [Inno Setup](https://jrsoftware.org/isinfo.php)), `scripts/make-linux-tarball.sh`, `scripts/make-macos-app.sh`. They add `THIRD-PARTY-NOTICES.txt` when [cargo-about](https://github.com/EmbarkStudios/cargo-about) is installed (`cargo install cargo-about --locked`). Tests: `cargo test --workspace`.
+Installers: `scripts/make-windows-setup.ps1` (needs [Inno Setup](https://jrsoftware.org/isinfo.php)), `scripts/make-linux-tarball.sh`, `scripts/make-macos-app.sh`. They add `THIRD-PARTY-NOTICES.txt` when [cargo-about](https://github.com/EmbarkStudios/cargo-about) is installed (`cargo install cargo-about --locked --features cli`). Tests: `cargo test --workspace`.
 
 Only the P32p-20 is supported today. For another model, open an issue with its capabilities string: `cargo run -p tvc-ddc --example probe` prints it without changing anything on the monitor.
 

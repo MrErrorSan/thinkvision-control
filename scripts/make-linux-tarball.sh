@@ -5,7 +5,7 @@
 #   ./scripts/make-linux-tarball.sh
 #
 # Needs Rust (rustup.rs). Run it on x64 Linux; from another OS, cargo needs a linker for x86_64-unknown-linux-gnu.
-# THIRD-PARTY-NOTICES.txt needs cargo-about (cargo install cargo-about --locked); a local build without it leaves the
+# THIRD-PARTY-NOTICES.txt needs cargo-about (cargo install cargo-about --locked --features cli); a local build without it leaves the
 # file out, CI fails instead.
 set -euo pipefail
 

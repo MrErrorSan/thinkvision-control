@@ -1,7 +1,7 @@
 # Builds build\ThinkVisionControl-Setup-<version>.exe: builds the app and the tvc console launcher with cargo
 # (target\release\thinkvision-control.exe, tvc.exe), generates THIRD-PARTY-NOTICES.txt, then compiles the Inno Setup
 # script. Needs Rust (rustup.rs), Inno Setup 6.5+ (winget install JRSoftware.InnoSetup) and cargo-about
-# (cargo install cargo-about --locked; without it a local build leaves the notices out, CI fails instead).
+# (cargo install cargo-about --locked --features cli; without it a local build leaves the notices out, CI fails instead).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $cargoToml = Get-Content -Raw "$root\Cargo.toml"

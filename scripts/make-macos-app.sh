@@ -41,7 +41,7 @@ rm -f build/THIRD-PARTY-NOTICES.txt
 if cargo about --version >/dev/null 2>&1; then
     cargo about generate --fail -o build/THIRD-PARTY-NOTICES.txt about.hbs
 else
-    echo "warning: cargo-about not found (cargo install cargo-about --locked); the app has no THIRD-PARTY-NOTICES.txt" >&2
+    echo "warning: cargo-about not found (cargo install cargo-about --locked --features cli); the app has no THIRD-PARTY-NOTICES.txt" >&2
 fi
 
 echo "==> Assembling $APP_DIR"
