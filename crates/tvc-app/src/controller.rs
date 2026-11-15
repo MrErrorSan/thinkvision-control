@@ -41,7 +41,7 @@ use crate::platform;
 use crate::platform::instance::{Reply, Responder};
 use crate::platform::monitor_events::SystemEvent;
 use crate::view::{self, glyph, AttachedDisplay, TogetherSlider, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT, VOLUME};
-use crate::{App, Dialog, DisplayEntry, MainWindow, Severity, ShortcutEditor, Tray, TrayDisplay};
+use crate::{App, Dialog, DisplayEntry, MainWindow, Severity, ShortcutEditor, Tray};
 
 const POLL_EVERY: Duration = Duration::from_secs(3);
 const BANNER_HOLD: Duration = Duration::from_secs(1);
@@ -1236,35 +1236,15 @@ impl Controller {
             })
         });
         tray.on_quit(|| with(|c| c.quit()));
-        tray.on_step_display(|id, delta| {
-            with(|c| {
-                let targets = if id.is_empty() {
-                    let app = c.app.borrow();
-                    let included: Vec<MonitorId> =
-                        app.included().into_iter().filter(|id| app.displays.get(id).is_some_and(State::connected)).collect();
-                    included
-                } else {
-                    vec![MonitorId(id.to_string())]
-                };
-                c.step(Origin::Tray, BRIGHTNESS, delta, targets);
-            })
-        });
-        tray.on_set_together(|on| with(|c| c.set_together(on)));
         *self.tray.borrow_mut() = Some(tray);
         self.update_tray();
     }
 
-    /// The tray rows, and its tip and badge from the shown display (another one when that isn't connected).
+    /// The tray's tip and badge from the shown display (another one when that isn't connected).
     fn update_tray(&self) {
         let tray = self.tray.borrow();
         let Some(tray) = tray.as_ref() else { return };
         let app = self.app.borrow();
-        let rows: Vec<TrayDisplay> = app.attached().iter()
-            .filter_map(|id| {
-                let st = app.displays.get(id)?;
-                Some(TrayDisplay { id: id.0.as_str().into(), name: app.name(id).into(), connected: st.connected() })
-            })
-            .collect();
         let selected = app.state(app.selected.as_ref());
         let shown = if selected.connected() {
             selected
@@ -1276,12 +1256,9 @@ impl Controller {
             .or_else(|| shown.monitor.as_ref().map(|m| m.info.name.trim()))
             .unwrap_or("")
             .to_string();
-        tray.set_connected(rows.iter().any(|r| r.connected));
+        tray.set_connected(!app.connected().is_empty());
         tray.set_tip(crate::tray::tooltip(shown.status, &name).into());
         tray.set_image(crate::tray::icon(tray, shown.status, platform::taskbar::is_light()));
-        tray.set_together(app.together);
-        tray.set_together_available(app.together_available());
-        tray.set_displays(ModelRc::new(VecModel::from(rows)));
     }
 
     /// Registers the shortcuts while Run in background is on; suspends them otherwise.
@@ -2306,14 +2283,6 @@ impl Controller {
                 app.selected = Some(id);
                 app.together = false;
             }
-        }
-        self.after_selection();
-    }
-
-    fn set_together(self: &Rc<Self>, on: bool) {
-        {
-            let mut app = self.app.borrow_mut();
-            app.together = on && app.together_available();
         }
         self.after_selection();
     }

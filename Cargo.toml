@@ -22,7 +22,7 @@ slint-build = "=1.18.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# Size first: the shipped binary must stay under 10 MB.
+# Size first: aim for a shipped binary near 10 MB (a target, not a hard limit) without slowing start-up.
 [profile.release]
 opt-level = "z"
 lto = true

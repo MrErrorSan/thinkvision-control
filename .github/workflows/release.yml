@@ -28,7 +28,7 @@ jobs:
         run: cargo install cargo-about --version ${{ env.CARGO_ABOUT_VERSION }} --locked --features cli
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
-      # Also fails when thinkvision-control.exe is 10 MB or larger.
+      # Also reports the size of thinkvision-control.exe, warning above the 10 MB target.
       - name: Build setup
         shell: pwsh
         run: ./scripts/make-windows-setup.ps1

@@ -3,13 +3,6 @@ import { Palette } from "std-widgets.slint";
 import { Glyphs, Icon } from "theme.slint";
 
 // Slint's built-in tray (feature `system-tray`). Left click opens the window, right click shows the menu.
-// One display in the tray menu (multi-display): a brightness submenu each.
-export struct TrayDisplay {
-    id: string,
-    name: string,
-    connected: bool,
-}
-
 export component Tray inherits SystemTrayIcon {
     // Rust picks one by taskbar theme, adds a status badge and sets `image`.
     out property <image> glyph-on-dark: @image-url("glyph-white-32.png");
@@ -23,13 +16,6 @@ export component Tray inherits SystemTrayIcon {
     callback switch-to-me();
     callback step-brightness(int);
     callback quit();
-    // Multi-display (w4-tray-osd builds the menu rows): one row per display, plus All together.
-    in property <[TrayDisplay]> displays;
-    in property <bool> together;              // brightness steps go to every included display
-    in property <bool> together-available;
-    callback step-display(string, int);       // display id ("" = every included display), brightness delta
-    callback set-together(bool);
-    property <bool> several: root.displays.length > 1;
 
     icon: root.image;
     tooltip: root.tip;
@@ -39,26 +25,8 @@ export component Tray inherits SystemTrayIcon {
     Menu {
         MenuItem { title: "Open ThinkVision Control"; activated => { root.open(); } }
         MenuSeparator { }
-        if !root.several && root.connected && root.brightness-items: MenuItem { title: "Brightness up"; activated => { root.step-brightness(5); } }
-        if !root.several && root.connected && root.brightness-items: MenuItem { title: "Brightness down"; activated => { root.step-brightness(-5); } }
-        // Several displays: a brightness submenu each, or one for the linked set while together.
-        if root.several && root.together: Menu {
-            title: "All linked displays";
-            MenuItem { title: "Brightness up"; activated => { root.step-display("", 5); } }
-            MenuItem { title: "Brightness down"; activated => { root.step-display("", -5); } }
-        }
-        for d in root.several && !root.together ? root.displays : []: Menu {
-            title: d.connected ? d.name : d.name + " (not connected)";
-            enabled: d.connected;
-            MenuItem { title: "Brightness up"; activated => { root.step-display(d.id, 5); } }
-            MenuItem { title: "Brightness down"; activated => { root.step-display(d.id, -5); } }
-        }
-        // Slint 1.18's tray menus draw no check marks, so the title says what a click does.
-        if root.several && root.together-available: MenuItem {
-            title: root.together ? "Control each display separately" : "Control all together";
-            activated => { root.set-together(!root.together); }
-        }
-        if root.several: MenuSeparator { }
+        if root.connected && root.brightness-items: MenuItem { title: "Brightness up"; activated => { root.step-brightness(5); } }
+        if root.connected && root.brightness-items: MenuItem { title: "Brightness down"; activated => { root.step-brightness(-5); } }
         if root.connected: MenuItem { title: "Day preset"; activated => { root.preset(0); } }
         if root.connected: MenuItem { title: "Night preset"; activated => { root.preset(1); } }
         if root.connected: MenuItem { title: "Switch to this PC"; activated => { root.switch-to-me(); } }
