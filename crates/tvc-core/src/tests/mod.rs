@@ -3,6 +3,7 @@
 mod cli_tests;
 mod crash_tests;
 mod engine_tests;
+mod hub_tests;
 mod identity_tests;
 mod misc_tests;
 mod parser_tests;
@@ -10,6 +11,7 @@ mod profile_tests;
 mod safety_floor_tests;
 mod schedule_tests;
 mod settings_tests;
+mod support_tests;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
