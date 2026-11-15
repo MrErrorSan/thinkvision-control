@@ -147,17 +147,20 @@ impl Settings {
 }
 
 /// `settings.json` in a directory. Missing → defaults; corrupt → defaults and the file is renamed `settings.json.bak`
-/// (unless that is newer); unreadable → defaults, and saving is refused so the file isn't overwritten.
+/// (unless that is newer); unreadable → defaults, and saving is refused so the file isn't overwritten. The first save
+/// over a file from before 0.1.0 keeps it as `settings-0.0.8.json`, once.
 #[derive(Clone, Debug)]
 pub struct SettingsStore {
     dir: PathBuf,
     /// The last load couldn't read the file.
     unreadable: Arc<AtomicBool>,
+    /// The last load read a file from before 0.1.0 (no `"LegacyAdopted"`) that no save has replaced yet.
+    legacy_file: Arc<AtomicBool>,
 }
 
 impl SettingsStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into(), unreadable: Arc::default() }
+        Self { dir: dir.into(), unreadable: Arc::default(), legacy_file: Arc::default() }
     }
 
     pub fn load(&self) -> Settings {
@@ -170,6 +173,7 @@ impl SettingsStore {
             std::fs::read(&path)
         });
         self.unreadable.store(false, Ordering::Relaxed);
+        self.legacy_file.store(false, Ordering::Relaxed);
         let bytes = match read {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Settings::default(),
@@ -190,6 +194,7 @@ impl SettingsStore {
                 return Settings::default();
             }
         };
+        self.legacy_file.store(file.legacy_adopted.is_none(), Ordering::Relaxed);
         let saved = file.hotkeys.unwrap_or_default();
         let hotkeys = Action::ALL.into_iter().map(|action| {
             let default = action.default_gesture();
@@ -218,7 +223,7 @@ impl SettingsStore {
             last_applied_phase: file.last_applied_phase,
             hotkey_target: file.hotkey_target,
             monitors: BTreeMap::new(),
-            legacy_adopted: file.legacy_adopted,
+            legacy_adopted: file.legacy_adopted.unwrap_or(false),
             language: file.language.filter(|l| crate::i18n::LANGUAGES.iter().any(|(c, _)| c == l)),
         };
         for (id, m) in file.monitors {
@@ -254,6 +259,16 @@ impl SettingsStore {
             return Err(io::Error::other("settings.json couldn't be read, so it isn't overwritten"));
         }
         std::fs::create_dir_all(&self.dir)?;
+        let path = self.dir.join("settings.json");
+        if self.legacy_file.swap(false, Ordering::Relaxed) {
+            let kept = self.dir.join("settings-0.0.8.json");
+            if !kept.exists() {
+                match std::fs::copy(&path, &kept) {
+                    Ok(_) => crate::log::write("Settings: kept the 0.0.8 file as settings-0.0.8.json"),
+                    Err(e) => crate::log::write(&format!("Settings: couldn't keep the 0.0.8 file: {e}")),
+                }
+            }
+        }
         let file = SettingsFileOut {
             hotkeys: Hotkeys(&settings.hotkeys),
             day: PresetFile::from(&settings.day),
@@ -281,7 +296,7 @@ impl SettingsStore {
             legacy_adopted: settings.legacy_adopted,
             language: settings.language.as_deref().unwrap_or("System"),
         };
-        write_atomic(&self.dir.join("settings.json"), &serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
+        write_atomic(&path, &serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
     }
 }
 
@@ -321,9 +336,9 @@ struct SettingsFile {
     /// Missing or not an object → none; an entry that doesn't parse is skipped.
     #[serde(default, deserialize_with = "monitors_lenient")]
     monitors: BTreeMap<String, MonitorFile>,
-    /// Missing (a file from before 0.1.0) or malformed → false.
-    #[serde(default, deserialize_with = "bool_lenient")]
-    legacy_adopted: bool,
+    /// Missing: a file from before 0.1.0 (None). Malformed → false.
+    #[serde(default, deserialize_with = "present_bool_lenient")]
+    legacy_adopted: Option<bool>,
     /// "System", a language code, or anything else (→ None: follow the system).
     #[serde(default, deserialize_with = "language_lenient")]
     language: Option<String>,
@@ -465,6 +480,11 @@ fn hotkey_target_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<HotkeyTarget
 
 fn bool_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     Ok(serde_json::Value::deserialize(d)?.as_bool().unwrap_or(false))
+}
+
+/// A field that is present: its bool, false when malformed. A missing one stays None (`#[serde(default)]`).
+fn present_bool_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
+    bool_lenient(d).map(Some)
 }
 
 fn monitors_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, MonitorFile>, D::Error> {

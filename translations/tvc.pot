@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: ThinkVision Control 0.1.0\n"
-"POT-Creation-Date: 2026-11-15 06:09+0000\n"
+"POT-Creation-Date: 2026-11-15 07:28+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -11,225 +11,230 @@ msgstr ""
 "Language: \n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: crates/tvc-app/src/controller.rs:379 crates/tvc-app/src/view.rs:231
+#: crates/tvc-app/src/controller.rs:395 crates/tvc-app/src/view.rs:231
 msgid "Built-in display"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:444
+#: crates/tvc-app/src/controller.rs:460
 msgid "No display is included"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:446
+#: crates/tvc-app/src/controller.rs:462
 msgid "No included display is connected"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:448
+#: crates/tvc-app/src/controller.rs:464
 msgid "No included display has it"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:450
+#: crates/tvc-app/src/controller.rs:466
 msgid "{0} doesn't have it"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1740
+#: crates/tvc-app/src/controller.rs:1793
 msgid "Automatic Day/Night: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1796
+#: crates/tvc-app/src/controller.rs:1849
 msgid "Your monitor kept brightness at {0}{1}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1798
+#: crates/tvc-app/src/controller.rs:1851
 msgid "Your monitor kept contrast at {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1839 crates/tvc-core/src/engine.rs:1206
+#: crates/tvc-app/src/controller.rs:1892 crates/tvc-core/src/engine.rs:1207
 msgid "Backup restored"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1866
+#: crates/tvc-app/src/controller.rs:1919
 msgid "{0} display"
 msgid_plural "{0} displays"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/tvc-app/src/controller.rs:1874 crates/tvc-app/src/controller.rs:1902
+#: crates/tvc-app/src/controller.rs:1927 crates/tvc-app/src/controller.rs:1955
 #: crates/tvc-app/src/view.rs:50
 msgid "{0}: {1}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1962
+#: crates/tvc-app/src/controller.rs:2015
 msgid "Working…"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:1982
+#: crates/tvc-app/src/controller.rs:2035
 msgid "Checking…"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2016
+#: crates/tvc-app/src/controller.rs:2069
 msgid "Setup done"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2210
+#: crates/tvc-app/src/controller.rs:2279
 #: crates/tvc-core/src/profile/generic-mccs.json:36
 #: crates/tvc-core/src/profile/p32p20.json:42
 msgid "Switch to {label}?"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2213 crates/tvc-app/src/controller.rs:2223
+#: crates/tvc-app/src/controller.rs:2283
+msgid ""
+"This is this PC's input, so you can keep controlling the monitor from this PC."
+msgstr ""
+
+#: crates/tvc-app/src/controller.rs:2287 crates/tvc-app/src/controller.rs:2297
 #: crates/tvc-core/src/profile/generic-mccs.json:38
 #: crates/tvc-core/src/profile/p32p20.json:44
 msgid "Switch"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2214 crates/tvc-app/src/controller.rs:2224
-#: crates/tvc-app/src/controller.rs:2316
+#: crates/tvc-app/src/controller.rs:2288 crates/tvc-app/src/controller.rs:2298
+#: crates/tvc-app/src/controller.rs:2390
 msgid "Cancel"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2221
+#: crates/tvc-app/src/controller.rs:2295
 msgid "Switch the input on {0} display?"
 msgid_plural "Switch the input on {0} displays?"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/tvc-app/src/controller.rs:2313 crates/tvc-core/src/safety.rs:69
+#: crates/tvc-app/src/controller.rs:2387 crates/tvc-core/src/safety.rs:69
 msgid "Change {0}?"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2315
+#: crates/tvc-app/src/controller.rs:2389
 msgid "Continue"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2346
+#: crates/tvc-app/src/controller.rs:2420
 msgid "Connect the monitor to save its current settings"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2351
+#: crates/tvc-app/src/controller.rs:2425
 msgid "Saved as {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2351
+#: crates/tvc-app/src/controller.rs:2425
 msgid "Couldn't save {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2359
+#: crates/tvc-app/src/controller.rs:2433
 msgid "Couldn't save settings: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2430
+#: crates/tvc-app/src/controller.rs:2504
 msgid "Capability report copied"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2430 crates/tvc-app/src/controller.rs:3156
+#: crates/tvc-app/src/controller.rs:2504 crates/tvc-app/src/controller.rs:3225
 msgid "Couldn't copy"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2513
+#: crates/tvc-app/src/controller.rs:2587
 msgid "This key can't be used"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2514
+#: crates/tvc-app/src/controller.rs:2588
 msgid ""
 "Use a letter, number, arrow, Home, End, Page Up, Page Down, Insert, Delete or function key."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2519
+#: crates/tvc-app/src/controller.rs:2593
 msgid "This shortcut isn't valid"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2519
+#: crates/tvc-app/src/controller.rs:2593
 msgid "Start with {0}."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2528
+#: crates/tvc-app/src/controller.rs:2602
 msgid "{0} already uses this shortcut"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2529
+#: crates/tvc-app/src/controller.rs:2603
 msgid "Choose a different combination."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2569
+#: crates/tvc-app/src/controller.rs:2643
 msgid "Shortcuts start with {0}, and can include Shift."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2608
+#: crates/tvc-app/src/controller.rs:2682
 msgid "{0} can't use its default shortcut"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2609
+#: crates/tvc-app/src/controller.rs:2683
 msgid "{0} already uses {1}. Change that shortcut first."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2615
+#: crates/tvc-app/src/controller.rs:2689
 msgid "OK"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2652
+#: crates/tvc-app/src/controller.rs:2726
 msgid "Take a snapshot first."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2655
+#: crates/tvc-app/src/controller.rs:2729
 msgid ""
 "Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2656
+#: crates/tvc-app/src/controller.rs:2730
 msgid "The monitor is asleep or this PC is locked. Try again once it's awake."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2657
+#: crates/tvc-app/src/controller.rs:2731
 msgid "The monitor didn't answer. Try again."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2663
+#: crates/tvc-app/src/controller.rs:2737
 msgid ""
 "Nothing changed. Make sure the setting really changed on screen, then compare again."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2665
+#: crates/tvc-app/src/controller.rs:2739
 msgid "Select a change to name it."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2675
+#: crates/tvc-app/src/controller.rs:2749
 msgid "Saved \"{0}\" ({1}). It now appears in Monitor settings."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2677
+#: crates/tvc-app/src/controller.rs:2751
 msgid "Couldn't save: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2706
+#: crates/tvc-app/src/controller.rs:2780
 msgid "{0} (before)"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2708
+#: crates/tvc-app/src/controller.rs:2782
 msgid "{0} (now)"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2733
+#: crates/tvc-app/src/controller.rs:2807
 msgid "Enter a name for the setting first."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2832
+#: crates/tvc-app/src/controller.rs:2906
 msgid "Enter your latitude and longitude, then Save."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2846
+#: crates/tvc-app/src/controller.rs:2920
 msgid "Use 24-hour times like 07:00 and 19:30."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2851
+#: crates/tvc-app/src/controller.rs:2925
 msgid "Day and Night need different times."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2870
+#: crates/tvc-app/src/controller.rs:2944
 msgid ""
 "Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive)."
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2924 crates/tvc-app/src/view.rs:622
+#: crates/tvc-app/src/controller.rs:2998 crates/tvc-app/src/view.rs:622
 #: crates/tvc-core/src/tests/i18n_tests.rs:81
 #: crates/tvc-core/src/tests/i18n_tests.rs:83
 #: crates/tvc-core/src/profile/builtin-backlight.json:6
@@ -238,89 +243,89 @@ msgstr ""
 msgid "Brightness"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2924 crates/tvc-app/src/view.rs:622
+#: crates/tvc-app/src/controller.rs:2998 crates/tvc-app/src/view.rs:622
 #: crates/tvc-core/src/profile/generic-mccs.json:9
 #: crates/tvc-core/src/profile/p32p20.json:19
 msgid "Contrast"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2935
+#: crates/tvc-app/src/controller.rs:3009
 msgid "Control, Option or Command"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2937
+#: crates/tvc-app/src/controller.rs:3011
 msgid "Ctrl, Alt or Super"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2939
+#: crates/tvc-app/src/controller.rs:3013
 msgid "Ctrl, Alt or the Windows key"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2962
+#: crates/tvc-app/src/controller.rs:3036
 msgid "unknown"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2964
+#: crates/tvc-app/src/controller.rs:3038
 msgid "{0} capability report"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2965
+#: crates/tvc-app/src/controller.rs:3039
 msgid "Display: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2966
+#: crates/tvc-app/src/controller.rs:3040
 msgid "Id: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2967
+#: crates/tvc-app/src/controller.rs:3041
 msgid "EDID id: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2968
+#: crates/tvc-app/src/controller.rs:3042
 msgid "Serial: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2969
+#: crates/tvc-app/src/controller.rs:3043
 msgid "Connector: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2970
+#: crates/tvc-app/src/controller.rs:3044
 msgid "Support: {0} ({1})"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2974
+#: crates/tvc-app/src/controller.rs:3048
 msgid "Model: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2975
+#: crates/tvc-app/src/controller.rs:3049
 msgid "MCCS version: {0}"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2978
+#: crates/tvc-app/src/controller.rs:3052
 msgid "Warnings: none"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2980
+#: crates/tvc-app/src/controller.rs:3054
 msgid "Warnings:"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2984
+#: crates/tvc-app/src/controller.rs:3058
 msgid "Capabilities:"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:2985
+#: crates/tvc-app/src/controller.rs:3059
 msgid "(not read from the display yet)"
 msgstr ""
 
-#: crates/tvc-app/src/controller.rs:3156
+#: crates/tvc-app/src/controller.rs:3225
 msgid "Copied"
 msgstr ""
 
-#: crates/tvc-app/src/osd.rs:361
+#: crates/tvc-app/src/osd.rs:362
 msgid "{0} {1}"
 msgstr ""
 
-#: crates/tvc-app/src/osd.rs:363
+#: crates/tvc-app/src/osd.rs:364
 msgid "{0} {1} · {2}"
 msgstr ""
 
@@ -993,60 +998,60 @@ msgstr ""
 msgid "The monitor is asleep or this PC is locked"
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:938
+#: crates/tvc-core/src/engine.rs:941
 msgid ""
 "Changes are off for this monitor after repeated failed writes; reconnect it to try again."
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:941
+#: crates/tvc-core/src/engine.rs:944
 msgid "The monitor's capabilities haven't been read yet."
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:971
+#: crates/tvc-core/src/engine.rs:974
 msgid "Backup failed — {0} cancelled."
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:994
+#: crates/tvc-core/src/engine.rs:995
 msgid "{0} remains {1}; the monitor did not apply {2}."
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1045
+#: crates/tvc-core/src/engine.rs:1046
 msgid "The monitor stayed on {0}"
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1170
+#: crates/tvc-core/src/engine.rs:1171
 msgid "{0} preset"
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1176
+#: crates/tvc-core/src/engine.rs:1177
 msgid "No backup found."
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1177
+#: crates/tvc-core/src/engine.rs:1178
 msgid "Couldn't read the backup: {0}"
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1195
+#: crates/tvc-core/src/engine.rs:1196
 msgid "{0}; restored {1} of {2} settings."
 msgid_plural "{0}; restored {1} of {2} settings."
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/tvc-core/src/engine.rs:1208
+#: crates/tvc-core/src/engine.rs:1209
 msgid "Restored {0} of {1} settings. {2}"
 msgid_plural "Restored {0} of {1} settings. {2}"
 msgstr[0] ""
 msgstr[1] ""
 
-#: crates/tvc-core/src/engine.rs:1259
+#: crates/tvc-core/src/engine.rs:1260
 msgid "Monitor not found"
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1261
+#: crates/tvc-core/src/engine.rs:1262
 msgid "The monitor answers but supports none of the controls this app uses"
 msgstr ""
 
-#: crates/tvc-core/src/engine.rs:1262 crates/tvc-core/src/hub.rs:493
+#: crates/tvc-core/src/engine.rs:1263 crates/tvc-core/src/hub.rs:493
 msgid "Monitor not responding"
 msgstr ""
 

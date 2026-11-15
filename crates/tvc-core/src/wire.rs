@@ -10,6 +10,11 @@ pub struct Reply {
     pub stdout: String,
 }
 
+/// A reply's `exit` when the running copy can't take the verb: it is a one-shot command-line run (which never
+/// becomes the resident app) or it is closing. The launch retries until it can start, or forward to, a copy of
+/// its own. Never a process exit code.
+pub const EXIT_BUSY: u8 = 75;
+
 pub fn encode_request<S: AsRef<str>>(args: &[S]) -> String {
     let args: Vec<&str> = args.iter().map(AsRef::as_ref).collect();
     serde_json::to_string(&args).unwrap_or_else(|_| "[]".into())

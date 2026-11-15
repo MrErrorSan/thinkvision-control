@@ -15,6 +15,9 @@ pub use tvc_core::wire::Reply;
 const READ_WAIT: Duration = Duration::from_secs(2);
 /// How long a launch waits for the running copy's reply.
 const REPLY_WAIT: Duration = Duration::from_secs(15);
+/// How long a launch keeps retrying while the running copy answers busy (a one-shot run takes up to 20 s, plus the
+/// OSD).
+const BUSY_WAIT: Duration = Duration::from_secs(30);
 const MAX_LINE: usize = 64 * 1024;
 
 /// Answers one forwarded launch, from any thread. Dropping it without `reply` answers exit 0 with no output.
@@ -28,6 +31,33 @@ impl Responder {
     pub fn reply(mut self, reply: Reply) {
         if let Some(send) = self.0.take() {
             send(reply);
+        }
+    }
+
+    /// Tells the launch to try again: this copy can't take its arguments (see `wire::EXIT_BUSY`).
+    pub fn busy(self) {
+        self.reply(Reply { exit: tvc_core::wire::EXIT_BUSY, stdout: String::new() });
+    }
+}
+
+/// A responder on its way to the UI thread: dropped there unused (the event loop has quit, or the controller is
+/// gone), it answers busy, so the launch retries instead of getting exit 0 with no output.
+pub struct BusyUnlessTaken(Option<Responder>);
+
+impl BusyUnlessTaken {
+    pub fn new(responder: Responder) -> Self {
+        Self(Some(responder))
+    }
+
+    pub fn take(mut self) -> Option<Responder> {
+        self.0.take()
+    }
+}
+
+impl Drop for BusyUnlessTaken {
+    fn drop(&mut self) {
+        if let Some(responder) = self.0.take() {
+            responder.busy();
         }
     }
 }
@@ -47,6 +77,8 @@ pub enum Start {
     /// The arguments went to the running instance. `None` when it took them but sent no reply within 15 s
     /// (exit 8); exit now either way.
     Forwarded(Option<Reply>),
+    /// The running copy answered busy for 30 s (exit 8).
+    Busy,
 }
 
 /// Receives forwarded arguments. The single-instance lock is held until the process exits.
@@ -67,9 +99,25 @@ impl Listener {
 
 /// Becomes the primary or forwards `args` to it. When another copy holds the lock, this alternates a send
 /// (250 ms) with waiting for the lock (250 ms) for up to 5 s: a copy that is still starting its listener gets the
-/// arguments, and one that is shutting down is taken over instead of this launch quitting silently.
+/// arguments, and one that is shutting down is taken over instead of this launch quitting silently. While the
+/// running copy answers busy (a one-shot run, or closing), it starts over every 250 ms for up to 30 s.
 pub fn start(args: &[String]) -> Start {
     let request = tvc_core::wire::encode_request(args);
+    let deadline = Instant::now() + BUSY_WAIT;
+    loop {
+        match attempt(&request) {
+            Start::Forwarded(Some(reply)) if reply.exit == tvc_core::wire::EXIT_BUSY => {
+                if Instant::now() >= deadline {
+                    return Start::Busy;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            start => return start,
+        }
+    }
+}
+
+fn attempt(request: &str) -> Start {
     let lock = match imp::acquire() {
         imp::Acquire::Owned(listener) => return Start::Primary(Listener { imp: listener }),
         imp::Acquire::Busy(lock) => lock,
@@ -79,7 +127,7 @@ pub fn start(args: &[String]) -> Start {
     let slice = Duration::from_millis(250);
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        if let Some(reply) = imp::send(&request, slice) {
+        if let Some(reply) = imp::send(request, slice) {
             return Start::Forwarded(reply);
         }
         if let Some(listener) = imp::wait(&lock, slice) {
@@ -586,6 +634,18 @@ mod tests {
             buf[..chunk.len()].copy_from_slice(chunk);
             Some(chunk.len())
         })
+    }
+
+    #[test]
+    fn a_responder_dropped_on_the_way_answers_busy() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let again = tx.clone();
+        drop(super::BusyUnlessTaken::new(super::Responder::new(move |reply| tx.send(reply).unwrap())));
+        assert_eq!(rx.recv().unwrap().exit, tvc_core::wire::EXIT_BUSY);
+        let taken = super::BusyUnlessTaken::new(super::Responder::new(move |reply| again.send(reply).unwrap())).take();
+        taken.unwrap().reply(super::Reply { exit: 0, stdout: "ok\n".into() });
+        assert_eq!(rx.recv().unwrap(), super::Reply { exit: 0, stdout: "ok\n".into() });
+        assert!(rx.recv().is_err()); // the taken one answered once, not busy as well
     }
 
     #[test]

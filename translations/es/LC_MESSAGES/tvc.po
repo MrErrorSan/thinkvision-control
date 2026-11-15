@@ -1122,6 +1122,10 @@ msgstr "Entrada"
 msgid "You won't be able to control the monitor from this PC until you switch back."
 msgstr "No podrás controlar el monitor desde este equipo hasta que vuelvas a cambiar a esta entrada."
 
+#: crates/tvc-app/src/controller.rs:2283
+msgid "This is this PC's input, so you can keep controlling the monitor from this PC."
+msgstr "Es la entrada de este equipo, así que podrás seguir controlando el monitor desde este equipo."
+
 #: crates/tvc-core/src/profile/generic-mccs.json:40
 msgid "Sharpness"
 msgstr "Nitidez"

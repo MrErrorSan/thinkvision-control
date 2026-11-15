@@ -692,3 +692,26 @@ fn language_round_trips_and_unknown_follows_the_system() {
         assert_eq!(s.language.as_deref(), expected, "{value}");
     }
 }
+
+#[test]
+fn first_save_over_a_0_0_8_file_keeps_it_once() {
+    let dir = TempDir::new();
+    let path = dir.path().join("settings.json");
+    let kept = dir.path().join("settings-0.0.8.json");
+    let old = r#"{"ThisMachineInput":"0x0F","BackgroundMode":true}"#;
+    std::fs::write(&path, old).unwrap();
+    let store = SettingsStore::new(dir.path());
+
+    let mut s = store.load();
+    store.save(&s).unwrap();
+    assert_eq!(std::fs::read_to_string(&kept).unwrap(), old);
+    s.background_mode = false;
+    store.save(&s).unwrap();
+    assert_eq!(std::fs::read_to_string(&kept).unwrap(), old);
+
+    // A 0.1.0 file (with "LegacyAdopted") isn't kept again, even with the copy gone.
+    std::fs::remove_file(&kept).unwrap();
+    let s = store.load();
+    store.save(&s).unwrap();
+    assert!(!kept.exists());
+}

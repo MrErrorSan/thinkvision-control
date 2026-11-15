@@ -807,7 +807,10 @@ impl Worker {
         self.live_caps = true;
         self.caps_known = true;
         self.corrupt_cache = false;
-        if self.cached_raw.as_deref() == Some(raw.as_str()) {
+        let cached = self.cached_raw.as_deref() == Some(raw.as_str());
+        let same = if cached { ", matches the cache" } else { "" };
+        log::write(&format!("Capabilities read (live, {} bytes{same})", raw.len()));
+        if cached {
             return true; // its warnings were logged when the cache loaded
         }
         log_warnings("live", &caps);
@@ -984,10 +987,8 @@ impl Worker {
             ControlKind::Range => match self.read(code) {
                 Ok(actual) => {
                     self.update_cache(code, actual);
-                    if code == BRIGHTNESS {
-                        log::write(&format!("Brightness DDC write verified: requested={v}, readback={}, max={}.",
-                            actual.current, actual.max));
-                    }
+                    log::write(&format!("{} DDC write verified: requested={v}, readback={}, max={}.", def.name,
+                        actual.current, actual.max));
                     if actual.current != v {
                         return WriteResult {
                             kept: Some(actual.current),

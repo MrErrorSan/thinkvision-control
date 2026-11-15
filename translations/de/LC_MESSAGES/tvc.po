@@ -1167,6 +1167,11 @@ msgid ""
 "You won't be able to control the monitor from this PC until you switch back."
 msgstr "Der Monitor lässt sich von diesem PC aus erst wieder steuern, wenn zurückgewechselt wird."
 
+#: crates/tvc-app/src/controller.rs:2283
+msgid ""
+"This is this PC's input, so you can keep controlling the monitor from this PC."
+msgstr "Das ist der Eingang dieses PCs, der Monitor lässt sich also weiterhin von diesem PC aus steuern."
+
 #: crates/tvc-core/src/profile/generic-mccs.json:40
 msgid "Sharpness"
 msgstr "Schärfe"

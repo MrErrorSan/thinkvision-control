@@ -13,6 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -62,6 +63,10 @@ const NEEDS_YES: &str = "Switching the input needs confirmation: run it again wi
 const NEEDS_SCREEN: &str =
     "A display without a verified profile switches input only when confirmed on screen: start ThinkVision Control, then run it again";
 const NOT_CONFIRMED: &str = "The input switch wasn't confirmed on screen";
+const CONFIRM_TIMED_OUT: &str =
+    "Switching the input needs --yes or a confirmation on screen, and none came in time: run it again with --yes";
+/// How long a forwarded `--input` waits for the on-screen confirm: under the launch's 15 s, so it gets this answer.
+const CONFIRM_WAIT: Duration = Duration::from_secs(12);
 /// The master sliders of Together mode.
 const TOGETHER_CODES: [(u8, &str, &str); 3] =
     [(BRIGHTNESS, "Brightness", glyph::SUN), (CONTRAST, "Contrast", glyph::CONTRAST), (VOLUME, "Volume", glyph::SPEAKER)];
@@ -86,6 +91,17 @@ pub fn install(c: Rc<Controller>) {
 
 pub fn uninstall() -> Option<Rc<Controller>> {
     APP.with(|a| a.borrow_mut().take())
+}
+
+/// Set once the event loop is told to quit: forwarded launches are then answered busy (see `on_forwarded`).
+static CLOSING: AtomicBool = AtomicBool::new(false);
+
+pub fn closing() -> bool {
+    CLOSING.load(Ordering::Relaxed)
+}
+
+pub fn set_closing() {
+    CLOSING.store(true, Ordering::Relaxed);
 }
 
 /// A setup card's fix: running, checking again after it ran, or its result line.
@@ -543,11 +559,14 @@ pub struct CliJob {
     display: Option<String>,
     /// The forwarding launch's responder; None for this process's own verb.
     reply: Option<Responder>,
+    /// The arguments as given, for the log.
+    args: String,
 }
 
 impl CliJob {
-    pub fn own(parsed: &Parsed) -> Self {
-        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, display: parsed.display.clone(), reply: None }
+    pub fn own(parsed: &Parsed, args: &[String]) -> Self {
+        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, display: parsed.display.clone(),
+            reply: None, args: tvc_cli::command_line(args) }
     }
 }
 
@@ -557,8 +576,8 @@ struct AwaitingConfirm(Option<CliJob>);
 
 impl Drop for AwaitingConfirm {
     fn drop(&mut self) {
-        if let Some(CliJob { command, json, reply: Some(reply), .. }) = self.0.take() {
-            log::write(&format!("CLI {} (forwarded): exit {}, {NOT_CONFIRMED}", describe(&command), tvc_cli::EXIT_NEEDS_CONFIRMATION));
+        if let Some(CliJob { command, json, reply: Some(reply), args, .. }) = self.0.take() {
+            log::write(&format!("CLI {args} (forwarded): exit {}, {NOT_CONFIRMED}", tvc_cli::EXIT_NEEDS_CONFIRMATION));
             let line = failure_line(&command, json, "NeedsConfirmation", NOT_CONFIRMED);
             reply.reply(Reply { exit: tvc_cli::EXIT_NEEDS_CONFIRMATION as u8, stdout: format!("{line}\n") });
         }
@@ -587,8 +606,12 @@ pub struct Controller {
     tray: RefCell<Option<Tray>>,
     hotkeys: RefCell<Option<platform::hotkeys::Hotkeys>>,
     confirm: RefCell<Option<Pending>>,
-    /// Confirms asked while another was open, shown in turn once it is answered.
-    dialogs: RefCell<VecDeque<(Dialog, Pending)>>,
+    /// The tag of the confirm on screen: a forwarded `--input`'s, so its timeout can take it down; 0 for others.
+    confirm_tag: Cell<u64>,
+    /// The last tag given to a forwarded `--input`'s confirm.
+    last_tag: Cell<u64>,
+    /// Confirms asked while another was open, with their tags, shown in turn once it is answered.
+    dialogs: RefCell<VecDeque<(Dialog, Pending, u64)>>,
     editor: RefCell<Option<EditorState>>,
     poll: slint::Timer,
     banner_hold: slint::Timer,
@@ -599,8 +622,8 @@ pub struct Controller {
     demo: bool,
     /// A one-shot CLI run with no resident app: exit after the OSD.
     headless: Cell<bool>,
-    /// The headless run's own verb and `--json`, for its timeout line.
-    headless_job: RefCell<Option<(CliCommand, bool)>>,
+    /// The headless run's own verb, `--json` and arguments, for its timeout line.
+    headless_job: RefCell<Option<(CliCommand, bool, String)>>,
     /// The headless run's own verb has printed its result.
     done: Cell<bool>,
     /// Verbs waiting for the display list, or for a target's connect attempt to finish.
@@ -649,6 +672,8 @@ impl Controller {
             tray: RefCell::new(None),
             hotkeys: RefCell::new(None),
             confirm: RefCell::new(None),
+            confirm_tag: Cell::new(0),
+            last_tag: Cell::new(0),
             dialogs: RefCell::new(VecDeque::new()),
             editor: RefCell::new(None),
             poll: slint::Timer::default(),
@@ -828,7 +853,7 @@ impl Controller {
     /// `cold` (no cached capabilities, so the connect reads them first) gets the longer one.
     pub fn start_headless(self: &Rc<Self>, job: CliJob, cold: bool) {
         self.headless.set(true);
-        *self.headless_job.borrow_mut() = Some((job.command.clone(), job.json));
+        *self.headless_job.borrow_mut() = Some((job.command.clone(), job.json, job.args.clone()));
         self.pending_cli.borrow_mut().push(job);
         let budget = if cold { HEADLESS_COLD_BUDGET } else { HEADLESS_BUDGET };
         slint::Timer::single_shot(budget, || with(|c| c.headless_timeout()));
@@ -844,9 +869,9 @@ impl Controller {
         if !self.headless.get() || self.done.get() {
             return;
         }
-        if let Some((command, json)) = self.headless_job.borrow().clone() {
+        if let Some((command, json, args)) = self.headless_job.borrow().clone() {
             let text = failure_json(&command, "TimedOut", TIMED_OUT);
-            let job = CliJob { command, json, yes: false, display: None, reply: None };
+            let job = CliJob { command, json, yes: false, display: None, reply: None, args };
             self.finish(job, tvc_cli::exit_code(None, true), TIMED_OUT, text, false);
         }
     }
@@ -861,7 +886,7 @@ impl Controller {
     /// and exits (once the OSD has faded, with `osd`).
     fn finish(&self, job: CliJob, exit: i32, text: &str, json: String, osd: bool) {
         let line = if job.json { json } else { text.to_string() };
-        let args = describe(&job.command);
+        let args = &job.args;
         let logged = text.replace('\n', ", ");
         match job.reply {
             Some(reply) => {
@@ -1002,7 +1027,7 @@ impl Controller {
             Ok(parsed) => parsed,
             Err(e) => {
                 log::write(&format!("CLI (forwarded): {}", e.message));
-                let stdout = format!("{}\n\n{}\n", e.message, tvc_cli::help());
+                let stdout = format!("{}\n", tvc_cli::usage_error(&e));
                 responder.reply(Reply { exit: tvc_cli::EXIT_USAGE as u8, stdout });
                 return;
             }
@@ -1012,10 +1037,13 @@ impl Controller {
             responder.reply(Reply { exit: 0, stdout: format!("{text}\n") });
             return;
         }
-        // A forward during a headless run makes this process the resident app. A verb with Run in
-        // background off stays headless: resident without a window or tray would linger invisibly.
-        if self.headless.get() && (parsed.command == CliCommand::Show || self.background_mode()) {
-            self.start_resident(false);
+        // A headless run never becomes the resident app, so it always finishes, prints and exits: it answers
+        // busy, and the launch retries until this run has exited and it can start (or forward to) a copy of its
+        // own. A forwarded Show then opens the window in the copy that launch starts. Not logged: a waiting launch
+        // asks every 250 ms.
+        if self.headless.get() || closing() {
+            responder.busy();
+            return;
         }
         match parsed.command {
             CliCommand::Show => {
@@ -1023,7 +1051,7 @@ impl Controller {
                     self.show_window();
                 }
             }
-            _ => self.run_cli(CliJob { reply: Some(responder), ..CliJob::own(&parsed) }),
+            _ => self.run_cli(CliJob { reply: Some(responder), ..CliJob::own(&parsed, &args) }),
         }
     }
 
@@ -1091,7 +1119,8 @@ impl Controller {
     }
 
     /// `--input`. One on-screen confirm covers every target; it is needed without `--yes`, and always when a
-    /// target has no verified profile. A headless run can't ask, so it exits 3.
+    /// target has no verified profile. A headless run can't ask, so it exits 3; a forwarded one gets exit 3 when the
+    /// confirm goes unanswered for `CONFIRM_WAIT`.
     fn run_input(self: &Rc<Self>, job: CliJob, choice: &InputChoice, targets: Vec<MonitorId>) {
         let (live, mut done) = self.split_connected(targets);
         let mut sends = vec![];
@@ -1126,16 +1155,39 @@ impl Controller {
         }
         self.show_window();
         let dialog = self.inputs_dialog(&sends);
-        let pending = AwaitingConfirm(Some(job));
-        self.ask(
+        let forwarded = job.reply.is_some();
+        let pending = Rc::new(RefCell::new(AwaitingConfirm(Some(job))));
+        let waiting = Rc::downgrade(&pending);
+        let tag = if forwarded {
+            self.last_tag.set(self.last_tag.get() + 1);
+            self.last_tag.get()
+        } else {
+            0
+        };
+        self.ask_tagged(
             dialog,
             Box::new(move |c: &Rc<Controller>| {
-                let mut pending = pending;
-                if let Some(job) = pending.0.take() {
+                let job = pending.borrow_mut().0.take();
+                if let Some(job) = job {
                     c.send_inputs(Origin::Cli, sends, done, Some(job));
                 }
             }),
+            tag,
         );
+        if forwarded {
+            // Unanswered, the forwarding launch gets exit 3 before its own 15 s run out.
+            slint::Timer::single_shot(CONFIRM_WAIT, move || {
+                let Some(pending) = waiting.upgrade() else { return }; // answered, or the window closed
+                let job = pending.borrow_mut().0.take();
+                if let Some(CliJob { command, json, reply: Some(reply), args, .. }) = job {
+                    let exit = tvc_cli::EXIT_NEEDS_CONFIRMATION;
+                    log::write(&format!("CLI {args} (forwarded): exit {exit}, {CONFIRM_TIMED_OUT}"));
+                    let line = failure_line(&command, json, "NeedsConfirmation", CONFIRM_TIMED_OUT);
+                    reply.reply(Reply { exit: exit as u8, stdout: format!("{line}\n") });
+                }
+                with(|c| c.withdraw(tag));
+            });
+        }
     }
 
     /// The input `choice` means on a display, None when it has none.
@@ -1203,6 +1255,7 @@ impl Controller {
     }
 
     fn quit(&self) {
+        set_closing();
         let _ = slint::quit_event_loop();
     }
 
@@ -2140,14 +2193,29 @@ impl Controller {
 
     /// Shows a confirm; while another is open it waits its turn. Without a visible window it is dropped (Cancel).
     fn ask(&self, dialog: Dialog, on_yes: Pending) {
+        self.ask_tagged(dialog, on_yes, 0);
+    }
+
+    /// `ask`, under `tag` (non-zero) so that `withdraw` can take it down again.
+    fn ask_tagged(&self, dialog: Dialog, on_yes: Pending, tag: u64) {
         let Some(ui) = self.visible_window() else { return };
         let app = ui.global::<App>();
         if app.get_dialog().visible {
-            self.dialogs.borrow_mut().push_back((dialog, on_yes));
+            self.dialogs.borrow_mut().push_back((dialog, on_yes, tag));
             return;
         }
         app.set_dialog(Dialog { visible: true, ..dialog });
         *self.confirm.borrow_mut() = Some(on_yes);
+        self.confirm_tag.set(tag);
+    }
+
+    /// Takes down the confirm asked under `tag`, on screen (as Cancel) or still waiting its turn.
+    fn withdraw(self: &Rc<Self>, tag: u64) {
+        if self.confirm_tag.get() == tag && self.confirm.borrow().is_some() {
+            self.on_dialog_result(false);
+        } else {
+            self.dialogs.borrow_mut().retain(|(_, _, t)| *t != tag);
+        }
     }
 
     fn on_dialog_result(self: &Rc<Self>, yes: bool) {
@@ -2155,6 +2223,7 @@ impl Controller {
             ui.global::<App>().set_dialog(Dialog::default());
         }
         let pending = self.confirm.borrow_mut().take();
+        self.confirm_tag.set(0);
         if let (true, Some(f)) = (yes, pending) {
             f(self);
         } else {
@@ -2168,8 +2237,8 @@ impl Controller {
             self.render();
         }
         let next = self.dialogs.borrow_mut().pop_front();
-        if let Some((dialog, on_yes)) = next {
-            self.ask(dialog, on_yes);
+        if let Some((dialog, on_yes, tag)) = next {
+            self.ask_tagged(dialog, on_yes, tag);
         }
     }
 
@@ -2209,7 +2278,12 @@ impl Controller {
                 .and_then(|d| d.confirm_title.as_deref().map(tr))
                 .unwrap_or_else(|| tr("Switch to {label}?"))
                 .replace("{label}", &label);
-            let body = def.and_then(|d| d.confirm_body.as_deref().map(tr)).unwrap_or_default();
+            // The profile's body warns that this PC loses the monitor; switching to this PC's own input it doesn't.
+            let body = if *code == u16::from(app.settings.monitor(id).this_machine_input) {
+                tr("This is this PC's input, so you can keep controlling the monitor from this PC.")
+            } else {
+                def.and_then(|d| d.confirm_body.as_deref().map(tr)).unwrap_or_default()
+            };
             let button = def.and_then(|d| d.confirm_button.as_deref().map(tr)).unwrap_or_else(|| tr("Switch"));
             return Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: tr("Cancel").into(), visible: true };
         }
@@ -3007,11 +3081,6 @@ fn tagged(id: &MonitorId, name: &str, object: &str) -> String {
     let rest = object.strip_prefix('{').unwrap_or(object);
     let sep = if rest.starts_with('}') { "" } else { "," };
     format!("{{\"id\":{},\"name\":{}{sep}{rest}", json_str(&id.0), json_str(name))
-}
-
-/// A verb as its canonical arguments, for log lines.
-fn describe(command: &CliCommand) -> String {
-    tvc_cli::format(command).map(|args| args.join(" ")).unwrap_or_default()
 }
 
 fn origin_name(origin: Origin) -> &'static str {

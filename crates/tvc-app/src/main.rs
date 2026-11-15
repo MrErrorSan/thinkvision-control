@@ -37,7 +37,7 @@ fn main() -> Result<(), slint::PlatformError> {
         Ok(parsed) => parsed,
         Err(e) => {
             platform::console::attach();
-            eprintln!("{}\n\n{}", e.message, cli::help());
+            eprintln!("{}", cli::usage_error(&e));
             std::process::exit(cli::EXIT_USAGE);
         }
     };
@@ -83,6 +83,12 @@ fn main() -> Result<(), slint::PlatformError> {
                 println!("{}", controller::failure_line(&parsed.command, parsed.json, "TimedOut", text));
                 std::process::exit(cli::exit_code(None, true));
             }
+            platform::instance::Start::Busy => {
+                let text = "Timed out: another command was still running; try again";
+                log::write(&format!("Forwarding to the running copy: {text}"));
+                println!("{}", controller::failure_line(&parsed.command, parsed.json, "TimedOut", text));
+                std::process::exit(cli::exit_code(None, true));
+            }
             platform::instance::Start::Primary(l) => Some(l),
         }
     };
@@ -95,7 +101,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let mode = match parsed.command {
         CliCommand::Show if parsed.startup => "tray".to_string(),
         CliCommand::Show => "window".to_string(),
-        ref command => format!("command line {}", cli::format(command).map(|a| a.join(" ")).unwrap_or_default()),
+        _ => format!("command line {}", cli::command_line(&args)),
     };
     log::write(&format!("Start: {}, {mode}{}", cli::version_line(), if demo { ", demo" } else { "" }));
 
@@ -130,7 +136,16 @@ fn main() -> Result<(), slint::PlatformError> {
 
     if let Some(listener) = listener {
         listener.listen(|args, responder| {
-            let _ = slint::invoke_from_event_loop(move || controller::with(|c| c.on_forwarded(args, responder)));
+            if controller::closing() {
+                responder.busy();
+                return;
+            }
+            let responder = platform::instance::BusyUnlessTaken::new(responder);
+            let _ = slint::invoke_from_event_loop(move || controller::with(|c| {
+                if let Some(responder) = responder.take() {
+                    c.on_forwarded(args, responder);
+                }
+            }));
         });
     }
 
@@ -139,7 +154,7 @@ fn main() -> Result<(), slint::PlatformError> {
         CliCommand::Get(target) if headless && target != GetTarget::All => Command::ConnectReading(controller::get_codes(target)),
         _ => Command::Connect,
     });
-    let job = controller::CliJob::own(&parsed);
+    let job = controller::CliJob::own(&parsed, &args);
     if headless {
         // A verb with no resident copy: connect once, run it, show the OSD, exit.
         app.start_headless(job, cold);
@@ -153,6 +168,7 @@ fn main() -> Result<(), slint::PlatformError> {
     drop(app);
 
     slint::run_event_loop_until_quit()?;
+    controller::set_closing();
 
     let controller = controller::uninstall();
     let exit_code = controller.as_ref().map_or(0, |c| c.exit_code());

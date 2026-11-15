@@ -80,7 +80,7 @@ pub struct Parsed {
     pub display: Option<String>,
 }
 
-/// A malformed command line; exit code 2, with `message` and the usage on stderr.
+/// A malformed command line; exit code 2, with [`usage_error`] on stderr.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CliError {
     pub message: String,
@@ -174,6 +174,23 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
 /// `thinkvision-control <version>`, for `--version`.
 pub fn version_line() -> String {
     format!("thinkvision-control {}", env!("CARGO_PKG_VERSION"))
+}
+
+/// What a [`CliError`] prints: its message and one line pointing at `--help` (not the whole usage).
+pub fn usage_error(e: &CliError) -> String {
+    format!("{}\nRun with --help for usage.", e.message)
+}
+
+/// The arguments as given, for the log: one that is empty or holds a space or a quote is quoted.
+pub fn command_line<S: AsRef<str>>(args: &[S]) -> String {
+    let quote = |a: &str| {
+        if a.is_empty() || a.contains(|c: char| c.is_whitespace() || c == '"') {
+            format!("\"{}\"", a.replace('"', "\\\""))
+        } else {
+            a.to_string()
+        }
+    };
+    args.iter().map(|a| quote(a.as_ref())).collect::<Vec<_>>().join(" ")
 }
 
 /// A `thinkvision:` link, case-insensitive, with or without `//` and a trailing `/`:

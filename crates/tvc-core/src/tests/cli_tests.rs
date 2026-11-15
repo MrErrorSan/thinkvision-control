@@ -1,8 +1,8 @@
 //! CommandLineTests.
 
 use crate::cli::{
-    combined_exit_code, exit_code, format, help, parse, parse_url, resolve_display, version_line, CliCommand, GetTarget,
-    InputChoice, Parsed,
+    combined_exit_code, command_line, exit_code, format, help, parse, parse_url, resolve_display, usage_error,
+    version_line, CliCommand, GetTarget, InputChoice, Parsed,
 };
 use crate::hotkey::{Action, Gesture};
 use crate::result::ResultKind;
@@ -462,4 +462,20 @@ fn help_mentions_display() {
     for needle in ["--display", "name|id|all", "thinkvision://display/", "1|2|3", "several displays"] {
         assert!(text.contains(needle), "{needle}");
     }
+}
+
+#[test]
+fn usage_error_is_the_message_and_one_hint_line() {
+    let e = parse(&["--foo"]).unwrap_err();
+    assert_eq!(usage_error(&e), "unknown option '--foo'\nRun with --help for usage.");
+    assert!(!usage_error(&e).contains("Exit codes"));
+}
+
+#[test]
+fn command_line_keeps_the_arguments_as_given() {
+    assert_eq!(command_line(&["thinkvision://get/all"]), "thinkvision://get/all");
+    assert_eq!(command_line(&["--get", "brightness", "--json"]), "--get brightness --json");
+    assert_eq!(command_line(&["--display", "len p32p-20", "--get=contrast"]), "--display \"len p32p-20\" --get=contrast");
+    assert_eq!(command_line(&["", "a\"b"]), "\"\" \"a\\\"b\"");
+    assert_eq!(command_line::<&str>(&[]), "");
 }
