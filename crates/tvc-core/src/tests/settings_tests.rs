@@ -596,6 +596,19 @@ fn partial_monitor_entry_inherits_missing_fields() {
 }
 
 #[test]
+fn a_partial_monitor_preset_inherits_its_missing_fields() {
+    let dir = TempDir::new();
+    let json = r#"{ "Day": { "Name": "Day", "Brightness": 33, "Contrast": 44 },
+        "Monitors": { "DEL4321-SX": { "Day": { "Brightness": 80 } } } }"#;
+    std::fs::write(dir.path().join("settings.json"), json).unwrap();
+
+    let s = SettingsStore::new(dir.path()).load();
+
+    assert_eq!(s.monitors[&id("DEL4321-SX")].day,
+        Preset { name: "Day".into(), brightness: 80, contrast: 44, colour_mode: None });
+}
+
+#[test]
 fn hotkey_target_lenient() {
     let cases = [(r#""UnderPointer""#, HotkeyTarget::UnderPointer), (r#"" underpointer ""#, HotkeyTarget::UnderPointer),
         (r#""All""#, HotkeyTarget::All), (r#""Mouse""#, HotkeyTarget::All), ("3", HotkeyTarget::All),

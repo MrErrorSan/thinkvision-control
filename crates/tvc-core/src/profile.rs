@@ -153,7 +153,8 @@ impl ProfileStore {
     /// The profile for `level` with the user overlay in `user_dir`:
     /// - `Verified`: the built-in profile it names (an unknown name gets the generic one);
     /// - `LenovoFamily`: the P32p-20 definitions of the codes [`lenovo_family_codes`] accepts in `caps`, plus the
-    ///   Range codes `caps` advertises and the NeverWrite codes; `vcpname` names win;
+    ///   Range codes `caps` advertises, input (unlabelled inputs named from the MCCS table) and the NeverWrite codes;
+    ///   `vcpname` names win;
     /// - `GenericMccs` and `ReadOnly`: the generic MCCS profile, with the colour modes and inputs `caps` advertises.
     ///
     /// Without `caps` a Lenovo or generic profile enables no value lists, so build it again after the live read.
@@ -170,15 +171,25 @@ impl ProfileStore {
         let (mut profile, mut defs) = builtin(key).expect("the key is built in");
         if *level == SupportLevel::LenovoFamily {
             let qualified = caps.map(|c| qualifying_codes(&defs, c)).unwrap_or_default();
+            let inputs = advertised(caps, INPUT);
             defs.retain(|code, d| d.safety == SafetyClass::NeverWrite || qualified.contains(code)
+                || (*code == INPUT && !inputs.is_empty())
                 || (d.kind == ControlKind::Range && caps.is_some_and(|c| c.supports(*code))));
+            // Inputs the Lenovo profile doesn't label keep the control, named from the MCCS table.
+            if let Some(d) = defs.get_mut(&INPUT) {
+                d.value_labels = inputs.iter()
+                    .map(|&v| (v, d.value_labels.get(&v).cloned().unwrap_or_else(|| input_label(v))))
+                    .collect();
+            }
             for (code, name) in caps.map(|c| &c.names).into_iter().flatten() {
                 if let Some(d) = defs.get_mut(code) {
                     d.name = name.clone();
                 }
             }
-            let inputs = if defs.contains_key(&INPUT) { advertised(caps, INPUT) } else { Vec::new() };
-            profile.inputs.retain(|i| inputs.contains(&i.code));
+            let known = std::mem::take(&mut profile.inputs);
+            profile.inputs = inputs.iter().map(|&v| known.iter().find(|i| i.code == v).cloned()
+                .unwrap_or_else(|| InputOption { code: v, label: input_label(v), kind: input_kind(v).into() }))
+                .collect();
             profile.control_order.retain(|c| defs.contains_key(c));
             profile.edid_id.clear();
         } else if key == GENERIC {

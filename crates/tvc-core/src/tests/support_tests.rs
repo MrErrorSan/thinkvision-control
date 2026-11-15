@@ -111,14 +111,18 @@ fn for_level_lenovo_filters_and_uses_vcpname() {
 
     assert_eq!((p.edid_id.as_str(), p.display_name.as_str(), p.short_name.as_str()),
         ("", "ThinkVision T24", "ThinkVision T24"));
-    assert!(p.inputs.is_empty()); // 0x60 advertises a value the P32p-20 doesn't label
+    // 0x60 advertises 0x13, which the P32p-20 doesn't label: the input stays, named from the MCCS table.
+    assert_eq!(p.inputs.iter().map(|i| i.code).collect::<Vec<_>>(), [0x11, 0x13]);
+    assert_eq!(p.inputs[1].label, "Input 0x13");
     let c = store.resolve(&t24);
     assert_eq!(c[&0xE0].name, "Overdrive Level");
     assert_eq!(c[&0xE0].value_labels[&0x01], "Normal");
     assert!(c[&0xE0].is_visible());
     assert_eq!(c[&0x14].name, "Colour mode");
     assert!(c[&0x10].is_visible());
-    for code in [0x04, 0x60, 0xEA] {
+    assert!(c[&0x60].is_visible());
+    assert_eq!(c[&0x60].value_labels[&0x13], "Input 0x13");
+    for code in [0x04, 0xEA] {
         assert!(!c[&code].is_visible(), "{code:#04X}");
         assert!(c[&code].name.starts_with("Unknown"), "{code:#04X}");
     }
@@ -189,5 +193,5 @@ fn control_order_matches_the_profile() {
         [0x10, 0x12, 0x14, 0x16, 0x18, 0x1A, 0x60, 0xE0, 0xEA, 0x86, 0xEC, 0xCC, 0x04, 0x05, 0x08, 0xCA, 0xD6]);
     assert_eq!(order(SupportLevel::GenericMccs, None),
         [0x10, 0x12, 0x14, 0x16, 0x18, 0x1A, 0x60, 0x62, 0x87, 0xCA, 0xD6]);
-    assert_eq!(order(SupportLevel::LenovoFamily, Some(&caps(T24))), [0x10, 0x14, 0xE0, 0xCA, 0xD6]);
+    assert_eq!(order(SupportLevel::LenovoFamily, Some(&caps(T24))), [0x10, 0x14, 0x60, 0xE0, 0xCA, 0xD6]);
 }

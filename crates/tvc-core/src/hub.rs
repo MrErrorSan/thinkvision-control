@@ -101,6 +101,7 @@ impl MonitorHub {
         let hub = Hub {
             discovery: config.discovery,
             root: config.root,
+            session: session_dir(),
             safe_mode: config.safe_mode,
             sink: sink.clone(),
             batches: Arc::new(Mutex::new(BTreeMap::new())),
@@ -180,6 +181,8 @@ struct SavedIdentity {
 struct Hub {
     discovery: Box<dyn Discovery>,
     root: PathBuf,
+    /// This hub's temporary folder for unstable (`-N`) monitors, removed at shutdown.
+    session: PathBuf,
     /// For engines spawned from now on; follows `SetSafeMode`.
     safe_mode: bool,
     sink: HubSink,
@@ -316,7 +319,7 @@ impl Hub {
     /// The engine's folder; a stable id's gets `identity.json` and, maybe, the 0.0.8 files.
     fn dir_for(&mut self, id: &MonitorId, identity: &MonitorIdentity) -> PathBuf {
         if id.is_unstable() {
-            return session_dir().join(id.folder_name());
+            return self.session.join(id.folder_name());
         }
         let dir = self.root.join("monitors").join(id.folder_name());
         if let Err(e) = fs::create_dir_all(&dir) {
@@ -443,7 +446,7 @@ impl Hub {
         for engine in running.into_iter().filter_map(|r| r.engine) {
             engine.join(deadline);
         }
-        let _ = fs::remove_dir_all(session_dir());
+        let _ = fs::remove_dir_all(&self.session);
     }
 }
 
@@ -529,8 +532,11 @@ fn saved_identities(monitors: &Path) -> Vec<(MonitorId, MonitorIdentity)> {
 }
 
 /// This process's folder for monitors with unstable ids.
+/// A fresh temporary folder name per hub: process id plus a per-process counter.
 fn session_dir() -> PathBuf {
-    std::env::temp_dir().join(format!("thinkvision-control-{}", std::process::id()))
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!("thinkvision-control-{}-{n}", std::process::id()))
 }
 
 fn emit(sink: &HubSink, event: HubEvent) {

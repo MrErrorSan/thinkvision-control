@@ -222,8 +222,8 @@ impl SettingsStore {
             let entry = MonitorSettings {
                 name: m.name.or(base.name),
                 this_machine_input: m.this_machine_input.map_or(base.this_machine_input, |b| b.0),
-                day: m.day.map_or(base.day, Preset::from),
-                night: m.night.map_or(base.night, Preset::from),
+                day: m.day.map_or_else(|| base.day.clone(), |p| p.over(&base.day)),
+                night: m.night.map_or_else(|| base.night.clone(), |p| p.over(&base.night)),
                 included: m.included.unwrap_or(base.included),
                 offset: m.offset.unwrap_or(base.offset),
                 last_applied_phase: m.last_applied_phase,
@@ -330,9 +330,9 @@ struct MonitorFile {
     #[serde(default)]
     this_machine_input: Option<HexByte>,
     #[serde(default)]
-    day: Option<PresetFile>,
+    day: Option<PartialPresetFile>,
     #[serde(default)]
-    night: Option<PresetFile>,
+    night: Option<PartialPresetFile>,
     #[serde(default)]
     included: Option<bool>,
     #[serde(default)]
@@ -526,6 +526,31 @@ struct PresetFile {
     contrast: u32,
     #[serde(default)]
     colour_mode: Option<HexByte>,
+}
+
+/// A monitor's own preset in settings.json: a field it leaves out inherits the app-wide value.
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct PartialPresetFile {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    brightness: Option<u32>,
+    #[serde(default)]
+    contrast: Option<u32>,
+    #[serde(default)]
+    colour_mode: Option<HexByte>,
+}
+
+impl PartialPresetFile {
+    fn over(self, base: &Preset) -> Preset {
+        Preset {
+            name: self.name.unwrap_or_else(|| base.name.clone()),
+            brightness: self.brightness.unwrap_or(base.brightness),
+            contrast: self.contrast.unwrap_or(base.contrast),
+            colour_mode: self.colour_mode.map(|b| b.0).or(base.colour_mode),
+        }
+    }
 }
 
 impl From<PresetFile> for Preset {

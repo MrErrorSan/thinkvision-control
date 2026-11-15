@@ -159,11 +159,11 @@ impl FakeDiscovery {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// An external DDC display with this identity; `target` = `"fake:<edid>:<serial or connector>"`.
+    /// An external DDC display with this identity; `target` = `"fake:<edid>:<serial>:<connector>"`, so two displays
+    /// that share a serial still have their own targets.
     pub fn display(edid_id: &str, serial: Option<&str>, connector: Option<&str>) -> DisplayInfo {
-        let tail = serial.or(connector).unwrap_or("");
         DisplayInfo {
-            target: format!("fake:{edid_id}:{tail}"),
+            target: format!("fake:{edid_id}:{}:{}", serial.unwrap_or(""), connector.unwrap_or("")),
             identity: MonitorIdentity {
                 edid_id: edid_id.into(),
                 serial: serial.map(Into::into),
