@@ -20,6 +20,14 @@ use crate::fake::FakeLink;
 use crate::link::{MonitorLink, VcpReading};
 use crate::profile::ProfileStore;
 
+/// A real P40w-20: a nested list inside F7 and 0x60 advertised twice.
+pub const P40W20_CAPABILITIES: &str = concat!(
+    "(prot(monitor)type(LCD)model(P40w-20)cmds(01 02 03 07 0C E3 F3)vcp(02 04 05 08 10 12 14(01 05 06 08 0B) 16 18 ",
+    "1A 52 60(0F 11 12 1B 31 FF) 62 6C 6E 70 86(01 02 05 0B) 87 8D(01 02) AC AE B2 B6 C0 C6 C8 C9 CA(01 02) ",
+    "CC(02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 12 14 16 17 1A 1E 1F 20 24) D6(01 04 05) DC(00 01 02 03 05 08 0B) DF ",
+    "E0(00 01 02) E9 EA EC F7(04 07 08 12 14(00 02 03) 15 17) 60(0F 11 12 1B 31))mswhql(1)asset_eep(40)mccs_ver(2.2))",
+);
+
 pub struct TempDir(PathBuf);
 
 impl TempDir {

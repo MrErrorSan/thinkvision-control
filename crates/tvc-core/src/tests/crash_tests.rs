@@ -58,3 +58,14 @@ fn a_finished_connect_leaves_no_marker() {
     assert_eq!(h.link.state().capability_reads, 1);
     assert!(!dir.path().join(format!("risky-operation-{}.txt", process_key())).exists());
 }
+
+#[test]
+fn regression_core_12_markers_are_per_owner() {
+    let dir = TempDir::new();
+    let a = Marker::new(dir.path(), "pid-4000000004");
+    let b = Marker::new(dir.path(), "pid-4000000005");
+    a.arm("capability read");
+    b.arm("finder snapshot");
+    b.disarm();
+    assert_eq!(stale(dir.path()), [("pid-4000000004".to_string(), "capability read".to_string())]);
+}

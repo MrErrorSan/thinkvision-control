@@ -612,6 +612,12 @@ struct Script {
     read: BTreeMap<u8, LinkError>,
     write: BTreeMap<u8, LinkError>,
     write_calls: usize,
+    /// Every read answers "unsupported".
+    unsupported_reads: bool,
+    /// Replaces the fake's capability string.
+    caps: Option<String>,
+    caps_error: Option<LinkError>,
+    caps_calls: usize,
 }
 
 #[derive(Clone)]
@@ -636,11 +642,22 @@ impl MonitorLink for ScriptedLink {
     }
 
     fn capabilities(&mut self) -> Result<String, LinkError> {
-        self.fake.capabilities()
+        let (error, caps) = {
+            let mut s = self.script();
+            s.caps_calls += 1;
+            (s.caps_error.clone(), s.caps.clone())
+        };
+        match error {
+            Some(e) => Err(e),
+            None => self.fake.capabilities().map(|raw| caps.unwrap_or(raw)),
+        }
     }
 
     fn read(&mut self, code: u8) -> Result<VcpReading, LinkError> {
-        let error = self.script().read.get(&code).cloned();
+        let error = {
+            let s = self.script();
+            if s.unsupported_reads { Some(LinkError::Unsupported(format!("0x{code:02X}"))) } else { s.read.get(&code).cloned() }
+        };
         match error {
             Some(e) => Err(e),
             None => self.fake.read(code),
@@ -661,11 +678,17 @@ impl MonitorLink for ScriptedLink {
 }
 
 fn scripted() -> (TempDir, Harness, ScriptedLink) {
+    let (dir, h, link) = scripted_with(Script::default());
+    assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::Connected));
+    (dir, h, link)
+}
+
+/// An engine on a `ScriptedLink` running `script`, not yet connected.
+fn scripted_with(script: Script) -> (TempDir, Harness, ScriptedLink) {
     let dir = TempDir::new();
     let fake = FakeLink::new();
-    let link = ScriptedLink { fake: fake.clone(), script: Arc::default() };
+    let link = ScriptedLink { fake: fake.clone(), script: Arc::new(Mutex::new(script)) };
     let h = Harness::spawn(Box::new(link.clone()), &fake, dir.path(), Timing::zero(), false);
-    assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::Connected));
     (dir, h, link)
 }
 
@@ -892,4 +915,260 @@ fn schedule_origin_is_passed_through() {
     let preset = Preset { name: "Night".into(), brightness: 10, contrast: 60, colour_mode: None };
     let events = h.run(Command::ApplyPreset { preset, origin: Origin::Schedule });
     assert!(events.iter().any(|e| matches!(e, Event::Result { origin: Origin::Schedule, .. })));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Wave 1: restore, capabilities, input and enum steps, single writes, drags, status, shutdown.
+
+fn controls_of(events: &[Event]) -> Option<Arc<crate::engine::ResolvedControls>> {
+    events.iter().rev().find_map(|e| match e { Event::Controls(c) => Some(c.clone()), _ => None })
+}
+
+#[test]
+fn restore_writes_colour_mode_first_skips_input_and_language() {
+    let (dir, h) = connected();
+    BackupStore::new(dir.path())
+        .save(&BTreeMap::from([(0x10, 40), (0x12, 50), (0x14, 0x0B), (0x60, 0x0F), (0xCC, 0x03)]))
+        .unwrap();
+
+    let result = h.result(Command::RestoreBackup { origin: Origin::Window });
+
+    assert_eq!((result.outcome, result.message.as_str()), (WriteOutcome::Ok, "Backup restored"));
+    assert_eq!(h.link.state().writes, [(0x14, 0x0B), (0x10, 40), (0x12, 50)]);
+}
+
+#[test]
+fn restore_continues_past_kept_and_counts() {
+    let (dir, h) = connected();
+    BackupStore::new(dir.path()).save(&BTreeMap::from([(0x10, 40), (0x12, 50), (0x14, 0x0B)])).unwrap();
+    h.link.state().ignored_writes.insert(0x10);
+
+    let result = h.result(Command::RestoreBackup { origin: Origin::Window });
+
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Kept));
+    assert!(result.message.starts_with("Restored 2 of 3 settings. Brightness remains 0"), "{}", result.message);
+    assert_eq!(h.link.state().writes, [(0x14, 0x0B), (0x10, 40), (0x12, 50)]);
+}
+
+#[test]
+fn corrupt_cache_is_read_live_even_in_safe_mode() {
+    for safe in [false, true] {
+        let dir = TempDir::new();
+        std::fs::write(dir.path().join("capabilities.txt"), "(prot(monitor").unwrap();
+        let fake = FakeLink::new();
+        let h = Harness::spawn(Box::new(fake.clone()), &fake, dir.path(), Timing::zero(), safe);
+
+        assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::Connected), "safe {safe}");
+
+        assert_eq!(fake.state().capability_reads, 1, "safe {safe}");
+        assert_eq!(CapabilitiesCache::new(dir.path()).load().as_deref(), Some(crate::fake::P32P20_CAPABILITIES));
+        assert_eq!(h.set(0x12, 50, false).kind, ResultKind::Ok, "safe {safe}");
+    }
+}
+
+#[test]
+fn synthesized_caps_refuse_writes() {
+    let dir = TempDir::new();
+    let fake = FakeLink::new();
+    let h = Harness::spawn(Box::new(fake.clone()), &fake, dir.path(), Timing::zero(), true);
+    assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::Connected));
+    assert_eq!(fake.state().capability_reads, 0);
+
+    for (code, value) in [(0x60, 0x0F), (0x14, 0x0E), (0x12, 50)] {
+        let result = h.set(code, value, true);
+        assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Refused), "{code:#04X}");
+        assert_eq!(result.message, "The monitor's capabilities haven't been read yet.");
+    }
+    h.run(Command::DragTo { code: 0x10, value: 40 });
+    assert!(fake.state().writes.is_empty());
+}
+
+#[test]
+fn failed_caps_read_still_reads_values_and_is_not_repeated() {
+    let (_dir, h, link) = scripted_with(Script { caps_error: Some(LinkError::Transient("no reply".into())), ..Script::default() });
+
+    assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::Connected));
+    let calls = link.script().caps_calls;
+    assert_eq!(calls, Timing::zero().attempts as usize);
+    assert!(h.link.state().reads.contains(&0x10));
+
+    h.connect();
+    h.run(Command::RecheckAfterEvent);
+    assert_eq!(link.script().caps_calls, calls);
+    assert_eq!(h.set(0x12, 50, false).kind, ResultKind::Refused);
+
+    link.script().caps_error = None;
+    h.run(Command::ReadCapabilities);
+    assert_eq!(link.script().caps_calls, calls + 1);
+    assert_eq!(h.set(0x12, 50, false).kind, ResultKind::Ok);
+}
+
+#[test]
+fn step_on_input_needs_confirmation_and_never_writes() {
+    let (_dir, h) = connected();
+    for delta in [1, 0x22, -1] {
+        let result = h.result(Command::Step { code: 0x60, delta, origin: Origin::Hotkey });
+        assert_eq!(result.outcome, WriteOutcome::NeedsConfirmation, "{delta}");
+    }
+    assert!(h.link.state().writes.is_empty());
+}
+
+#[test]
+fn enum_step_moves_through_advertised_values() {
+    let (_dir, h) = connected();
+    let step = |delta| h.result(Command::Step { code: 0x14, delta, origin: Origin::Hotkey }).value;
+
+    assert_eq!(step(1), Some(0x08));
+    assert_eq!(step(2), Some(0x0E));
+    assert_eq!(step(-1), Some(0x0B));
+    assert_eq!(step(10), Some(0x12));
+    assert_eq!(step(-10), Some(0x01));
+    assert_eq!(h.link.state().writes, [(0x14, 0x08), (0x14, 0x0E), (0x14, 0x0B), (0x14, 0x12), (0x14, 0x01)]);
+}
+
+/// Write calls for one Set of `code` whose writes all fail transiently.
+fn write_calls_on_transient(code: u8, value: u16, confirmed: bool, overlay: Option<ControlDefinition>) -> usize {
+    let (_dir, h, link) = scripted();
+    if let Some(def) = overlay {
+        h.run(Command::SaveOverlay(def));
+    }
+    link.script().write.insert(code, LinkError::Transient("no reply".into()));
+    h.set(code, value, confirmed);
+    let calls = link.script().write_calls;
+    calls
+}
+
+#[test]
+fn input_and_action_sets_are_not_retried() {
+    let action = ControlDefinition::new(0xEB, "Eco reset", ControlKind::Action, Section::Advanced, SafetyClass::Normal,
+        BTreeMap::new());
+    assert_eq!(write_calls_on_transient(0x60, 0x0F, true, None), 1);
+    assert_eq!(write_calls_on_transient(0x04, 1, true, None), 1);
+    assert_eq!(write_calls_on_transient(0xEB, 1, false, Some(action)), 1);
+    assert_eq!(write_calls_on_transient(0x12, 50, false, None), Timing::zero().attempts as usize);
+}
+
+#[test]
+fn reset_codes_are_written_once() {
+    assert_eq!(write_calls_on_transient(0x05, 1, true, None), 1);
+    assert_eq!(write_calls_on_transient(0x08, 1, true, None), 1);
+}
+
+#[test]
+fn drag_without_end_expires() {
+    let (_dir, h) = connected();
+    h.run(Command::DragTo { code: 0x10, value: 40 });
+    h.link.state().values.get_mut(&0x12).unwrap().current = 33;
+    h.link.state().reads.clear();
+    h.run(Command::Poll(vec![0x12]));
+    assert!(h.link.state().reads.is_empty());
+
+    std::thread::sleep(Duration::from_millis(2100));
+
+    assert_eq!(values(&h.run(Command::Poll(vec![0x12]))), [(0x12, reading(33, 100))]);
+    let events = h.run(Command::Set { code: 0x10, value: 70, confirmed: false, origin: Origin::Hotkey });
+    assert_eq!(values(&events), [(0x10, reading(70, 100))]);
+}
+
+#[test]
+fn coalescing_stops_at_a_set() {
+    let (_dir, h) = connected();
+    h.link.state().delay = Duration::from_millis(50);
+    h.send(Command::Set { code: 0x12, value: 50, confirmed: false, origin: Origin::Window });
+    std::thread::sleep(Duration::from_millis(20));
+    h.send(Command::DragTo { code: 0x10, value: 30 });
+    h.send(Command::Set { code: 0x10, value: 50, confirmed: false, origin: Origin::Hotkey });
+    h.send(Command::DragTo { code: 0x10, value: 70 });
+    h.flush();
+
+    let writes: Vec<_> = h.link.state().writes.iter().copied().filter(|w| w.0 == 0x10).collect();
+    assert_eq!(writes, [(0x10, 30), (0x10, 50), (0x10, 70)]);
+    assert_eq!(h.link.state().values[&0x10].current, 70);
+}
+
+#[test]
+fn all_unsupported_is_not_responding() {
+    let (_dir, h, _link) = scripted_with(Script { unsupported_reads: true, ..Script::default() });
+
+    assert_eq!(statuses(&h.connect()).last(), Some(&MonitorStatus::NotResponding));
+
+    let result = h.set(0x12, 50, false);
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::NotResponding, ResultKind::NotResponding));
+    assert!(result.message.contains("supports none of the controls"), "{}", result.message);
+}
+
+#[test]
+fn connect_reading_reads_only_the_given_codes() {
+    let dir = TempDir::new();
+    let h = Harness::new(&FakeLink::new(), dir.path());
+
+    let events = h.run(Command::ConnectReading(vec![0x10]));
+
+    assert_eq!(statuses(&events).last(), Some(&MonitorStatus::Connected));
+    assert_eq!(h.link.state().reads, [0x10]);
+    assert_eq!(values(&events), [(0x10, reading(0, 100))]);
+}
+
+#[test]
+fn dead_engine_reports_not_responding() {
+    let dir = TempDir::new();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = crate::engine::Engine::spawn(Box::new(FakeLink::new()), crate::profile::ProfileStore::new(dir.path()),
+        dir.path().to_path_buf(), Timing::zero(), false, Box::new(move |e| {
+            assert!(!matches!(e, Event::Result { .. }), "sink panics on a result (deliberate)");
+            let _ = tx.send(e);
+        }));
+    handle.send(Command::Connect);
+    handle.send(Command::Set { code: 0x10, value: 30, confirmed: false, origin: Origin::Window });
+
+    let mut seen = Vec::new();
+    wait_until(|| {
+        handle.send(Command::Flush(std::sync::mpsc::channel().0));
+        seen.extend(rx.try_iter());
+        seen.iter().any(|e| matches!(e, Event::Status { status: MonitorStatus::NotResponding, failure: None }))
+    });
+    handle.send(Command::Connect);
+    seen.extend(rx.try_iter());
+    let reports = seen.iter().filter(|e| matches!(e, Event::Status { status: MonitorStatus::NotResponding, .. })).count();
+    assert_eq!(reports, 1);
+    handle.shutdown();
+}
+
+#[test]
+fn shutdown_interrupts_the_input_confirm() {
+    assert!(SHUTDOWN_WAIT > Timing::default().input_confirm);
+    let dir = TempDir::new();
+    let timing = Timing { input_confirm: Duration::from_secs(10), ..Timing::zero() };
+    let h = Harness::with_timing(&FakeLink::new(), dir.path(), timing);
+    h.connect();
+    h.send(Command::Set { code: 0x60, value: 0x0F, confirmed: true, origin: Origin::Window });
+    wait_until(|| h.link.state().writes.contains(&(0x60, 0x0F)));
+
+    let clock = Instant::now();
+    h.shutdown();
+
+    assert!(clock.elapsed() < Duration::from_millis(500), "{:?}", clock.elapsed());
+}
+
+#[test]
+fn regression_core_01_p40w_connects() {
+    let (_dir, h, _link) = scripted_with(Script { caps: Some(super::P40W20_CAPABILITIES.into()), ..Script::default() });
+
+    let events = h.connect();
+
+    assert_eq!(statuses(&events).last(), Some(&MonitorStatus::Connected));
+    let controls = controls_of(&events).unwrap();
+    assert_eq!(controls.capabilities.model, "P40w-20");
+    assert!(controls.capabilities.supports(0xF7));
+}
+
+#[test]
+fn regression_core_08_input_set_needs_confirmation() {
+    let (_dir, h) = connected();
+
+    let result = h.set(0x60, 0x0F, false);
+
+    assert_eq!((result.outcome, result.kind), (WriteOutcome::NeedsConfirmation, ResultKind::Refused));
+    assert!(h.link.state().writes.is_empty());
+    assert_eq!(h.set(0x60, 0x0F, true).kind, ResultKind::Ok);
 }

@@ -160,12 +160,14 @@ impl ProfileStore {
         &self.profile
     }
 
-    /// A definition for every code in `caps`. Unknown codes become "Unknown 0xNN", Enum, Hidden, ReadOnlyUntilNamed.
+    /// A definition for every code in `caps`. Unknown codes become Enum, Hidden, ReadOnlyUntilNamed, named by the
+    /// monitor's own `vcpname` when it gives one, else "Unknown 0xNN". A `vcpname` name never makes a code writable.
     pub fn resolve(&self, caps: &MonitorCapabilities) -> BTreeMap<u8, ControlDefinition> {
         let known = self.known();
         caps.vcp.keys().map(|&code| {
             let def = known.get(&code).cloned().unwrap_or_else(|| ControlDefinition::new(
-                code, format!("Unknown {}", hex(code)), ControlKind::Enum, Section::Hidden,
+                code, caps.names.get(&code).cloned().unwrap_or_else(|| format!("Unknown {}", hex(code))),
+                ControlKind::Enum, Section::Hidden,
                 SafetyClass::ReadOnlyUntilNamed, BTreeMap::new()));
             (code, def)
         }).collect()

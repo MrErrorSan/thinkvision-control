@@ -424,12 +424,13 @@ impl BackupStore {
         std::fs::create_dir_all(&self.dir)?;
         let t = crate::clock::now();
         let stem = format!("backup-{:04}{:02}{:02}-{:02}{:02}{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second);
-        let mut path = self.dir.join(format!("{stem}.json"));
-        let mut n = 1;
-        while path.exists() {
-            path = self.dir.join(format!("{stem}-{n}.json"));
-            n += 1;
-        }
+        // After the highest suffix used this second, never a freed lower one: that would sort oldest and be pruned.
+        let stamp = &stem["backup-".len()..];
+        let last = self.names().iter().filter_map(|n| backup_key(n)).filter(|(s, _)| s == stamp).map(|(_, n)| n).max();
+        let path = match last {
+            None => self.dir.join(format!("{stem}.json")),
+            Some(n) => self.dir.join(format!("{stem}-{}.json", n + 1)),
+        };
         let json: serde_json::Map<String, serde_json::Value> = values.iter().map(|(&k, &v)| (hex(k), v.into())).collect();
         write_atomic(&path, &serde_json::to_string_pretty(&json).map_err(io::Error::other)?)?;
         for name in self.names().into_iter().rev().skip(KEEP_BACKUPS) {

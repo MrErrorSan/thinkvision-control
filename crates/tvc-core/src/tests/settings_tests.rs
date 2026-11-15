@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 
 use crate::hotkey::{Action, Gesture};
-use crate::schedule::AutoMode;
+use crate::profile::{ControlDefinition, ControlKind, ProfileStore, SafetyClass, Section};
+use crate::schedule::{AutoMode, Phase};
 use crate::store::{BackupStore, CapabilitiesCache, Preset, Settings, SettingsStore, DEFAULT_AUTO_TIMES};
 
 use super::TempDir;
@@ -294,4 +295,199 @@ fn auto_day_night_reads_leniently_and_remembers_values() {
     // Off keeps what was typed for the settings UI.
     let (_dir, s) = load_with_auto(Some(r#"{"Mode":"Off","Day":"08:15","Night":"21:00","Latitude":51.5,"Longitude":0}"#));
     assert_eq!((s.auto_day_night, s.auto_times, s.auto_location), (AutoMode::Off, (8 * 60 + 15, 21 * 60), Some((51.5, 0.0))));
+}
+
+/// Writes `settings.json` with the default settings plus `"key": value`, then loads it.
+fn load_with_field(key: &str, value: &str) -> (TempDir, Settings) {
+    let dir = TempDir::new();
+    let store = SettingsStore::new(dir.path());
+    store.save(&Settings::default()).unwrap();
+    let path = dir.path().join("settings.json");
+    let mut json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    json.as_object_mut().unwrap().insert(key.into(), serde_json::from_str(value).unwrap());
+    std::fs::write(&path, json.to_string()).unwrap();
+    let loaded = store.load();
+    (dir, loaded)
+}
+
+fn file_names(dir: &TempDir) -> Vec<String> {
+    std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()
+}
+
+#[test]
+fn settings_with_bom_loads() {
+    let dir = TempDir::new();
+    std::fs::write(dir.path().join("settings.json"), "\u{feff}{\"ThisMachineInput\":\"0x0F\",\"StartWithWindows\":true}")
+        .unwrap();
+
+    let s = SettingsStore::new(dir.path()).load();
+
+    assert_eq!((s.this_machine_input, s.start_with_windows), (0x0F, true));
+    assert!(!dir.path().join("settings.json.bak").exists());
+}
+
+#[test]
+fn missing_day_or_night_takes_default_and_keeps_other_fields() {
+    let mine = Preset { name: "Mine".into(), brightness: 5, contrast: 50, colour_mode: None };
+    for kept in ["Night", "Day"] {
+        let dir = TempDir::new();
+        let json = format!(
+            r#"{{"{kept}":{{"Name":"Mine","Brightness":5,"Contrast":50}},"ThisMachineInput":"0x0F","StartWithWindows":true}}"#);
+        std::fs::write(dir.path().join("settings.json"), json).unwrap();
+
+        let s = SettingsStore::new(dir.path()).load();
+
+        let defaults = Settings::default();
+        let expected = if kept == "Night" { (defaults.day, mine.clone()) } else { (mine.clone(), defaults.night) };
+        assert_eq!((s.day, s.night), expected, "{kept}");
+        assert_eq!((s.this_machine_input, s.start_with_windows), (0x0F, true), "{kept}");
+        assert!(!dir.path().join("settings.json.bak").exists(), "{kept}");
+    }
+}
+
+#[test]
+fn parse_failure_keeps_newer_bak() {
+    let dir = TempDir::new();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, "{ broken").unwrap();
+    let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    std::fs::File::options().write(true).open(&path).unwrap().set_modified(hour_ago).unwrap();
+    std::fs::write(dir.path().join("settings.json.bak"), "NEWER").unwrap();
+
+    assert_eq!(SettingsStore::new(dir.path()).load(), Settings::default());
+
+    assert_eq!(std::fs::read_to_string(dir.path().join("settings.json.bak")).unwrap(), "NEWER");
+    assert!(path.exists());
+}
+
+#[test]
+fn unreadable_settings_runs_on_defaults_and_refuses_save() {
+    let dir = TempDir::new();
+    std::fs::create_dir(dir.path().join("settings.json")).unwrap();
+    let store = SettingsStore::new(dir.path());
+
+    assert_eq!(store.load(), Settings::default());
+
+    assert!(store.save(&Settings::default()).is_err());
+    assert!(dir.path().join("settings.json").is_dir());
+}
+
+#[test]
+fn last_applied_phase_round_trips() {
+    for (phase, text) in [(Some(Phase::Day), r#""LastAppliedPhase": "Day""#),
+        (Some(Phase::Night), r#""LastAppliedPhase": "Night""#), (None, r#""LastAppliedPhase": null"#)] {
+        let dir = TempDir::new();
+        let store = SettingsStore::new(dir.path());
+        let saved = Settings { last_applied_phase: phase, ..Settings::default() };
+        store.save(&saved).unwrap();
+
+        assert_eq!(store.load(), saved, "{phase:?}");
+        let file = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+        assert!(file.contains(text), "{file}");
+    }
+}
+
+#[test]
+fn malformed_last_applied_phase_is_none_and_never_corrupt() {
+    for value in ["5", r#""Dusk""#, "{}"] {
+        let (dir, s) = load_with_field("LastAppliedPhase", value);
+        assert_eq!(s.last_applied_phase, None, "{value}");
+        assert_eq!(s.day, Settings::default().day, "{value}");
+        assert!(!dir.path().join("settings.json.bak").exists(), "{value}");
+    }
+}
+
+#[test]
+fn overlay_bad_entry_is_skipped() {
+    let dir = TempDir::new();
+    std::fs::write(dir.path().join("profile.user.json"), r#"{"edidId":"LEN62A2","controls":[
+        {"code":"0xF7","name":"Good","kind":"Enum","section":"Advanced","safety":"Normal","values":{"0x04":"x"}},
+        {"code":"0xZZ","name":"Bad code","kind":"Enum","section":"Advanced","safety":"Normal"},
+        {"code":"0xF8","name":"Bad kind","kind":"Bogus","section":"Advanced","safety":"Normal"}]}"#).unwrap();
+    let caps = crate::mccs::parse(crate::fake::P32P20_CAPABILITIES).unwrap();
+
+    let defs = ProfileStore::new(dir.path()).resolve(&caps);
+
+    assert_eq!(defs[&0xF7].name, "Good");
+    assert_eq!(defs[&0xF8].name, "Unknown 0xF8");
+}
+
+/// The 0x10 value of every backup file in `dir`, sorted.
+fn backup_values(dir: &TempDir) -> Vec<u16> {
+    let mut values: Vec<u16> = file_names(dir).iter().filter(|n| n.starts_with("backup-")).map(|n| {
+        let text = std::fs::read_to_string(dir.path().join(n)).unwrap();
+        serde_json::from_str::<BTreeMap<String, u16>>(&text).unwrap()["0x10"]
+    }).collect();
+    values.sort();
+    values
+}
+
+#[test]
+fn backups_pruned_to_newest_10() {
+    let dir = TempDir::new();
+    for v in 1..=11 {
+        std::fs::write(dir.path().join(format!("backup-202601{v:02}-100000.json")), format!(r#"{{ "0x10": {v} }}"#)).unwrap();
+    }
+    let store = BackupStore::new(dir.path());
+
+    store.save(&BTreeMap::from([(0x10, 12)])).unwrap();
+
+    assert_eq!(backup_values(&dir), (3..=12).collect::<Vec<_>>());
+    assert_eq!(store.load_latest().unwrap().unwrap()[&0x10], 12);
+}
+
+#[test]
+fn same_second_backups_are_pruned_oldest_first() {
+    let dir = TempDir::new();
+    let store = BackupStore::new(dir.path());
+
+    for v in 1..=12 {
+        store.save(&BTreeMap::from([(0x10, v)])).unwrap();
+    }
+
+    assert_eq!(backup_values(&dir), (3..=12).collect::<Vec<_>>());
+    assert_eq!(store.load_latest().unwrap().unwrap()[&0x10], 12);
+}
+
+#[test]
+fn load_latest_falls_back_when_newest_corrupt() {
+    let dir = TempDir::new();
+    std::fs::write(dir.path().join("backup-20261028-100000.json"), r#"{ "0x10": 1 }"#).unwrap();
+    std::fs::write(dir.path().join("backup-20261029-100000.json"), "{ broken").unwrap();
+    let store = BackupStore::new(dir.path());
+
+    assert_eq!(store.load_latest().unwrap().unwrap()[&0x10], 1);
+
+    std::fs::write(dir.path().join("backup-20261028-100000.json"), r#"{ "0xZZ": 1 }"#).unwrap();
+    assert!(store.load_latest().is_err());
+}
+
+#[test]
+fn stores_leave_no_tmp_files() {
+    let dir = TempDir::new();
+    SettingsStore::new(dir.path()).save(&Settings::default()).unwrap();
+    CapabilitiesCache::new(dir.path()).save("(vcp(10))");
+    BackupStore::new(dir.path()).save(&BTreeMap::from([(0x10, 1)])).unwrap();
+    let eco = ControlDefinition::new(0xEB, "Eco", ControlKind::Enum, Section::Advanced, SafetyClass::Normal, BTreeMap::new());
+    ProfileStore::new(dir.path()).save_overlay(&eco).unwrap();
+
+    let names = file_names(&dir);
+    assert_eq!(names.len(), 4, "{names:?}");
+    assert!(!names.iter().any(|n| n.ends_with(".tmp")), "{names:?}");
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn linux_old_default_shortcuts_migrate() {
+    let dir = TempDir::new();
+    let store = SettingsStore::new(dir.path());
+    let mut settings = Settings::default();
+    settings.hotkeys.insert(Action::InputHdmi, "Ctrl+Alt+F1".into());
+    settings.hotkeys.insert(Action::InputDp, "Ctrl+Shift+Win+D".into());
+    store.save(&settings).unwrap();
+
+    let loaded = store.load();
+
+    assert_eq!(loaded.hotkeys[&Action::InputHdmi], "Ctrl+Win+1");
+    assert_eq!(loaded.hotkeys[&Action::InputDp], "Ctrl+Shift+Win+D");
 }

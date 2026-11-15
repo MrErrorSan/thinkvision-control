@@ -40,7 +40,7 @@ pub fn evaluate(def: Option<&ControlDefinition>, caps: &MonitorCapabilities, cod
         if code == 0x04 {
             return block(format!("{} is only allowed on verified monitors.", name()));
         }
-        let named = def.is_some_and(|d| d.safety != SafetyClass::ReadOnlyUntilNamed) || caps.names.contains_key(&code);
+        let named = def.is_some_and(|d| d.safety != SafetyClass::ReadOnlyUntilNamed);
         if code >= 0xE0 && !named {
             return block("Unknown setting — identify it with the finder first.".into());
         }

@@ -1,6 +1,7 @@
 //! CommandLineTests.
 
-use crate::cli::{exit_code, format, help, parse, parse_url, CliCommand, GetTarget, Parsed};
+use crate::cli::{exit_code, format, help, parse, parse_url, version_line, CliCommand, GetTarget, Parsed};
+use crate::hotkey::{Action, Gesture};
 use crate::result::ResultKind;
 
 fn command(args: &[&str]) -> CliCommand {
@@ -162,4 +163,86 @@ fn exit_codes_follow_powertoys() {
     assert_eq!(exit_code(None, true), 8);
     assert_eq!(exit_code(None, false), 1);
     assert_eq!(exit_code(Some(ResultKind::Ok), false), 0);
+}
+
+#[test]
+fn cli_error_messages_name_the_argument() {
+    let cases = [(&["--bogus"][..], "--bogus"), (&["-x"], "-x"), (&["stray"], "stray"), (&["--preset", "Noon"], "Noon"),
+        (&["--preset"], "--preset"), (&["--input=vga"], "vga"), (&["--step", "volume=+5"], "volume"),
+        (&["--step", "brightness=lots"], "lots"), (&["--get", "volume"], "volume")];
+    for (args, needle) in cases {
+        let message = parse(args).unwrap_err().message;
+        assert!(message.contains(needle), "{args:?}: {message}");
+    }
+}
+
+#[test]
+fn help_wins_over_errors() {
+    for args in [&["--bogus", "--help"][..], &["stray", "-h"], &["--json=1", "/?"], &["--preset", "/?"]] {
+        assert_eq!(command(args), CliCommand::Help, "{args:?}");
+    }
+}
+
+#[test]
+fn developer_flags_are_accepted() {
+    for flag in ["--dark", "--light", "--demo", "--DEMO"] {
+        assert_eq!(command(&[flag]), CliCommand::Show, "{flag}");
+    }
+    assert_eq!(command(&["--demo", "--preset", "night"]), CliCommand::Preset { night: true });
+}
+
+#[test]
+fn flags_reject_values() {
+    for arg in ["--json=1", "--yes=true", "--startup=", "--version=2", "--demo=1"] {
+        let message = parse(&[arg]).unwrap_err().message;
+        assert!(message.contains("takes no value"), "{arg}: {message}");
+    }
+}
+
+#[test]
+fn second_valid_verb_is_ignored_invalid_is_error() {
+    assert_eq!(command(&["--input", "dp", "--preset", "night"]), CliCommand::Input(Some(0x0F)));
+    assert_eq!(command(&["--get", "all", "thinkvision://preset/day"]), CliCommand::Get(GetTarget::All));
+    assert!(parse(&["--preset", "day", "--input", "vga"]).is_err());
+    assert!(parse(&["--preset", "day", "thinkvision://nonsense"]).is_err());
+}
+
+#[test]
+fn version_and_yes_flags() {
+    assert_eq!(parse(&["--version"]).unwrap(), Parsed { version: true, ..Parsed::default() });
+    assert_eq!(parse(&["--input", "this", "--YES"]).unwrap(),
+        Parsed { command: CliCommand::Input(None), yes: true, ..Parsed::default() });
+    assert_eq!(version_line(), format!("thinkvision-control {}", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn help_text_lists_new_items() {
+    let text = help();
+    for needle in ["--version", "--yes", "tvc", "3 input switch needs --yes", "--startup", "colour-mode"] {
+        assert!(text.contains(needle), "{needle}");
+    }
+}
+
+#[test]
+fn shift_only_gestures_rejected() {
+    assert_eq!(Gesture::parse("Shift+A"), None);
+    assert_eq!(Gesture::try_create(Gesture::MOD_SHIFT, 0x41), None);
+    assert_eq!(Gesture::parse("Shift+Win+A"), Some(Gesture { mods: Gesture::MOD_SHIFT | Gesture::MOD_WIN, vk: 0x41 }));
+}
+
+#[test]
+fn linux_defaults_avoid_vt_and_workspace_keys() {
+    let clashes = |g: &str| {
+        g.starts_with("Ctrl+Alt+F") || ["Ctrl+Alt+Left", "Ctrl+Alt+Right", "Ctrl+Alt+Up", "Ctrl+Alt+Down"].contains(&g)
+    };
+    for action in Action::ALL {
+        let linux = action.default_gesture_for(true);
+        assert!(!clashes(linux), "{action:?}: {linux}");
+        for text in [linux, action.default_gesture_for(false)] {
+            assert_eq!(Gesture::parse(text).map(|g| g.to_string()).as_deref(), Some(text), "{action:?}");
+        }
+    }
+    assert_eq!(Action::InputHdmi.default_gesture_for(false), "Ctrl+Alt+F1");
+    assert_eq!(Action::InputHdmi.default_gesture_for(true), "Ctrl+Win+1");
+    assert_eq!(Action::BrightnessUp.default_gesture(), Action::BrightnessUp.default_gesture_for(cfg!(target_os = "linux")));
 }
