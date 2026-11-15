@@ -156,6 +156,14 @@ impl ProfileStore {
         Self { dir: user_dir.into(), profile: Arc::new(profile), embedded: Arc::new(embedded) }
     }
 
+    /// The profile for `level` with the user overlay in `user_dir`: the built-in profile named by `Verified`,
+    /// the Lenovo family profile filtered by `caps`, or the generic MCCS profile. Stub until w3-support: the P32p-20.
+    pub fn for_level(user_dir: impl Into<PathBuf>, level: &crate::support::SupportLevel,
+        caps: Option<&MonitorCapabilities>) -> Self {
+        let _ = (level, caps);
+        Self::new(user_dir)
+    }
+
     pub fn profile(&self) -> &Arc<Profile> {
         &self.profile
     }

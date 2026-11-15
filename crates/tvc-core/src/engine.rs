@@ -27,6 +27,8 @@ use crate::profile::{ControlDefinition, ControlKind, Profile, ProfileStore, Safe
 use crate::result::ResultKind;
 use crate::safety::{self, Verdict};
 use crate::store::{BackupStore, CapabilitiesCache, Preset};
+use crate::hub::OpId;
+use crate::identity::{MonitorId, MonitorIdentity};
 use crate::support::SupportLevel;
 use crate::{hex, log};
 
@@ -258,7 +260,8 @@ pub enum Event {
     /// A code's current value changed (never for a code being dragged, except the final value on release).
     Value { code: u8, reading: VcpReading },
     /// The answer to Set, EndDrag, Step (`code` set), ApplyPreset (`preset` = its name) or RestoreBackup (neither).
-    Result { origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult },
+    /// `op` is the hub's op id for the command, None when it came straight to this engine.
+    Result { origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult, op: Option<OpId> },
     Finder(FinderEvent),
     /// True while the display is off, the session is locked or the PC sleeps, until `wake_delay` after the last
     /// wake event; no monitor traffic meanwhile.
@@ -268,6 +271,20 @@ pub enum Event {
     /// The displays the OS reports, refreshed on every connect that ends `NotFound` and sent (before that
     /// `Status`) when the list changes. None = the backend can't list them.
     Displays(Option<Vec<AttachedDisplay>>),
+}
+
+/// Everything one monitor's engine starts from (multi-display). `Engine::spawn` moves to it in w3-hub.
+pub struct EngineConfig {
+    pub id: MonitorId,
+    pub identity: MonitorIdentity,
+    pub link: Box<dyn MonitorLink>,
+    /// This monitor's folder: capabilities.txt, profile.user.json, backups, its crash marker.
+    pub dir: PathBuf,
+    /// None = the resolved profile's timing.
+    pub timing: Option<Timing>,
+    pub safe_mode: bool,
+    /// Forced level (the built-in panel, tests); None = `support::resolve` from the identity and capabilities.
+    pub level: Option<SupportLevel>,
 }
 
 pub struct Engine;
@@ -1266,7 +1283,7 @@ impl Worker {
     }
 
     fn emit_result(&self, origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult) {
-        self.emit(Event::Result { origin, code, preset, result });
+        self.emit(Event::Result { origin, code, preset, result, op: None });
     }
 
     fn emit_controls(&self) {

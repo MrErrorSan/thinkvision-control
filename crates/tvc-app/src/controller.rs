@@ -751,7 +751,7 @@ impl Controller {
                 drop(st);
                 self.render();
             }
-            Event::Result { origin, code, preset, result } => self.on_result(origin, code, preset, result),
+            Event::Result { origin, code, preset, result, .. } => self.on_result(origin, code, preset, result),
             Event::Finder(f) => self.on_finder(f),
             Event::Asleep(asleep) => {
                 self.st.borrow_mut().asleep = asleep;

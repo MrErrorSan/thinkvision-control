@@ -9,6 +9,8 @@ pub mod engine;
 pub mod fake;
 pub mod finder;
 pub mod hotkey;
+pub mod hub;
+pub mod identity;
 pub mod link;
 pub mod log;
 pub mod mccs;

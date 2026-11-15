@@ -181,7 +181,7 @@ fn preset_sets_colour_mode_then_brightness_then_contrast() {
 
     let events = h.run(Command::ApplyPreset { preset, origin: Origin::Tray });
 
-    let Some(Event::Result { origin, code, preset, result }) = events.iter().find(|e| matches!(e, Event::Result { .. })) else {
+    let Some(Event::Result { origin, code, preset, result, .. }) = events.iter().find(|e| matches!(e, Event::Result { .. })) else {
         panic!("no result")
     };
     assert_eq!((*origin, *code, preset.as_deref()), (Origin::Tray, None, Some("Night")));

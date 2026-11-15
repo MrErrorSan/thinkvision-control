@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use crate::link::{LinkError, LinkFailure, MonitorLink, VcpReading};
+use crate::identity::{BackendKind, Discovery, DisplayInfo, ListError, MonitorIdentity};
+use crate::link::{DisplayKind, LinkError, LinkFailure, MonitorLink, VcpReading};
 
 pub const P32P20_CAPABILITIES: &str = concat!(
     "(prot(monitor)type(LCD)model(ThinkVision P32p-20)cmds(01 02 03 07 0C E3 F3)vcp(02 04(4C 42 31 2E 32) 05 08 10 12 ",
@@ -35,6 +36,8 @@ pub struct FakeState {
     /// Every call takes this long (a slow monitor).
     pub delay: Duration,
     pub connected: bool,
+    /// The capability string; None = [`P32P20_CAPABILITIES`].
+    pub capabilities: Option<String>,
 }
 
 impl Default for FakeState {
@@ -57,6 +60,7 @@ impl Default for FakeState {
             plug_in_at_connect: None,
             delay: Duration::ZERO,
             connected: false,
+            capabilities: None,
         }
     }
 }
@@ -104,7 +108,7 @@ impl MonitorLink for FakeLink {
         if s.dead || !s.connected {
             return Err(LinkError::Transient("no reply".into()));
         }
-        Ok(P32P20_CAPABILITIES.to_string())
+        Ok(s.capabilities.clone().unwrap_or_else(|| P32P20_CAPABILITIES.to_string()))
     }
 
     fn read(&mut self, code: u8) -> Result<VcpReading, LinkError> {
@@ -128,5 +132,63 @@ impl MonitorLink for FakeLink {
             }
         }
         Ok(())
+    }
+}
+
+/// A scripted display list for hub tests. Each display has a [`FakeLink`]; `open` hands out a clone, so the test
+/// keeps its own clone to script and inspect it. Edit `displays` (through `state`) to plug and unplug.
+#[derive(Clone, Default)]
+pub struct FakeDiscovery {
+    state: Arc<Mutex<FakeDiscoveryState>>,
+}
+
+#[derive(Default)]
+pub struct FakeDiscoveryState {
+    pub displays: Vec<(DisplayInfo, FakeLink)>,
+    /// `enumerate` fails with this when set.
+    pub error: Option<ListError>,
+    pub enumerations: usize,
+}
+
+impl FakeDiscovery {
+    pub fn new(displays: Vec<(DisplayInfo, FakeLink)>) -> Self {
+        Self { state: Arc::new(Mutex::new(FakeDiscoveryState { displays, ..Default::default() })) }
+    }
+
+    pub fn state(&self) -> MutexGuard<'_, FakeDiscoveryState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// An external DDC display with this identity; `target` = `"fake:<edid>:<serial or connector>"`.
+    pub fn display(edid_id: &str, serial: Option<&str>, connector: Option<&str>) -> DisplayInfo {
+        let tail = serial.or(connector).unwrap_or("");
+        DisplayInfo {
+            target: format!("fake:{edid_id}:{tail}"),
+            identity: MonitorIdentity {
+                edid_id: edid_id.into(),
+                serial: serial.map(Into::into),
+                connector: connector.map(Into::into),
+            },
+            name: String::new(),
+            kind: DisplayKind::External,
+            backend: BackendKind::Ddc,
+        }
+    }
+}
+
+impl Discovery for FakeDiscovery {
+    fn enumerate(&mut self) -> Result<Vec<DisplayInfo>, ListError> {
+        let mut s = self.state();
+        s.enumerations += 1;
+        if let Some(e) = s.error.clone() {
+            return Err(e);
+        }
+        Ok(s.displays.iter().map(|(d, _)| d.clone()).collect())
+    }
+
+    fn open(&mut self, target: &str) -> Result<Box<dyn MonitorLink>, LinkFailure> {
+        let s = self.state();
+        let (_, link) = s.displays.iter().find(|(d, _)| d.target == target).ok_or(LinkFailure::NotFound)?;
+        Ok(Box::new(link.clone()))
     }
 }

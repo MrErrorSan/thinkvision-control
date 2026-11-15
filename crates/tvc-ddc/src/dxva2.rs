@@ -330,6 +330,25 @@ fn wide_to_string(wide: &[u16]) -> String {
     String::from_utf16_lossy(&wide[..end])
 }
 
+/// Windows displays: QueryDisplayConfig targets joined to their HMONITOR by device path. Stub until w3-win: lists nothing.
+pub(crate) struct Dxva2Discovery;
+
+impl Dxva2Discovery {
+    pub(crate) fn new() -> Self {
+        Self
+    }
+}
+
+impl tvc_core::identity::Discovery for Dxva2Discovery {
+    fn enumerate(&mut self) -> Result<Vec<tvc_core::identity::DisplayInfo>, tvc_core::identity::ListError> {
+        Err(tvc_core::identity::ListError::Unsupported)
+    }
+
+    fn open(&mut self, _target: &str) -> Result<Box<dyn tvc_core::link::MonitorLink>, tvc_core::link::LinkFailure> {
+        Err(tvc_core::link::LinkFailure::NotFound)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

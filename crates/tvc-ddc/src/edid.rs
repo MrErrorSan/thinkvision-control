@@ -51,6 +51,23 @@ pub fn display_name(edid: &[u8]) -> Option<String> {
         .filter(|name| !name.is_empty())
 }
 
+/// The monitor's serial: the serial-number text descriptor (tag 0xFF) when there is one, else the 32-bit serial
+/// number in bytes 12-15 when it isn't zero. None when the EDID gives neither.
+pub fn serial(edid: &[u8]) -> Option<String> {
+    let text = descriptors(edid)
+        .find(|d| d[..3] == [0, 0, 0] && d[3] == 0xFF && d[4] == 0)
+        .map(|d| {
+            let text = &d[5..];
+            let end = text.iter().position(|&b| b == 0x0A).unwrap_or(text.len());
+            text[..end].iter().filter(|b| b.is_ascii_graphic()).map(|&b| b as char).collect::<String>()
+        })
+        .filter(|s| !s.is_empty());
+    text.or_else(|| {
+        let n = u32::from_le_bytes(edid.get(12..16)?.try_into().ok()?);
+        (n != 0).then(|| n.to_string())
+    })
+}
+
 /// True when the 128-byte base block sums to zero, as byte 127 makes it.
 pub fn checksum_ok(edid: &[u8]) -> bool {
     edid.len() >= 128 && edid[..128].iter().fold(0u8, |sum, &b| sum.wrapping_add(b)) == 0
@@ -87,6 +104,17 @@ mod tests {
         let mut edid = vec![0u8; 128];
         edid[..12].copy_from_slice(&[0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, b8, b9, b10, b11]);
         edid
+    }
+
+    #[test]
+    fn serial_prefers_the_text_descriptor_then_the_number() {
+        let mut edid = edid_header(0x30, 0xAE, 0xA2, 0x62);
+        assert_eq!(serial(&edid), None);
+        edid[12..16].copy_from_slice(&1234u32.to_le_bytes());
+        assert_eq!(serial(&edid).as_deref(), Some("1234"));
+        edid[72..77].copy_from_slice(&[0, 0, 0, 0xFF, 0]);
+        edid[77..90].copy_from_slice(b"V90A1234\n    ");
+        assert_eq!(serial(&edid).as_deref(), Some("V90A1234"));
     }
 
     #[test]

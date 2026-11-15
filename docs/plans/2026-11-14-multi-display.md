@@ -482,3 +482,14 @@ pub enum HubEvent {
 - **CORE-20** landed with Wave 0 as `clock::set_utc_offset_source`.
 - **Firmware** is shown only at the Verified level, gated in the engine rather than through a profile flag.
 - **Agents write no new tests** (anvil). The orchestrator authors the regression tests after reconciling each wave.
+- **Wave 2 adjusted the pinned contracts to the real code** (identity.rs, hub.rs, support.rs, engine.rs `EngineConfig`, fake.rs, tvc-ddc lib.rs):
+  - **Discovery opens by target.** `DisplayInfo` carries a backend-opaque `target` instead of an id, and `Discovery::open(&str)` takes it. Only the hub can keep ids stable across rescans, so it pairs each `MonitorId` with its info as `hub::Monitor { id, info }`. `HubEvent::Monitors` and `Attached` carry `Monitor`.
+  - **Id rules are implemented and tested now,** not in w3-hub: `identity::assign_ids` and `identity::match_saved`. The hub adds stability on top: an attached monitor keeps its id.
+  - **Support resolution.** `support::resolve(identity, caps, caps_failed) -> SupportLevel` takes no registry. `ProfileStore::for_level(dir, &level, caps)` builds the matching profile, and both belong to w3-support. `EngineConfig { id, identity, link, dir, timing: Option, safe_mode, level: Option }`: a `level` of Some forces it (the built-in panel, tests).
+  - **`HubCommand::Send` boxes its `Command`** (clippy `large_enum_variant`). `Event::Result` gains `op: Option<OpId>`.
+  - **The built-in panel joins in tvc-ddc lib.rs:**
+    - `tvc_ddc::discovery()` combines the OS backend with `backlight::displays()`.
+    - It routes `open` by `backlight::TARGET_PREFIX`.
+    - The OS stubs are `Dxva2Discovery`, `linux::LinuxDiscovery` (linux/discovery.rs) and `macos::MacDiscovery` (macos/discovery.rs).
+  - **`edid::serial`** (the 0xFF descriptor, else the 32-bit number) is implemented with a test.
+- **Wave 1 decision:** a `vcpname` name labels a vendor code but never makes it writable. Writes still need a profile definition. This is stricter than the plan's floor wording.

@@ -1,7 +1,11 @@
 //! macOS IOAVService backend (Apple Silicon). The rules here are pure and compile on every OS; the link is macOS-only.
 
 #[cfg(target_os = "macos")]
+mod discovery;
+#[cfg(target_os = "macos")]
 mod ffi;
+#[cfg(target_os = "macos")]
+pub(crate) use discovery::MacDiscovery;
 #[cfg(target_os = "macos")]
 mod link;
 #[cfg(target_os = "macos")]

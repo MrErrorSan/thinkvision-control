@@ -1,7 +1,11 @@
 //! Linux i2c-dev backend. The bus-selection rules here are pure and compile on every OS; the link itself is Linux-only.
 
 #[cfg(target_os = "linux")]
+mod discovery;
+#[cfg(target_os = "linux")]
 mod i2c;
+#[cfg(target_os = "linux")]
+pub(crate) use discovery::LinuxDiscovery;
 #[cfg(target_os = "linux")]
 pub(crate) use i2c::I2cLink;
 
