@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::cli::InputChoice;
+
 /// A global hotkey as Win32 `RegisterHotKey` wants it: `MOD_*` bits plus a virtual-key code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Gesture {
@@ -152,6 +154,17 @@ impl Action {
 
     pub fn from_key(key: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|a| a.key() == key)
+    }
+
+    /// The input an input action switches to, resolved per display like `--input`; None for other actions.
+    pub fn input_choice(self) -> Option<InputChoice> {
+        match self {
+            Action::InputHdmi => Some(InputChoice::Kind("hdmi".into())),
+            Action::InputDp => Some(InputChoice::Kind("dp".into())),
+            Action::InputUsbC => Some(InputChoice::Kind("usbc".into())),
+            Action::SwitchToMe => Some(InputChoice::This),
+            _ => None,
+        }
     }
 
     /// Win32 hotkey id (`action + 1`), as 0.0.4 registered it.

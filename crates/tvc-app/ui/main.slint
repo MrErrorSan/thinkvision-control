@@ -3,8 +3,8 @@ import { Palette, ScrollView, ProgressIndicator } from "std-widgets.slint";
 import "fonts/FluentSystemIcons-Regular.ttf";
 import { Theme, Glyphs, Icon } from "theme.slint";
 import { App } from "app.slint";
-import { Tab, InfoBar, DialogOverlay } from "controls.slint";
-import { DisplayPage, MonitorPage, SettingsPage, FinderPage, ShortcutDialog } from "pages.slint";
+import { Tab, InfoBar, DialogOverlay, Badge, DisplayPicker } from "controls.slint";
+import { DisplayPage, TogetherPage, MonitorPage, SettingsPage, FinderPage, ShortcutDialog } from "pages.slint";
 
 export { App }
 export { Severity, Banner, InputItem, RangeRow, ControlKind, ControlRow, ControlGroup, PresetRow, HotkeyRow, SetupHint, Dialog, FinderChange, FinderValue, ShortcutEditor } from "types.slint";
@@ -15,19 +15,27 @@ export component MainWindow inherits Window {
     in property <int> forced-scheme: 0;
     in-out property <int> tab: 0;
     property <bool> compact: root.width < 520px;
+    property <bool> narrow: root.width < 440px;
     property <bool> finder-open: App.finder-open;
     property <bool> modal: App.dialog.visible || App.editor.visible;
+    // All together: the Display tab shows the master sliders, and the Monitor tab (per display) is hidden.
+    property <bool> together: App.selected-id == "" && App.together-available;
+    // The Monitor tab has nothing for a display whose only controls are on the Display tab (the built-in panel).
+    property <bool> monitor-tab: !root.together && !(App.has-controls && App.monitor-groups.length == 0);
 
     changed forced-scheme => {
         if root.forced-scheme == 1 { Palette.color-scheme = ColorScheme.dark; }
         else if root.forced-scheme == 2 { Palette.color-scheme = ColorScheme.light; }
     }
+    init => { Theme.narrow = root.narrow; }
+    changed narrow => { Theme.narrow = root.narrow; }
+    changed monitor-tab => { if !root.monitor-tab && root.tab == 1 { root.tab = 0; } }
 
     title: "ThinkVision Control";
     icon: @image-url("app-icon-32.png");
     preferred-width: 560px;
     preferred-height: 680px;
-    min-width: 440px;
+    min-width: 360px;
     min-height: 520px;
     background: Theme.window-bg;
     default-font-family: "Segoe UI Variable Text";
@@ -45,7 +53,7 @@ export component MainWindow inherits Window {
         focus-on-tab-navigation: false;
         capture-key-pressed(e) => {
             if e.modifiers.control && e.text == "1" { root.tab = 0; return accept; }
-            if e.modifiers.control && e.text == "2" { root.tab = 1; return accept; }
+            if e.modifiers.control && e.text == "2" && root.monitor-tab { root.tab = 1; return accept; }
             if e.modifiers.control && e.text == "3" { root.tab = 2; return accept; }
             reject
         }
@@ -55,23 +63,44 @@ export component MainWindow inherits Window {
             HorizontalLayout {
                 padding-left: Theme.gutter;
                 padding-right: Theme.gutter;
-                padding-top: 16px;
+                padding-top: Theme.narrow ? 12px : 16px;
                 padding-bottom: 8px;
-                spacing: 14px;
+                spacing: Theme.narrow ? 10px : 14px;
                 Icon {
                     text: Glyphs.display;
-                    font-size: 38px;
-                    width: 36px;
+                    font-size: Theme.narrow ? 30px : 38px;
+                    width: Theme.narrow ? 28px : 36px;
                 }
                 VerticalLayout {
                     alignment: center;
                     horizontal-stretch: 1;
-                    Text {
-                        text: App.model-name;
-                        font-size: 18px;
-                        font-weight: 600;
-                        color: Theme.text;
-                        overflow: elide;
+                    HorizontalLayout {
+                        alignment: start;
+                        Text {
+                            text: App.model-name;
+                            font-size: Theme.narrow ? 16px : 18px;
+                            font-weight: 600;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                        // How far the display is supported, after its name. Each badge brings its own gap.
+                        if root.together: VerticalLayout {
+                            alignment: center;
+                            padding-left: 8px;
+                            Badge { text: "Together"; }
+                        }
+                        if !root.together && App.experimental: VerticalLayout {
+                            alignment: center;
+                            padding-left: 8px;
+                            Badge { text: "Experimental"; warning: true; }
+                        }
+                        for d in App.displays: VerticalLayout {
+                            alignment: center;
+                            if !root.together && d.id == App.selected-id && d.kind == "built-in": VerticalLayout {
+                                padding-left: 8px;
+                                Badge { text: "Built-in"; }
+                            }
+                        }
                     }
                     HorizontalLayout {
                         spacing: 6px;
@@ -94,6 +123,20 @@ export component MainWindow inherits Window {
                 }
             }
 
+            // Display picker: hidden with only one display.
+            if App.displays.length >= 2: VerticalLayout {
+                padding-left: Theme.gutter;
+                padding-right: Theme.gutter;
+                padding-bottom: Theme.narrow ? 10px : 12px;
+                DisplayPicker {
+                    displays: App.displays;
+                    selected: App.selected-id;
+                    selected-name: root.together ? "All together" : App.model-name;
+                    together-available: App.together-available;
+                    select(id) => { App.select-display(id); }
+                }
+            }
+
             // Tabs.
             Rectangle {
                 height: 41px;
@@ -102,7 +145,7 @@ export component MainWindow inherits Window {
                     alignment: start;
                     accessible-role: tab-list;
                     tab-display := Tab { label: "Display"; selected: root.tab == 0; clicked => { root.tab = 0; } }
-                    tab-monitor := Tab { label: "Monitor"; selected: root.tab == 1; clicked => { root.tab = 1; } }
+                    tab-monitor := Tab { label: "Monitor"; shown: root.monitor-tab; selected: root.tab == 1; clicked => { root.tab = 1; } }
                     tab-settings := Tab { label: "Settings"; selected: root.tab == 2; clicked => { root.tab = 2; } }
                 }
                 Rectangle {
@@ -134,9 +177,10 @@ export component MainWindow inherits Window {
                             }
                             if App.loading: ProgressIndicator { indeterminate: true; }
                         }
-                        if root.tab == 0: DisplayPage { compact: root.compact; }
-                        if root.tab == 1 && !App.finder-open: MonitorPage { }
-                        if root.tab == 1 && App.finder-open: FinderPage { }
+                        if root.tab == 0 && !root.together: DisplayPage { compact: root.compact; }
+                        if root.tab == 0 && root.together: TogetherPage { compact: root.compact; }
+                        if root.tab == 1 && root.monitor-tab && !App.finder-open: MonitorPage { }
+                        if root.tab == 1 && root.monitor-tab && App.finder-open: FinderPage { }
                         if root.tab == 2: SettingsPage { }
                     }
                 }

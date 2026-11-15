@@ -3,29 +3,35 @@
 //!
 //! Background-mode rules (measured on Slint): the main window is dropped on
 //! close and rebuilt on open; values are pushed into it only while it is shown; the OSD window is kept.
+//!
+//! **Several displays.** [`AppState`] holds the app-wide settings plus one [`State`] per controllable display, keyed
+//! by its hub id. A command for several displays goes out as one `Target::One` send per display (raw values differ
+//! per model) under a shared op id, and their results are handled together once all are in: one OSD, one
+//! command-line answer. A display that leaves stays in the picker as disconnected for the rest of the session.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
-use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget, InputChoice, Parsed};
+use tvc_core::cli::{self as tvc_cli, CliCommand, CliError, GetTarget, InputChoice, Parsed};
 use tvc_core::engine::{
     Command, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
 };
-use tvc_core::hub::{HubCommand, HubEvent, HubHandle, Monitor, Target};
-use tvc_core::identity::{BackendKind, ListError, MonitorId};
+use tvc_core::hub::{HubCommand, HubEvent, HubHandle, Monitor, OpId, Target};
+use tvc_core::identity::{BackendKind, DisplayInfo, ListError, MonitorId};
 use tvc_core::result::ResultKind;
 use tvc_core::schedule::{self, AutoMode, Phase};
 use tvc_core::finder::CodeChange;
 use tvc_core::hotkey::{Action, Gesture};
-use tvc_core::link::{LinkFailure, VcpReading};
+use tvc_core::link::{DisplayKind, LinkFailure, VcpReading};
 use tvc_core::profile::{ControlDefinition, ControlKind, Profile, SafetyClass, Section};
-use tvc_core::store::{Preset, Settings, SettingsStore};
+use tvc_core::store::{CapabilitiesCache, HotkeyTarget, MonitorSettings, Settings, SettingsStore};
+use tvc_core::support::{self, SupportLevel};
 use tvc_core::crash::LeftOver;
 use tvc_core::log;
 
@@ -34,8 +40,8 @@ use crate::localtime;
 use crate::platform;
 use crate::platform::instance::{Reply, Responder};
 use crate::platform::monitor_events::SystemEvent;
-use crate::view::{self, glyph, AttachedDisplay, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT};
-use crate::{App, Dialog, MainWindow, Severity, ShortcutEditor, Tray};
+use crate::view::{self, glyph, AttachedDisplay, TogetherSlider, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT, VOLUME};
+use crate::{App, Dialog, DisplayEntry, MainWindow, Severity, ShortcutEditor, Tray, TrayDisplay};
 
 const POLL_EVERY: Duration = Duration::from_secs(3);
 const BANNER_HOLD: Duration = Duration::from_secs(1);
@@ -49,7 +55,15 @@ const HEADLESS_COLD_BUDGET: Duration = Duration::from_secs(20);
 const RETRY_FOR: Duration = Duration::from_secs(16);
 const TIMED_OUT: &str = "Timed out: the monitor didn't answer in time";
 const NEEDS_YES: &str = "Switching the input needs confirmation: run it again with --yes";
+const NEEDS_SCREEN: &str =
+    "A display without a verified profile switches input only when confirmed on screen: start ThinkVision Control, then run it again";
 const NOT_CONFIRMED: &str = "The input switch wasn't confirmed on screen";
+/// The master sliders of Together mode.
+const TOGETHER_CODES: [(u8, &str, &str); 3] =
+    [(BRIGHTNESS, "Brightness", glyph::SUN), (CONTRAST, "Contrast", glyph::CONTRAST), (VOLUME, "Volume", glyph::SPEAKER)];
+
+/// A screen's work area: x, y, width, height in physical pixels.
+type Rect = (i32, i32, i32, i32);
 
 thread_local! {
     static APP: RefCell<Option<Rc<Controller>>> = const { RefCell::new(None) };
@@ -92,6 +106,9 @@ struct EditorState {
     held: (bool, bool, bool, bool),
 }
 
+/// One display's state, as the window renders it. `settings`, `setup_hints`, `hotkeys_available`,
+/// `failed_hotkeys`, `auto_note` and `displays` are app-wide: [`AppState::view_of`] copies them in (with this
+/// display's presets and input) right before a render.
 pub struct State {
     pub settings: Settings,
     pub profile: Arc<Profile>,
@@ -125,16 +142,61 @@ pub struct State {
     pub preset_note: String,
     /// A capability read was asked for and its `Controls` event hasn't come yet: the window shows progress.
     pub reading_capabilities: bool,
-    /// The display this state belongs to (multi-display), None before one is attached.
-    pub monitor: Option<tvc_core::hub::Monitor>,
+    /// The display this state belongs to, None for the state shown while no display is attached.
+    pub monitor: Option<Monitor>,
     /// How far the display is trusted; the window shows "Experimental" below Verified.
-    pub level: tvc_core::support::SupportLevel,
+    pub level: SupportLevel,
+    /// Set for a render: the window shows All together.
+    together: bool,
+    /// Listed at the last rescan; false once it left.
+    attached: bool,
+    /// The Day/Night phase this display last applied; a preset is applied only when the schedule's differs.
+    auto_phase: Option<Phase>,
+    /// A `Controls` event after the first one (from the cache or the profile) came: the capabilities are live.
+    caps_live: bool,
+    /// The work area of the screen it shows on (`tvc_ddc::screen_rect`), refreshed at every rescan.
+    screen: Option<Rect>,
 }
 
 impl State {
-    /// Together mode is shown instead of one display (multi-display). Stub: always false until w4-controller.
+    fn new(profile: Arc<Profile>) -> Self {
+        Self {
+            settings: Settings::default(),
+            profile,
+            controls: None,
+            values: BTreeMap::new(),
+            values_stale: false,
+            status: MonitorStatus::Connecting,
+            failure: None,
+            displays: None,
+            shown_status: (None, None),
+            range_note: String::new(),
+            notes: BTreeMap::new(),
+            revisions: BTreeMap::new(),
+            restore_text: "Put back the settings saved before the last reset".into(),
+            setup_hints: vec![],
+            hotkeys_available: true,
+            failed_hotkeys: vec![],
+            finder: FinderState::default(),
+            asleep: false,
+            safe_mode: false,
+            auto_note: String::new(),
+            retrying: false,
+            preset_note: String::new(),
+            reading_capabilities: false,
+            monitor: None,
+            level: SupportLevel::Verified { profile: "p32p20".into() },
+            together: false,
+            attached: false,
+            auto_phase: None,
+            caps_live: false,
+            screen: None,
+        }
+    }
+
+    /// The window shows All together instead of one display.
     pub fn selected_together(&self) -> bool {
-        false
+        self.together
     }
 
     pub fn def(&self, code: u8) -> Option<&ControlDefinition> {
@@ -160,22 +222,304 @@ impl State {
     fn input_label(&self, code: u16) -> String {
         view::inputs(self).into_iter().find(|(c, _)| *c == code).map(|(_, l)| l).unwrap_or_else(|| format!("0x{code:02X}"))
     }
+
+    fn connected(&self) -> bool {
+        self.attached && self.status == MonitorStatus::Connected
+    }
+
+    /// Below Verified: every input switch is confirmed on screen, whatever asked for it.
+    fn experimental(&self) -> bool {
+        !matches!(self.level, SupportLevel::Verified { .. })
+    }
+
+    /// The input `choice` means on this display; None when it has no such input.
+    fn input_for(&self, choice: &InputChoice, this_pc: u8) -> Option<u16> {
+        if self.controls.is_some() && self.def(INPUT).is_none() {
+            return None;
+        }
+        let shown = view::inputs(self);
+        match choice {
+            InputChoice::This => Some(u16::from(this_pc)),
+            InputChoice::Slot(n) => shown.get(usize::from(*n).wrapping_sub(1)).map(|(c, _)| *c),
+            InputChoice::Kind(kind) => self.profile.inputs.iter()
+                .map(|i| (u16::from(i.code), &i.kind))
+                .find(|(code, k)| *k == kind && shown.iter().any(|(c, _)| c == code))
+                .map(|(code, _)| code),
+        }
+    }
+}
+
+/// The app-wide state and one [`State`] per controllable display.
+struct AppState {
+    settings: Settings,
+    setup_hints: Vec<platform::setup::Hint>,
+    hotkeys_available: bool,
+    failed_hotkeys: Vec<Action>,
+    auto_note: String,
+    /// Every display at the last rescan, uncontrollable ones too, in enumeration order; None = can't list them.
+    monitors: Option<Vec<Monitor>>,
+    displays: BTreeMap<MonitorId, State>,
+    /// The display the window shows, and the one Together mode renders the other tabs for; None while none is
+    /// attached.
+    selected: Option<MonitorId>,
+    together: bool,
+    /// Shown while no display is attached: `Connecting` until the first rescan, then `NotFound`.
+    blank: State,
+    /// The first rescan's list came.
+    listed: bool,
+}
+
+impl AppState {
+    /// The display's state (`blank` for None) with the app-wide fields copied in, ready for `view`.
+    fn view_of(&mut self, id: Option<&MonitorId>) -> &State {
+        let AppState { settings, setup_hints, hotkeys_available, failed_hotkeys, auto_note, monitors, displays,
+            together, blank, .. } = self;
+        let (st, id) = match id.and_then(|id| displays.get_mut(id).map(|st| (st, id))) {
+            Some((st, id)) => (st, Some(id)),
+            None => (blank, None),
+        };
+        st.settings.clone_from(settings);
+        if let Some(id) = id {
+            let own = settings.monitor(id);
+            st.settings.day = own.day;
+            st.settings.night = own.night;
+            st.settings.this_machine_input = own.this_machine_input;
+        }
+        st.setup_hints.clone_from(setup_hints);
+        st.hotkeys_available = *hotkeys_available;
+        st.failed_hotkeys.clone_from(failed_hotkeys);
+        st.auto_note.clone_from(auto_note);
+        st.displays = monitors.as_ref().map(|list| {
+            list.iter()
+                .map(|m| AttachedDisplay {
+                    name: m.info.name.clone(),
+                    edid_id: m.info.identity.edid_id.clone(),
+                    kind: m.info.kind,
+                    tracked: Some(&m.id) == id,
+                })
+                .collect()
+        });
+        st.together = *together;
+        st
+    }
+
+    /// Every display's id, in enumeration order, the ones that left last.
+    fn ordered(&self) -> Vec<MonitorId> {
+        let mut ids: Vec<MonitorId> =
+            self.monitors.iter().flatten().filter(|m| self.displays.contains_key(&m.id)).map(|m| m.id.clone()).collect();
+        ids.extend(self.displays.keys().filter(|id| !ids.contains(id)).cloned().collect::<Vec<_>>());
+        ids
+    }
+
+    fn attached(&self) -> Vec<MonitorId> {
+        self.ordered().into_iter().filter(|id| self.displays.get(id).is_some_and(|st| st.attached)).collect()
+    }
+
+    fn connected(&self) -> Vec<MonitorId> {
+        self.ordered().into_iter().filter(|id| self.displays.get(id).is_some_and(State::connected)).collect()
+    }
+
+    /// The attached displays that take part in Together mode.
+    fn included(&self) -> Vec<MonitorId> {
+        self.attached().into_iter().filter(|id| self.settings.monitor(id).included).collect()
+    }
+
+    /// The displays the window's actions go to: the included ones in Together mode, else the selected one.
+    fn shown(&self) -> Vec<MonitorId> {
+        if self.together { self.included() } else { self.selected.iter().cloned().collect() }
+    }
+
+    fn together_available(&self) -> bool {
+        self.attached().len() >= 2
+    }
+
+    fn state(&self, id: Option<&MonitorId>) -> &State {
+        id.and_then(|id| self.displays.get(id)).unwrap_or(&self.blank)
+    }
+
+    /// The name the user gave it, else the display's own, else its model, else what it is.
+    fn name(&self, id: &MonitorId) -> String {
+        let Some(st) = self.displays.get(id) else { return id.0.clone() };
+        let info = st.monitor.as_ref().map(|m| &m.info);
+        let own = self.settings.monitors.get(id).and_then(|m| m.name.clone());
+        own.into_iter()
+            .chain(info.map(|i| i.name.clone()))
+            .chain([view::monitor_name(st)])
+            .map(|n| n.trim().to_string())
+            .find(|n| !n.is_empty())
+            .unwrap_or_else(|| match info {
+                Some(i) if i.kind == DisplayKind::BuiltIn => "Built-in display".into(),
+                Some(i) if !i.identity.edid_id.is_empty() => i.identity.edid_id.clone(),
+                _ => id.0.clone(),
+            })
+    }
+
+    /// A name for the OSD, only when several displays could be meant.
+    fn osd_name(&self, id: &MonitorId) -> String {
+        if self.attached().len() >= 2 { self.name(id) } else { String::new() }
+    }
+
+    fn entry(&self, id: &MonitorId) -> Option<DisplayEntry> {
+        let st = self.displays.get(id)?;
+        let own = self.settings.monitor(id);
+        let info = st.monitor.as_ref().map(|m| &m.info);
+        let detail = info.map(|i| {
+            [i.identity.edid_id.as_str(), i.identity.connector.as_deref().unwrap_or("")]
+                .into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
+        });
+        let state = match st.status {
+            _ if !st.attached => "disconnected",
+            MonitorStatus::Connected if st.level == SupportLevel::ReadOnly => "read-only",
+            MonitorStatus::Connected => "connected",
+            MonitorStatus::Connecting => "connecting",
+            MonitorStatus::NotFound => "unreachable",
+            MonitorStatus::NotResponding => "not-responding",
+        };
+        let level = match st.level {
+            SupportLevel::Verified { .. } => "verified",
+            SupportLevel::ReadOnly => "read-only",
+            SupportLevel::LenovoFamily | SupportLevel::GenericMccs => "experimental",
+        };
+        Some(DisplayEntry {
+            id: id.0.as_str().into(),
+            name: self.name(id).into(),
+            detail: detail.unwrap_or_default().into(),
+            state: state.into(),
+            kind: if info.is_some_and(|i| i.kind == DisplayKind::BuiltIn) { "built-in" } else { "external" }.into(),
+            level: level.into(),
+            included: own.included,
+            offset: own.offset,
+            has_input: st.def(INPUT).is_some_and(ControlDefinition::is_visible),
+            has_colour: st.def(COLOUR_MODE).is_some(),
+            has_volume: st.def(VOLUME).is_some(),
+        })
+    }
+
+    /// Together mode's master sliders: each at the first included display's value less its offset.
+    fn together_sliders(&self) -> Vec<TogetherSlider> {
+        let included: Vec<(MonitorId, &State)> =
+            self.included().into_iter().filter_map(|id| self.displays.get(&id).map(|st| (id, st))).collect();
+        let live: Vec<&(MonitorId, &State)> = included.iter().filter(|(_, st)| st.connected()).collect();
+        TOGETHER_CODES
+            .iter()
+            .map(|&(code, label, glyph)| {
+                let with: Vec<_> = live.iter().filter(|(_, st)| st.values.contains_key(&code)).collect();
+                let value = with.first().and_then(|(id, st)| {
+                    let r = st.values.get(&code)?;
+                    Some(master_percent(r.current, r.max, self.settings.monitor(id).offset))
+                });
+                let lacking: Vec<String> = live.iter()
+                    .filter(|(_, st)| st.controls.is_some() && st.def(code).is_none())
+                    .map(|(id, _)| self.name(id))
+                    .collect();
+                let reason = if included.is_empty() {
+                    "No display is included".to_string()
+                } else if live.is_empty() {
+                    "No included display is connected".into()
+                } else if with.is_empty() {
+                    "No included display has it".into()
+                } else if !lacking.is_empty() {
+                    format!("{} doesn't have it", lacking.join(", "))
+                } else {
+                    String::new()
+                };
+                TogetherSlider {
+                    code,
+                    label: label.into(),
+                    glyph: glyph.into(),
+                    value: value.unwrap_or(0.0),
+                    available: !with.is_empty(),
+                    reason,
+                }
+            })
+            .collect()
+    }
+}
+
+/// The display's own settings entry, created from the inherited values when it has none.
+fn monitor_entry<'a>(settings: &'a mut Settings, id: &MonitorId) -> &'a mut MonitorSettings {
+    let inherited = settings.monitor(id);
+    settings.monitors.entry(id.clone()).or_insert(inherited)
+}
+
+/// What the engine resolved, as far as the app can tell without asking it: the built-in panel is forced Verified;
+/// other displays follow `support::resolve` on their capabilities (none known reads as a failed read).
+fn level_for(info: &DisplayInfo, controls: Option<&ResolvedControls>) -> SupportLevel {
+    if info.backend == BackendKind::Backlight {
+        return SupportLevel::Verified { profile: "builtin-backlight".into() };
+    }
+    match controls {
+        None => support::resolve(&info.identity, None, false),
+        Some(rc) => {
+            let caps = Some(&rc.capabilities).filter(|c| !c.vcp.is_empty());
+            support::resolve(&info.identity, caps, caps.is_none())
+        }
+    }
+}
+
+/// Together mode: a display's raw value for the master slider at `master` percent. Its offset is added and the
+/// sum clipped to 0–100 % (the offset itself is kept), then scaled to the display's own maximum.
+pub fn together_value(master: f32, offset: i32, max: u16) -> u16 {
+    let percent = (master + offset as f32).clamp(0.0, 100.0);
+    (percent * f32::from(max) / 100.0).round() as u16
+}
+
+/// The master slider position a display's reading implies: its value in percent less its offset, within 0–100.
+pub fn master_percent(value: u16, max: u16, offset: i32) -> f32 {
+    if max == 0 {
+        return 0.0;
+    }
+    (f32::from(value) * 100.0 / f32::from(max) - offset as f32).clamp(0.0, 100.0)
+}
+
+/// The display whose screen contains `point`; None when none does.
+pub fn display_at(point: (i32, i32), screens: &[(MonitorId, Rect)]) -> Option<MonitorId> {
+    let (px, py) = point;
+    screens.iter().find(|(_, (x, y, w, h))| px >= *x && px < x + w && py >= *y && py < y + h).map(|(id, _)| id.clone())
+}
+
+/// The displays a verb acts on, from `(id, name, may support the verb)` in display order. `--display` is resolved
+/// by `cli::resolve_display`; without it, or with `all`, every display that may support the verb (every display
+/// when none does, so each answers for itself).
+pub fn cli_targets(wanted: Option<&str>, displays: &[(String, String, bool)]) -> Result<Vec<String>, CliError> {
+    let named: Vec<(String, String)> = displays.iter().map(|(id, name, _)| (id.clone(), name.clone())).collect();
+    let wanted = wanted.unwrap_or("all");
+    let ids: Vec<String> = tvc_cli::resolve_display(wanted, &named)?.into_iter().map(String::from).collect();
+    if !wanted.trim().eq_ignore_ascii_case("all") {
+        return Ok(ids);
+    }
+    let able: Vec<String> = displays.iter().filter(|(_, _, able)| *able).map(|(id, _, _)| id.clone()).collect();
+    Ok(if able.is_empty() { ids } else { able })
+}
+
+/// Whether a display may support a verb: it does unless its controls are known and lack the verb's code.
+fn may_run(st: &State, command: &CliCommand) -> bool {
+    let code = match command {
+        CliCommand::Step { code, .. } => *code,
+        CliCommand::Input(_) => INPUT,
+        _ => return true,
+    };
+    st.controls.is_none() || st.def(code).is_some()
 }
 
 type Pending = Box<dyn FnOnce(&Rc<Controller>)>;
+/// Write results by display.
+type Answers = Vec<(MonitorId, WriteResult)>;
 
 /// A command-line verb being run: this process's own, or one forwarded by a later launch.
 pub struct CliJob {
     command: CliCommand,
     json: bool,
     yes: bool,
+    /// `--display`; None = the default (every display that supports the verb).
+    display: Option<String>,
     /// The forwarding launch's responder; None for this process's own verb.
     reply: Option<Responder>,
 }
 
 impl CliJob {
     pub fn own(parsed: &Parsed) -> Self {
-        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, reply: None }
+        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, display: parsed.display.clone(), reply: None }
     }
 }
 
@@ -193,16 +537,23 @@ impl Drop for AwaitingConfirm {
     }
 }
 
+/// Commands sent to several displays under one op id, waiting for every result.
+struct Batch {
+    origin: Origin,
+    code: Option<u8>,
+    waiting: BTreeSet<MonitorId>,
+    results: Answers,
+    job: Option<CliJob>,
+}
+
 pub struct Controller {
     /// Taken at exit by `take_hub`.
     hub: RefCell<Option<HubHandle>>,
-    /// The one monitor this app drives until multi-display lands in the controller: the first attached DDC monitor,
-    /// preferring the profile's EDID id. None = none attached.
-    tracked: RefCell<Option<MonitorId>>,
-    /// Sent to the tracked monitor first (`--get brightness` reads only what it prints); later ones get `Connect`.
+    /// Sent to each display as it is attached (`--get brightness` reads only what it prints); None = `Connect`.
     first_command: RefCell<Option<Command>>,
     store: SettingsStore,
-    st: RefCell<State>,
+    data_dir: PathBuf,
+    app: RefCell<AppState>,
     window: RefCell<Option<MainWindow>>,
     osd: Rc<RefCell<OsdHost>>,
     tray: RefCell<Option<Tray>>,
@@ -214,7 +565,7 @@ pub struct Controller {
     poll: slint::Timer,
     banner_hold: slint::Timer,
     toast: slint::Timer,
-    debounce: RefCell<HashMap<u8, slint::Timer>>,
+    debounce: RefCell<HashMap<(MonitorId, u8), slint::Timer>>,
     scheme: i32,
     /// `--demo`: never touch the real autostart entry.
     demo: bool,
@@ -224,10 +575,10 @@ pub struct Controller {
     headless_job: RefCell<Option<(CliCommand, bool)>>,
     /// The headless run's own verb has printed its result.
     done: Cell<bool>,
-    /// Verbs that arrived before the first connect attempt finished.
+    /// Verbs waiting for the display list, or for a target's connect attempt to finish.
     pending_cli: RefCell<Vec<CliJob>>,
-    /// Verbs sent to the engine, oldest first: the engine answers `Origin::Cli` commands in order.
-    waiting: RefCell<VecDeque<CliJob>>,
+    /// Sends to several displays whose results are handled together.
+    batches: RefCell<HashMap<OpId, Batch>>,
     watcher: RefCell<Option<platform::monitor_events::Watcher>>,
     /// Process exit code for a headless run.
     exit_code: Cell<i32>,
@@ -235,10 +586,6 @@ pub struct Controller {
     left_over: RefCell<Vec<LeftOver>>,
     retry_timer: slint::Timer,
     auto_timer: slint::Timer,
-    /// The Day/Night phase last applied by the schedule; a preset is applied only when it changes.
-    auto_phase: Cell<Option<Phase>>,
-    /// A `Controls` event after the first one (from the cache or the profile) came: the capabilities are live.
-    caps_live: Cell<bool>,
 }
 
 impl Controller {
@@ -246,38 +593,23 @@ impl Controller {
         left_over: Vec<LeftOver>) -> Rc<Self> {
         let store = SettingsStore::new(&data_dir);
         let settings = store.load();
-        let last_phase = settings.last_applied_phase;
         Rc::new(Self {
             hub: RefCell::new(Some(hub)),
-            tracked: RefCell::new(None),
             first_command: RefCell::new(None),
             store,
-            st: RefCell::new(State {
+            data_dir,
+            app: RefCell::new(AppState {
                 settings,
-                profile,
-                controls: None,
-                values: BTreeMap::new(),
-                values_stale: false,
-                status: MonitorStatus::Connecting,
-                failure: None,
-                displays: None,
-                shown_status: (None, None),
-                range_note: String::new(),
-                notes: BTreeMap::new(),
-                revisions: BTreeMap::new(),
-                restore_text: "Put back the settings saved before the last reset".into(),
                 setup_hints: vec![],
                 hotkeys_available: true,
                 failed_hotkeys: vec![],
-                finder: FinderState::default(),
-                asleep: false,
-                safe_mode: false,
                 auto_note: String::new(),
-                retrying: false,
-                preset_note: String::new(),
-                reading_capabilities: false,
-                monitor: None,
-                level: tvc_core::support::SupportLevel::Verified { profile: "p32p20".into() },
+                monitors: None,
+                displays: BTreeMap::new(),
+                selected: None,
+                together: false,
+                blank: State::new(profile),
+                listed: false,
             }),
             window: RefCell::new(None),
             osd: Rc::new(RefCell::new(OsdHost::default())),
@@ -296,29 +628,23 @@ impl Controller {
             headless_job: RefCell::new(None),
             done: Cell::new(false),
             pending_cli: RefCell::new(vec![]),
-            waiting: RefCell::new(VecDeque::new()),
+            batches: RefCell::new(HashMap::new()),
             watcher: RefCell::new(None),
             exit_code: Cell::new(0),
             left_over: RefCell::new(left_over),
             retry_timer: slint::Timer::default(),
             auto_timer: slint::Timer::default(),
-            auto_phase: Cell::new(last_phase),
-            caps_live: Cell::new(false),
         })
     }
 
     pub fn background_mode(&self) -> bool {
-        self.st.borrow().settings.background_mode
+        self.app.borrow().settings.background_mode
     }
 
-    /// Sends to the tracked monitor's engine. With none attached, a reconnect request looks for one instead.
-    pub fn send(&self, command: Command) {
-        let hub = self.hub.borrow();
-        let Some(hub) = hub.as_ref() else { return };
-        match self.tracked.borrow().clone() {
-            Some(id) => hub.send(HubCommand::Send { target: Target::One(id), op: hub.next_op(), command: Box::new(command) }),
-            None if matches!(command, Command::RequestReconnect | Command::RecheckAfterEvent) => hub.send(HubCommand::Rescan),
-            None => {}
+    /// Sends to one display's engine.
+    fn send_to(&self, id: &MonitorId, command: Command) {
+        if let Some(hub) = self.hub.borrow().as_ref() {
+            hub.send(HubCommand::Send { target: Target::One(id.clone()), op: hub.next_op(), command: Box::new(command) });
         }
     }
 
@@ -328,7 +654,59 @@ impl Controller {
         }
     }
 
-    /// The command the tracked monitor gets first, once one is attached.
+    /// Sends to every display the window shows.
+    fn send_shown(&self, command: &Command) {
+        for id in self.app.borrow().shown() {
+            self.send_to(&id, command.clone());
+        }
+    }
+
+    /// Sends one command per display. Results of a command-line verb, or of a hotkey or tray action on several
+    /// displays, are handled together once all are in; `done` are targets already answered (not connected, no
+    /// such input). Window commands answer one by one.
+    fn send_batch(self: &Rc<Self>, origin: Origin, code: Option<u8>, sends: Vec<(MonitorId, Command)>,
+        done: Answers, job: Option<CliJob>) {
+        if sends.is_empty() {
+            self.on_results(origin, code, None, done, job);
+            return;
+        }
+        if job.is_none() && done.is_empty() && (origin == Origin::Window || sends.len() == 1) {
+            for (id, command) in sends {
+                self.send_to(&id, command);
+            }
+            return;
+        }
+        let hub = self.hub.borrow();
+        let Some(hub) = hub.as_ref() else { return };
+        let op = hub.next_op();
+        let waiting = sends.iter().map(|(id, _)| id.clone()).collect();
+        self.batches.borrow_mut().insert(op, Batch { origin, code, waiting, results: done, job });
+        for (id, command) in sends {
+            hub.send(HubCommand::Send { target: Target::One(id), op, command: Box::new(command) });
+        }
+    }
+
+    /// Records a result for batch `op`, handling the batch once complete. Gives the result back when `op` isn't a
+    /// batch.
+    fn collect(self: &Rc<Self>, op: OpId, id: &MonitorId, result: WriteResult) -> Option<WriteResult> {
+        let complete = {
+            let mut batches = self.batches.borrow_mut();
+            let Some(batch) = batches.get_mut(&op) else { return Some(result) };
+            if batch.waiting.remove(id) {
+                batch.results.push((id.clone(), result));
+            }
+            if !batch.waiting.is_empty() {
+                return None;
+            }
+            batches.remove(&op)
+        };
+        if let Some(b) = complete {
+            self.on_results(b.origin, b.code, None, b.results, b.job);
+        }
+        None
+    }
+
+    /// The command each display gets first, once it is attached.
     pub fn connect_with(&self, command: Command) {
         *self.first_command.borrow_mut() = Some(command);
     }
@@ -341,18 +719,36 @@ impl Controller {
         self.hub.borrow_mut().take()
     }
 
+    fn connected(&self, id: &MonitorId) -> bool {
+        self.app.borrow().displays.get(id).is_some_and(State::connected)
+    }
+
+    fn is_experimental(&self, id: &MonitorId) -> bool {
+        self.app.borrow().displays.get(id).is_some_and(State::experimental)
+    }
+
     // ---------------------------------------------------------------------------------------------------------
     // Lifecycle
 
     /// A resident start: tray and hotkeys per settings, connect, then the window unless starting to the tray.
     pub fn start_resident(self: &Rc<Self>, show_window: bool) {
         self.headless.set(false);
+        *self.first_command.borrow_mut() = None;
         for stale in self.left_over.take() {
             stale.clear(); // the safe-mode banner now speaks for it
         }
         if self.watcher.borrow().is_none() {
             // First resident start (also a headless run turned resident): retry burst and display/power events.
-            self.send(Command::RequestReconnect);
+            let (attached, listed) = {
+                let app = self.app.borrow();
+                (app.attached(), app.listed)
+            };
+            for id in &attached {
+                self.send_to(id, Command::RequestReconnect);
+            }
+            if attached.is_empty() && listed {
+                self.send_hub(HubCommand::Rescan);
+            }
             let watcher = platform::monitor_events::watch(move |event| {
                 // None = the displays changed.
                 let power = match event {
@@ -408,19 +804,15 @@ impl Controller {
         self.pending_cli.borrow_mut().push(job);
     }
 
-    fn own_job(&self) -> Option<CliJob> {
-        let (command, json) = self.headless_job.borrow().clone()?;
-        Some(CliJob { command, json, yes: false, reply: None })
-    }
-
     /// The budget ran out before the headless verb's result: say so and exit 8.
     fn headless_timeout(&self) {
         if !self.headless.get() || self.done.get() {
             return;
         }
-        if let Some(job) = self.own_job() {
-            let json = failure_json(&job.command, "TimedOut", TIMED_OUT);
-            self.finish(job, tvc_cli::exit_code(None, true), TIMED_OUT, json, false);
+        if let Some((command, json)) = self.headless_job.borrow().clone() {
+            let text = failure_json(&command, "TimedOut", TIMED_OUT);
+            let job = CliJob { command, json, yes: false, display: None, reply: None };
+            self.finish(job, tvc_cli::exit_code(None, true), TIMED_OUT, text, false);
         }
     }
 
@@ -458,66 +850,114 @@ impl Controller {
         }
     }
 
-    /// Not connected: the verb ends with the text the OSD shows, exit 1 (not found) or 5.
+    /// No display to run on: the verb ends with the text the OSD shows, exit 1.
     fn finish_unreachable(&self, job: CliJob) {
-        let kind = match self.st.borrow().status {
-            MonitorStatus::NotFound => ResultKind::NotFound,
-            _ => ResultKind::NotResponding,
-        };
         let text = self.not_connected_text();
-        let json = failure_json(&job.command, &format!("{kind:?}"), &text);
+        let json = failure_json(&job.command, "NotFound", &text);
         let osd = !matches!(job.command, CliCommand::Get(_));
-        self.finish(job, tvc_cli::exit_code(Some(kind), true), &text, json, osd);
+        if osd {
+            OsdHost::show(&self.osd, Content::Message(&text));
+        }
+        self.finish(job, tvc_cli::exit_code(Some(ResultKind::NotFound), true), &text, json, osd);
+    }
+
+    /// A target that isn't connected answers with why.
+    fn unreachable_result(&self, id: &MonitorId) -> WriteResult {
+        let kind = match self.app.borrow().displays.get(id).map(|st| (st.attached, st.status)) {
+            Some((true, MonitorStatus::NotResponding)) => ResultKind::NotResponding,
+            _ => ResultKind::NotFound,
+        };
+        let message = self.with_view(Some(id), view::unreachable_text);
+        WriteResult { outcome: WriteOutcome::NotResponding, kind, message, value: None, kept: None }
+    }
+
+    /// Splits targets into the connected ones and answers for the rest.
+    fn split_connected(&self, targets: Vec<MonitorId>) -> (Vec<MonitorId>, Answers) {
+        let (live, rest): (Vec<MonitorId>, Vec<MonitorId>) = targets.into_iter().partition(|id| self.connected(id));
+        let done = rest.into_iter().map(|id| {
+            let r = self.unreachable_result(&id);
+            (id, r)
+        }).collect();
+        (live, done)
     }
 
     /// `--get`. This process's own run prints what its connect just read; a forwarded one re-reads the codes
     /// first, since a resident copy's values can be old.
-    fn run_get(self: &Rc<Self>, job: CliJob, target: GetTarget) {
-        if job.reply.is_none() || self.st.borrow().status != MonitorStatus::Connected {
-            self.answer_get(job, target);
+    fn run_get(self: &Rc<Self>, job: CliJob, target: GetTarget, targets: Vec<MonitorId>) {
+        let live: Vec<MonitorId> = targets.iter().filter(|id| self.connected(id)).cloned().collect();
+        if job.reply.is_none() || live.is_empty() {
+            self.answer_get(job, target, &targets);
             return;
         }
-        self.send(Command::Refresh(get_codes(target)));
-        let (tx, rx) = std::sync::mpsc::channel();
-        self.send(Command::Flush(tx));
+        let mut flushed = vec![];
+        for id in &live {
+            self.send_to(id, Command::Refresh(get_codes(target)));
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.send_to(id, Command::Flush(tx));
+            flushed.push(rx);
+        }
         std::thread::spawn(move || {
-            let _ = rx.recv_timeout(HEADLESS_BUDGET);
-            let _ = slint::invoke_from_event_loop(move || with(|c| c.answer_get(job, target)));
+            let deadline = Instant::now() + HEADLESS_BUDGET;
+            for rx in flushed {
+                let _ = rx.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+            }
+            let _ = slint::invoke_from_event_loop(move || with(|c| c.answer_get(job, target, &targets)));
         });
     }
 
-    fn answer_get(&self, job: CliJob, target: GetTarget) {
-        if self.st.borrow().status != MonitorStatus::Connected {
-            self.finish_unreachable(job);
-            return;
+    /// Prints the values: the 0.0.8 single object for one target, an array of objects with `id` and `name` for
+    /// several.
+    fn answer_get(&self, job: CliJob, target: GetTarget, targets: &[MonitorId]) {
+        struct Row {
+            id: MonitorId,
+            name: String,
+            exit: i32,
+            text: String,
+            json: String,
         }
-        let st = self.st.borrow();
-        let wants = |t: GetTarget| target == GetTarget::All || target == t;
-        let mut fields: Vec<(&str, String, String)> = vec![];
-        for (t, code, key) in [(GetTarget::Brightness, BRIGHTNESS, "brightness"), (GetTarget::Contrast, CONTRAST, "contrast")] {
-            if let Some(v) = st.value(code).filter(|_| wants(t)) {
-                fields.push((key, v.to_string(), v.to_string()));
-            }
-        }
-        if let Some(l) = st.value(INPUT).filter(|_| wants(GetTarget::Input)).map(|v| st.input_label(v)) {
-            fields.push(("input", l.clone(), json_str(&l)));
-        }
-        let mode = st.value(COLOUR_MODE).filter(|_| wants(GetTarget::ColourMode));
-        if let Some(l) = mode.and_then(|v| st.def(COLOUR_MODE).map(|d| view::label(d, v))) {
-            fields.push(("colourMode", l.clone(), json_str(&l)));
-        }
-        drop(st);
-        let text = fields.iter().map(|(k, v, _)| format!("{k}: {v}")).collect::<Vec<_>>().join("\n");
-        let json = format!("{{{}}}", fields.iter().map(|(k, _, j)| format!("\"{k}\":{j}")).collect::<Vec<_>>().join(","));
-        let kind = if fields.is_empty() { ResultKind::Unsupported } else { ResultKind::Ok };
-        if !self.headless.get() {
+        let rows: Vec<Row> = targets.iter().map(|id| {
+            let (name, fields) = {
+                let app = self.app.borrow();
+                let fields = app.displays.get(id).filter(|st| st.connected()).map(|st| get_fields(st, target));
+                (app.name(id), fields)
+            };
+            let (exit, text, json) = match fields {
+                Some(fields) => {
+                    let text = fields.iter().map(|(k, v, _)| format!("{k}: {v}")).collect::<Vec<_>>().join("\n");
+                    let json = format!("{{{}}}", fields.iter().map(|(k, _, j)| format!("\"{k}\":{j}")).collect::<Vec<_>>().join(","));
+                    let kind = if fields.is_empty() { ResultKind::Unsupported } else { ResultKind::Ok };
+                    (tvc_cli::exit_code(Some(kind), true), text, json)
+                }
+                None => {
+                    let r = self.unreachable_result(id);
+                    (tvc_cli::exit_code(Some(r.kind), true), r.message.clone(), failure_json(&job.command, "", &r.message))
+                }
+            };
+            Row { id: id.clone(), name, exit, text, json }
+        }).collect();
+        let (exit, text, json) = match rows.as_slice() {
+            [row] => (row.exit, row.text.clone(), row.json.clone()),
+            _ => (
+                tvc_cli::combined_exit_code(&rows.iter().map(|r| r.exit).collect::<Vec<_>>()),
+                rows.iter().map(|r| format!("{} ({})\n{}", r.name, r.id, r.text)).collect::<Vec<_>>().join("\n\n"),
+                format!("[{}]", rows.iter().map(|r| tagged(&r.id, &r.name, &r.json)).collect::<Vec<_>>().join(",")),
+            ),
+        };
+        if !self.headless.get() && exit == 0 {
             OsdHost::show(&self.osd, Content::Message(&text.replace('\n', " · ")));
         }
-        self.finish(job, tvc_cli::exit_code(Some(kind), true), &text, json, false);
+        self.finish(job, exit, &text, json, false);
     }
 
+    /// Why the shown display can't be used, for the OSD and the command line.
     fn not_connected_text(&self) -> String {
-        view::unreachable_text(&self.st.borrow())
+        let selected = self.app.borrow().selected.clone();
+        self.with_view(selected.as_ref(), view::unreachable_text)
+    }
+
+    /// Runs `f` on a display's state as the window would render it.
+    fn with_view<R>(&self, id: Option<&MonitorId>, f: impl FnOnce(&State) -> R) -> R {
+        f(self.app.borrow_mut().view_of(id))
     }
 
     /// Args forwarded by a second launch; `responder` gets the verb's exit code and output.
@@ -551,88 +991,178 @@ impl Controller {
         }
     }
 
+    /// The verb's targets; None until the display list is in.
+    fn cli_targets(&self, job: &CliJob) -> Option<Result<Vec<MonitorId>, CliError>> {
+        let app = self.app.borrow();
+        if !app.listed {
+            return None;
+        }
+        let attached = app.attached();
+        if attached.is_empty() {
+            return Some(Ok(vec![])); // not found (exit 1), whatever `--display` said
+        }
+        let rows: Vec<(String, String, bool)> = attached.iter()
+            .map(|id| (id.0.clone(), app.name(id), app.displays.get(id).is_some_and(|st| may_run(st, &job.command))))
+            .collect();
+        Some(cli_targets(job.display.as_deref(), &rows).map(|ids| ids.into_iter().map(MonitorId).collect()))
+    }
+
     pub fn run_cli(self: &Rc<Self>, job: CliJob) {
-        let status = self.st.borrow().status;
-        if status == MonitorStatus::Connecting {
+        if matches!(job.command, CliCommand::Show | CliCommand::Help) {
+            self.show_window();
+            return;
+        }
+        let targets = match self.cli_targets(&job) {
+            None => {
+                self.pending_cli.borrow_mut().push(job);
+                return;
+            }
+            Some(Err(e)) => {
+                let json = failure_json(&job.command, "Usage", &e.message);
+                self.finish(job, tvc_cli::EXIT_USAGE, &e.message, json, false);
+                return;
+            }
+            Some(Ok(targets)) => targets,
+        };
+        let connecting = {
+            let app = self.app.borrow();
+            targets.iter().any(|id| app.displays.get(id).is_some_and(|st| st.status == MonitorStatus::Connecting))
+        };
+        if connecting {
             self.pending_cli.borrow_mut().push(job);
             return;
         }
-        let origin = Origin::Cli;
-        let command = job.command.clone();
-        let cmd = match command {
-            CliCommand::Show | CliCommand::Help => {
-                self.show_window();
-                return;
-            }
-            CliCommand::Get(target) => {
-                self.run_get(job, target);
-                return;
-            }
-            CliCommand::Preset { night } => {
-                let st = self.st.borrow();
-                let preset = if night { st.settings.night.clone() } else { st.settings.day.clone() };
-                Command::ApplyPreset { preset, origin }
-            }
-            CliCommand::Input(ref choice) => {
-                // w4-controller: resolve per display. Until then: this PC, the n-th input, or the first of a kind.
-                let value = {
-                    let st = self.st.borrow();
-                    let inputs = &st.profile.inputs;
-                    match choice {
-                        InputChoice::This => Some(st.settings.this_machine_input),
-                        InputChoice::Slot(n) => inputs.get(usize::from(*n).wrapping_sub(1)).map(|i| i.code),
-                        InputChoice::Kind(kind) => inputs.iter().find(|i| i.kind == *kind).map(|i| i.code),
-                    }
-                };
-                let Some(value) = value.map(u16::from) else {
-                    const NO_INPUT: &str = "This monitor has no such input.";
-                    let json = failure_json(&job.command, "Unsupported", NO_INPUT);
-                    self.finish(job, tvc_cli::exit_code(Some(ResultKind::Unsupported), true), NO_INPUT, json, true);
-                    return;
-                };
-                if !job.yes && status == MonitorStatus::Connected {
-                    self.confirm_cli_input(job, value);
-                    return;
-                }
-                platform::wake::nudge();
-                Command::Set { code: INPUT, value, confirmed: true, origin }
-            }
-            CliCommand::Step { code, delta } => Command::Step { code, delta, origin },
-        };
-        self.dispatch(job, cmd);
-    }
-
-    /// Sends a verb's command and waits for its result, or ends it at once when the monitor isn't connected.
-    fn dispatch(&self, job: CliJob, cmd: Command) {
-        if self.st.borrow().status == MonitorStatus::Connected {
-            self.send(cmd);
-            self.waiting.borrow_mut().push_back(job);
-        } else {
-            self.osd_not_connected();
+        if targets.is_empty() {
             self.finish_unreachable(job);
+            return;
+        }
+        let origin = Origin::Cli;
+        match job.command.clone() {
+            CliCommand::Show | CliCommand::Help => {}
+            CliCommand::Get(target) => self.run_get(job, target, targets),
+            CliCommand::Preset { night } => {
+                let (live, done) = self.split_connected(targets);
+                let sends = self.presets(night, live, origin);
+                self.send_batch(origin, None, sends, done, Some(job));
+            }
+            CliCommand::Input(choice) => self.run_input(job, &choice, targets),
+            CliCommand::Step { code, delta } => {
+                let (live, done) = self.split_connected(targets);
+                let sends = live.into_iter().map(|id| (id, Command::Step { code, delta, origin })).collect();
+                self.send_batch(origin, Some(code), sends, done, Some(job));
+            }
         }
     }
 
-    /// `--input` without `--yes`: a resident copy asks on screen; a headless run exits 3.
-    fn confirm_cli_input(self: &Rc<Self>, job: CliJob, value: u16) {
+    /// `--input`. One on-screen confirm covers every target; it is needed without `--yes`, and always when a
+    /// target has no verified profile. A headless run can't ask, so it exits 3.
+    fn run_input(self: &Rc<Self>, job: CliJob, choice: &InputChoice, targets: Vec<MonitorId>) {
+        let (live, mut done) = self.split_connected(targets);
+        let mut sends = vec![];
+        for id in live {
+            match self.input_value(&id, choice) {
+                Some(value) => sends.push((id, value)),
+                None => {
+                    let name = self.app.borrow().name(&id);
+                    let message = format!("{name} has no such input.");
+                    done.push((id, WriteResult {
+                        outcome: WriteOutcome::Blocked,
+                        kind: ResultKind::Unsupported,
+                        message,
+                        value: None,
+                        kept: None,
+                    }));
+                }
+            }
+        }
+        let experimental = sends.iter().any(|(id, _)| self.is_experimental(id));
+        if sends.is_empty() || (job.yes && !experimental) {
+            self.send_inputs(Origin::Cli, sends, done, Some(job));
+            return;
+        }
         if self.headless.get() && job.reply.is_none() {
-            OsdHost::show(&self.osd, Content::Message(NEEDS_YES));
-            let json = failure_json(&job.command, "NeedsConfirmation", NEEDS_YES);
-            self.finish(job, tvc_cli::EXIT_NEEDS_CONFIRMATION, NEEDS_YES, json, true);
+            let text = if job.yes { NEEDS_SCREEN } else { NEEDS_YES };
+            OsdHost::show(&self.osd, Content::Message(text));
+            let json = failure_json(&job.command, "NeedsConfirmation", text);
+            self.finish(job, tvc_cli::EXIT_NEEDS_CONFIRMATION, text, json, true);
             return;
         }
         self.show_window();
+        let dialog = self.inputs_dialog(&sends);
         let pending = AwaitingConfirm(Some(job));
         self.ask(
-            self.input_dialog(value),
+            dialog,
             Box::new(move |c: &Rc<Controller>| {
                 let mut pending = pending;
                 if let Some(job) = pending.0.take() {
-                    platform::wake::nudge();
-                    c.dispatch(job, Command::Set { code: INPUT, value, confirmed: true, origin: Origin::Cli });
+                    c.send_inputs(Origin::Cli, sends, done, Some(job));
                 }
             }),
         );
+    }
+
+    /// The input `choice` means on a display, None when it has none.
+    fn input_value(&self, id: &MonitorId, choice: &InputChoice) -> Option<u16> {
+        let app = self.app.borrow();
+        let this_pc = app.settings.monitor(id).this_machine_input;
+        app.displays.get(id)?.input_for(choice, this_pc)
+    }
+
+    /// Input switches the app has confirmed as its rules require.
+    fn send_inputs(self: &Rc<Self>, origin: Origin, sends: Vec<(MonitorId, u16)>, done: Answers,
+        job: Option<CliJob>) {
+        if !sends.is_empty() {
+            platform::wake::nudge();
+        }
+        let sends = sends.into_iter()
+            .map(|(id, value)| (id, Command::Set { code: INPUT, value, confirmed: true, origin }))
+            .collect();
+        self.send_batch(origin, Some(INPUT), sends, done, job);
+    }
+
+    /// Switches inputs, after one confirm for all of them when `confirm`.
+    fn switch_inputs(self: &Rc<Self>, origin: Origin, sends: Vec<(MonitorId, u16)>, confirm: bool) {
+        if sends.is_empty() {
+            return;
+        }
+        if !confirm {
+            self.send_inputs(origin, sends, vec![], None);
+            return;
+        }
+        if origin != Origin::Window {
+            self.show_window();
+        }
+        let dialog = self.inputs_dialog(&sends);
+        self.ask(dialog, Box::new(move |c: &Rc<Controller>| c.send_inputs(origin, sends, vec![], None)));
+    }
+
+    /// A hotkey or tray input action, on the displays it targets; a display without a verified profile asks first.
+    fn input_action(self: &Rc<Self>, origin: Origin, choice: &InputChoice) {
+        let targets = self.pointer_targets();
+        if targets.is_empty() {
+            self.osd_not_connected();
+            return;
+        }
+        let sends: Vec<(MonitorId, u16)> = targets.into_iter()
+            .filter_map(|id| {
+                let value = self.input_value(&id, choice)?;
+                Some((id, value))
+            })
+            .collect();
+        let confirm = sends.iter().any(|(id, _)| self.is_experimental(id));
+        self.switch_inputs(origin, sends, confirm);
+    }
+
+    /// Each display's own Day or Night preset.
+    fn presets(&self, night: bool, targets: Vec<MonitorId>, origin: Origin) -> Vec<(MonitorId, Command)> {
+        let app = self.app.borrow();
+        targets.into_iter()
+            .map(|id| {
+                let own = app.settings.monitor(&id);
+                let preset = if night { own.night } else { own.day };
+                (id, Command::ApplyPreset { preset, origin })
+            })
+            .collect()
     }
 
     fn quit(&self) {
@@ -645,8 +1175,8 @@ impl Controller {
     fn apply_settings(self: &Rc<Self>) {
         self.arm_auto();
         let (background, start) = {
-            let st = self.st.borrow();
-            (st.settings.background_mode, st.settings.start_with_windows)
+            let app = self.app.borrow();
+            (app.settings.background_mode, app.settings.start_with_windows)
         };
         if !self.demo {
             if let Err(e) = platform::autostart::apply(start) {
@@ -672,29 +1202,60 @@ impl Controller {
         tray.set_brightness_items(cfg!(target_os = "linux"));
         tray.on_open(|| with(|c| c.show_window()));
         tray.on_preset(|i| with(|c| c.apply_preset(i as usize, Origin::Tray)));
-        tray.on_switch_to_me(|| {
+        tray.on_switch_to_me(|| with(|c| c.input_action(Origin::Tray, &InputChoice::This)));
+        tray.on_step_brightness(|d| {
             with(|c| {
-                let code = c.st.borrow().settings.this_machine_input as u16;
-                platform::wake::nudge();
-                c.send(Command::Set { code: INPUT, value: code, confirmed: false, origin: Origin::Tray });
+                let targets = c.pointer_targets();
+                c.step(Origin::Tray, BRIGHTNESS, d, targets);
             })
         });
-        tray.on_step_brightness(|d| with(|c| c.send(Command::Step { code: BRIGHTNESS, delta: d, origin: Origin::Tray })));
         tray.on_quit(|| with(|c| c.quit()));
-        // Multi-display tray rows; w4-controller implements them.
-        tray.on_step_display(|_id, _delta| {});
-        tray.on_set_together(|_on| {});
+        tray.on_step_display(|id, delta| {
+            with(|c| {
+                let targets = if id.is_empty() {
+                    let app = c.app.borrow();
+                    let included: Vec<MonitorId> =
+                        app.included().into_iter().filter(|id| app.displays.get(id).is_some_and(State::connected)).collect();
+                    included
+                } else {
+                    vec![MonitorId(id.to_string())]
+                };
+                c.step(Origin::Tray, BRIGHTNESS, delta, targets);
+            })
+        });
+        tray.on_set_together(|on| with(|c| c.set_together(on)));
         *self.tray.borrow_mut() = Some(tray);
         self.update_tray();
     }
 
+    /// The tray rows, and its tip and badge from the shown display (another one when that isn't connected).
     fn update_tray(&self) {
         let tray = self.tray.borrow();
         let Some(tray) = tray.as_ref() else { return };
-        let st = self.st.borrow();
-        tray.set_connected(st.status == MonitorStatus::Connected);
-        tray.set_tip(crate::tray::tooltip(st.status, &view::header_name(&st)).into());
-        tray.set_image(crate::tray::icon(tray, st.status, platform::taskbar::is_light()));
+        let app = self.app.borrow();
+        let rows: Vec<TrayDisplay> = app.attached().iter()
+            .filter_map(|id| {
+                let st = app.displays.get(id)?;
+                Some(TrayDisplay { id: id.0.as_str().into(), name: app.name(id).into(), connected: st.connected() })
+            })
+            .collect();
+        let selected = app.state(app.selected.as_ref());
+        let shown = if selected.connected() {
+            selected
+        } else {
+            app.connected().first().map_or(selected, |id| app.state(Some(id)))
+        };
+        let name = Some(shown.profile.short_name.trim())
+            .filter(|n| !n.is_empty())
+            .or_else(|| shown.monitor.as_ref().map(|m| m.info.name.trim()))
+            .unwrap_or("")
+            .to_string();
+        tray.set_connected(rows.iter().any(|r| r.connected));
+        tray.set_tip(crate::tray::tooltip(shown.status, &name).into());
+        tray.set_image(crate::tray::icon(tray, shown.status, platform::taskbar::is_light()));
+        tray.set_together(app.together);
+        tray.set_together_available(app.together_available());
+        tray.set_displays(ModelRc::new(VecModel::from(rows)));
     }
 
     /// Registers the shortcuts while Run in background is on; suspends them otherwise.
@@ -709,15 +1270,15 @@ impl Controller {
             let created = platform::hotkeys::Hotkeys::new(|id| {
                 let _ = slint::invoke_from_event_loop(move || with(|c| c.on_hotkey(id)));
             });
-            self.st.borrow_mut().hotkeys_available = created.is_some();
+            self.app.borrow_mut().hotkeys_available = created.is_some();
             *self.hotkeys.borrow_mut() = created;
         }
         let map: Vec<(usize, platform::hotkeys::Gesture)> = {
-            let st = self.st.borrow();
+            let app = self.app.borrow();
             Action::ALL
                 .iter()
                 .filter_map(|a| {
-                    let g = Gesture::parse(st.settings.hotkeys.get(a)?)?;
+                    let g = Gesture::parse(app.settings.hotkeys.get(a)?)?;
                     Some((a.id() as usize, platform::hotkeys::Gesture { mods: g.mods, vk: g.vk }))
                 })
                 .collect()
@@ -726,8 +1287,23 @@ impl Controller {
             Some(h) => h.register(&map),
             None => return,
         };
-        self.st.borrow_mut().failed_hotkeys =
+        self.app.borrow_mut().failed_hotkeys =
             Action::ALL.iter().copied().filter(|a| failed.contains(&(a.id() as usize))).collect();
+    }
+
+    /// The connected displays a hotkey or tray action goes to: all of them, or the one under the pointer when that
+    /// is set and known (else all).
+    fn pointer_targets(&self) -> Vec<MonitorId> {
+        let app = self.app.borrow();
+        let connected = app.connected();
+        if app.settings.hotkey_target == HotkeyTarget::UnderPointer {
+            let screens: Vec<_> =
+                connected.iter().filter_map(|id| Some((id.clone(), app.displays.get(id)?.screen?))).collect();
+            if let Some(id) = platform::hotkeys::pointer().and_then(|p| display_at(p, &screens)) {
+                return vec![id];
+            }
+        }
+        connected
     }
 
     fn on_hotkey(self: &Rc<Self>, id: usize) {
@@ -736,148 +1312,231 @@ impl Controller {
             self.show_window();
             return;
         }
-        if self.st.borrow().status != MonitorStatus::Connected {
+        if let Some(choice) = action.input_choice() {
+            self.input_action(Origin::Hotkey, &choice);
+            return;
+        }
+        if matches!(action, Action::DayPreset | Action::NightPreset) {
+            self.apply_preset(usize::from(action == Action::NightPreset), Origin::Hotkey);
+            return;
+        }
+        let (code, delta) = match action {
+            Action::BrightnessUp => (BRIGHTNESS, HOTKEY_STEP),
+            Action::BrightnessDown => (BRIGHTNESS, -HOTKEY_STEP),
+            Action::ContrastUp => (CONTRAST, HOTKEY_STEP),
+            Action::ContrastDown => (CONTRAST, -HOTKEY_STEP),
+            _ => return,
+        };
+        let targets = self.pointer_targets();
+        self.step(Origin::Hotkey, code, delta, targets);
+    }
+
+    fn step(self: &Rc<Self>, origin: Origin, code: u8, delta: i32, targets: Vec<MonitorId>) {
+        if targets.is_empty() {
             self.osd_not_connected();
             return;
         }
-        let origin = Origin::Hotkey;
-        let this_pc = self.st.borrow().settings.this_machine_input as u16;
-        let input = |kind: &str| self.st.borrow().profile.inputs.iter().find(|i| i.kind == kind).map(|i| i.code as u16);
-        let cmd = match action {
-            Action::BrightnessUp => Command::Step { code: BRIGHTNESS, delta: HOTKEY_STEP, origin },
-            Action::BrightnessDown => Command::Step { code: BRIGHTNESS, delta: -HOTKEY_STEP, origin },
-            Action::ContrastUp => Command::Step { code: CONTRAST, delta: HOTKEY_STEP, origin },
-            Action::ContrastDown => Command::Step { code: CONTRAST, delta: -HOTKEY_STEP, origin },
-            Action::DayPreset | Action::NightPreset => {
-                self.apply_preset(usize::from(action == Action::NightPreset), origin);
-                return;
-            }
-            Action::InputHdmi | Action::InputDp | Action::InputUsbC => {
-                let kind = match action {
-                    Action::InputHdmi => "hdmi",
-                    Action::InputDp => "dp",
-                    _ => "usbc",
-                };
-                let Some(value) = input(kind) else { return };
-                platform::wake::nudge();
-                Command::Set { code: INPUT, value, confirmed: false, origin }
-            }
-            Action::SwitchToMe => {
-                platform::wake::nudge();
-                Command::Set { code: INPUT, value: this_pc, confirmed: false, origin }
-            }
-            Action::OpenPanel => unreachable!(),
-        };
-        self.send(cmd);
+        let sends = targets.into_iter().map(|id| (id, Command::Step { code, delta, origin })).collect();
+        self.send_batch(origin, Some(code), sends, vec![], None);
     }
 
-    fn apply_preset(&self, index: usize, origin: Origin) {
-        let preset = {
-            let st = self.st.borrow();
-            if index == 0 { st.settings.day.clone() } else { st.settings.night.clone() }
-        };
-        self.send(Command::ApplyPreset { preset, origin });
+    /// Day (0) or Night (1): from the window on the shown displays, else on the hotkey targets.
+    fn apply_preset(self: &Rc<Self>, index: usize, origin: Origin) {
+        let targets = if origin == Origin::Window { self.app.borrow().shown() } else { self.pointer_targets() };
+        if targets.is_empty() && origin != Origin::Window {
+            self.osd_not_connected();
+            return;
+        }
+        let sends = self.presets(index == 1, targets, origin);
+        self.send_batch(origin, None, sends, vec![], None);
     }
 
     // ---------------------------------------------------------------------------------------------------------
-    // Engine events
+    // Hub and engine events
 
-    /// A power change goes to every engine; a display change rescans and rechecks the tracked monitor.
+    /// A power change goes to every engine; a display change rescans and rechecks every display.
     fn on_system(&self, power: Option<PowerState>) {
         match power {
             Some(state) => self.send_hub(HubCommand::Power(state)),
             None => {
                 self.send_hub(HubCommand::Rescan);
-                if self.tracked.borrow().is_some() {
-                    self.send(Command::RecheckAfterEvent);
+                for id in self.app.borrow().attached() {
+                    self.send_to(&id, Command::RecheckAfterEvent);
                 }
             }
         }
     }
 
-    /// Hub events: the tracked monitor's engine events go to `on_event`; the rest pick or drop the tracked monitor.
     pub fn on_hub(self: &Rc<Self>, event: HubEvent) {
         match event {
-            HubEvent::Monitor { id, event } => {
-                if self.tracked.borrow().as_ref() == Some(&id) {
-                    self.on_event(event);
-                }
-            }
+            HubEvent::Monitor { id, event } => self.on_event(&id, event),
             HubEvent::Monitors(list) => self.on_monitors(list),
-            HubEvent::Detached(id) => {
-                if self.tracked.borrow().as_ref() == Some(&id) {
-                    log::write(&format!("Monitor {id} detached"));
-                    *self.tracked.borrow_mut() = None;
-                    self.on_status(MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+            HubEvent::Attached(m) => self.on_attached(&m),
+            HubEvent::Detached(id) => self.on_detached(&id),
+            HubEvent::Batch { op, origin, code, results } => {
+                let batch = self.batches.borrow_mut().remove(&op);
+                match batch {
+                    Some(mut b) => {
+                        b.results.extend(results);
+                        self.on_results(b.origin, b.code, None, b.results, b.job);
+                    }
+                    None => self.on_results(origin, code, None, results, None),
                 }
             }
-            HubEvent::Attached(_) | HubEvent::Batch { .. } => {}
         }
     }
 
-    /// Explains what is attached, and tracks the first DDC monitor when none is; none at all is `NotFound`.
+    /// The list after a rescan: every controllable display gets a state (connected on `Attached`); the shown
+    /// display is kept while attached, else the first one, preferring the built-in profile's model.
     fn on_monitors(self: &Rc<Self>, list: Result<Vec<Monitor>, ListError>) {
-        let monitors = list.ok();
-        let edid = self.st.borrow().profile.edid_id.clone();
-        if self.tracked.borrow().is_none() {
-            let ddc: Vec<&Monitor> = monitors.iter().flatten().filter(|m| m.info.backend == BackendKind::Ddc).collect();
-            let pick = ddc.iter().find(|m| m.info.identity.edid_id == edid).or(ddc.first());
-            if let Some(m) = pick {
-                log::write(&format!("Monitor {} attached", m.id));
-                *self.tracked.borrow_mut() = Some(m.id.clone());
-                let first = self.first_command.borrow_mut().take().unwrap_or(Command::Connect);
-                self.send(first);
-                if !self.headless.get() {
-                    self.send(Command::RequestReconnect);
+        let blank_lost = {
+            let mut app = self.app.borrow_mut();
+            let AppState { settings, displays, blank, .. } = &mut *app;
+            if let Ok(list) = &list {
+                for m in list.iter().filter(|m| m.info.backend != BackendKind::None) {
+                    let st = displays.entry(m.id.clone()).or_insert_with(|| {
+                        let mut st = State::new(blank.profile.clone());
+                        st.auto_phase = settings.monitor(&m.id).last_applied_phase;
+                        st.level = level_for(&m.info, None);
+                        st
+                    });
+                    if !st.attached {
+                        st.attached = true;
+                        st.status = MonitorStatus::Connecting;
+                        st.failure = None;
+                    }
+                    st.screen = tvc_ddc::screen_rect(&m.info.target);
+                    st.monitor = Some(m.clone());
                 }
-            } else {
-                let st = self.st.borrow();
-                let changed = (st.status, st.failure) != (MonitorStatus::NotFound, Some(LinkFailure::NotFound));
-                drop(st);
-                if changed {
-                    self.on_status(MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+                for (id, st) in displays.iter_mut() {
+                    if st.attached && !list.iter().any(|m| &m.id == id) {
+                        st.attached = false;
+                    }
                 }
             }
+            app.monitors = list.ok();
+            app.listed = true;
+            let attached = app.attached();
+            if app.selected.as_ref().is_none_or(|s| !attached.contains(s)) {
+                let edid = app.blank.profile.edid_id.clone();
+                let preferred = attached.iter().find(|id| {
+                    app.displays.get(id).and_then(|st| st.monitor.as_ref()).is_some_and(|m| m.info.identity.edid_id == edid)
+                });
+                app.selected = preferred.or(attached.first()).cloned();
+            }
+            if !app.together_available() {
+                app.together = false;
+            }
+            let lost = attached.is_empty() && (app.blank.status, app.blank.failure) != (MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+            if lost {
+                app.blank.status = MonitorStatus::NotFound;
+                app.blank.failure = Some(LinkFailure::NotFound);
+            }
+            lost
+        };
+        if blank_lost {
+            self.arm_banner_hold();
         }
-        let tracked = self.tracked.borrow().clone();
-        self.st.borrow_mut().displays = monitors.map(|list| {
-            list.iter()
-                .map(|m| AttachedDisplay {
-                    name: m.info.name.clone(),
-                    edid_id: m.info.identity.edid_id.clone(),
-                    kind: m.info.kind,
-                    tracked: tracked.as_ref() == Some(&m.id),
-                })
-                .collect()
-        });
+        if self.window.borrow().is_some() {
+            self.refresh_setup_hints();
+        }
+        self.run_pending();
+        self.update_tray();
         self.render();
     }
 
-    pub fn on_event(self: &Rc<Self>, event: Event) {
-        match event {
-            Event::Status { status, failure } => self.on_status(status, failure),
-            Event::Controls(rc) => {
-                let mut st = self.st.borrow_mut();
-                if st.controls.is_some() {
-                    self.caps_live.set(true);
+    /// A display was attached: its first connect, the 0.0.8 settings it inherits, a retry burst when resident.
+    fn on_attached(self: &Rc<Self>, m: &Monitor) {
+        if m.info.backend == BackendKind::None {
+            return;
+        }
+        log::write(&format!("Monitor {} attached", m.id));
+        let adopted = {
+            let mut app = self.app.borrow_mut();
+            let adopted = app.settings.adopt_legacy(&m.id, &m.info.identity);
+            if adopted {
+                if let Err(e) = self.store.save(&app.settings) {
+                    log::write(&format!("Settings save failed: {e}"));
                 }
-                st.controls = Some(rc);
-                st.reading_capabilities = false;
-                drop(st);
+                // The inherited 0.0.8 phase now belongs to this display.
+                let phase = app.settings.monitor(&m.id).last_applied_phase;
+                if let Some(st) = app.displays.get_mut(&m.id) {
+                    st.auto_phase = phase;
+                }
+            }
+            adopted
+        };
+        if adopted {
+            log::write(&format!("Settings: {} takes the 0.0.8 input and colour modes", m.id));
+        }
+        let first = self.first_command.borrow().clone().unwrap_or(Command::Connect);
+        self.send_to(&m.id, first);
+        if !self.headless.get() {
+            self.send_to(&m.id, Command::RequestReconnect);
+        }
+    }
+
+    /// A display left: it stays listed as disconnected, and batches stop waiting for it.
+    fn on_detached(self: &Rc<Self>, id: &MonitorId) {
+        log::write(&format!("Monitor {id} detached"));
+        match self.app.borrow_mut().displays.get_mut(id) {
+            Some(st) => st.attached = false,
+            None => return,
+        }
+        self.on_status(id, MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+        let gone = self.unreachable_result(id);
+        let ops: Vec<OpId> =
+            self.batches.borrow().iter().filter(|(_, b)| b.waiting.contains(id)).map(|(op, _)| *op).collect();
+        for op in ops {
+            self.collect(op, id, gone.clone());
+        }
+    }
+
+    fn on_event(self: &Rc<Self>, id: &MonitorId, event: Event) {
+        if !self.app.borrow().displays.contains_key(id) {
+            return;
+        }
+        match event {
+            Event::Status { status, failure } => self.on_status(id, status, failure),
+            Event::Controls(rc) => {
+                {
+                    let mut app = self.app.borrow_mut();
+                    let Some(st) = app.displays.get_mut(id) else { return };
+                    if st.controls.is_some() {
+                        st.caps_live = true;
+                    }
+                    if let Some(m) = &st.monitor {
+                        st.level = level_for(&m.info, Some(&rc));
+                    }
+                    st.profile = rc.profile.clone();
+                    st.controls = Some(rc);
+                    st.reading_capabilities = false;
+                }
+                self.update_tray();
                 self.render();
             }
             Event::Value { code, reading } => {
-                let mut st = self.st.borrow_mut();
-                st.values.insert(code, reading);
-                // A reading that disagrees with what the user just moved pushes the control back.
-                st.bump(code);
-                drop(st);
+                if let Some(st) = self.app.borrow_mut().displays.get_mut(id) {
+                    st.values.insert(code, reading);
+                    // A reading that disagrees with what the user just moved pushes the control back.
+                    st.bump(code);
+                }
                 self.render();
             }
-            Event::Result { origin, code, preset, result, .. } => self.on_result(origin, code, preset, result),
-            Event::Finder(f) => self.on_finder(f),
+            Event::Result { origin, code, preset, result, op } => {
+                let result = match op {
+                    Some(op) => self.collect(op, id, result),
+                    None => Some(result),
+                };
+                if let Some(result) = result {
+                    self.on_results(origin, code, preset, vec![(id.clone(), result)], None);
+                }
+            }
+            Event::Finder(f) => self.on_finder(id, f),
             Event::Asleep(asleep) => {
-                self.st.borrow_mut().asleep = asleep;
+                if let Some(st) = self.app.borrow_mut().displays.get_mut(id) {
+                    st.asleep = asleep;
+                }
                 if !asleep {
                     self.auto_tick(); // catch up on a Day/Night change missed while asleep
                 }
@@ -885,15 +1544,18 @@ impl Controller {
                 self.render();
             }
             Event::SafeMode(on) => {
-                self.st.borrow_mut().safe_mode = on;
+                if let Some(st) = self.app.borrow_mut().displays.get_mut(id) {
+                    st.safe_mode = on;
+                }
                 self.render();
             }
         }
     }
 
-    fn on_status(self: &Rc<Self>, status: MonitorStatus, failure: Option<LinkFailure>) {
-        {
-            let mut st = self.st.borrow_mut();
+    fn on_status(self: &Rc<Self>, id: &MonitorId, status: MonitorStatus, failure: Option<LinkFailure>) {
+        let read_caps = {
+            let mut app = self.app.borrow_mut();
+            let Some(st) = app.displays.get_mut(id) else { return };
             if st.status != status {
                 st.retrying = false;
             }
@@ -906,7 +1568,6 @@ impl Controller {
                 MonitorStatus::Connected => {
                     st.shown_status = (Some(status), None);
                     st.values_stale = false; // the connect re-read them
-                    self.banner_hold.stop();
                 }
                 MonitorStatus::NotFound | MonitorStatus::NotResponding => {
                     st.range_note.clear();
@@ -917,28 +1578,20 @@ impl Controller {
                 }
                 MonitorStatus::Connecting => {}
             }
-        }
+            status == MonitorStatus::Connected && !st.caps_live
+        };
         if status != MonitorStatus::Connected {
             self.arm_banner_hold();
         }
         if status != MonitorStatus::Connecting {
-            let pending = std::mem::take(&mut *self.pending_cli.borrow_mut());
-            for job in pending {
-                self.run_cli(job);
-            }
-            // Lost mid-verb (or the engine stopped): end the headless run now rather than at the timeout.
-            if self.headless.get() && status != MonitorStatus::Connected && !self.done.get() {
-                if let Some(job) = self.own_job() {
-                    self.osd_not_connected();
-                    self.finish_unreachable(job);
-                }
-            }
+            self.run_pending();
             if status == MonitorStatus::Connected {
                 self.auto_tick();
-                if !self.headless.get() && !self.caps_live.get() {
+                if !self.headless.get() && read_caps {
                     // Connected on the cached capabilities; refresh them from the monitor once things are quiet.
                     // Asked again on each connect until a live read lands (the engine ignores it after one).
-                    slint::Timer::single_shot(Duration::from_secs(2), || with(|c| c.read_capabilities()));
+                    let id = id.clone();
+                    slint::Timer::single_shot(Duration::from_secs(2), move || with(|c| c.read_capabilities(&id)));
                 }
             }
         }
@@ -949,25 +1602,36 @@ impl Controller {
         self.render();
     }
 
+    /// Runs the verbs that were waiting; each waits again if its targets still aren't ready.
+    fn run_pending(self: &Rc<Self>) {
+        let pending = std::mem::take(&mut *self.pending_cli.borrow_mut());
+        for job in pending {
+            self.run_cli(job);
+        }
+    }
+
     /// Asks the engine for a live capability read; the window shows progress until its `Controls` event, or until
     /// the engine has handled the command (it sends no `Controls` when it skips the read, the read fails or the
     /// string matches the cached one).
-    fn read_capabilities(&self) {
+    fn read_capabilities(&self, id: &MonitorId) {
         {
-            let mut st = self.st.borrow_mut();
-            if st.status != MonitorStatus::Connected {
+            let mut app = self.app.borrow_mut();
+            let Some(st) = app.displays.get_mut(id).filter(|st| st.connected()) else {
                 return; // lost in the meantime: the next connect asks again
-            }
+            };
             st.reading_capabilities = true;
         }
-        self.send(Command::ReadCapabilities);
+        self.send_to(id, Command::ReadCapabilities);
         let (tx, rx) = std::sync::mpsc::channel();
-        self.send(Command::Flush(tx));
+        self.send_to(id, Command::Flush(tx));
+        let id = id.clone();
         std::thread::spawn(move || {
             let _ = rx.recv();
-            let _ = slint::invoke_from_event_loop(|| {
+            let _ = slint::invoke_from_event_loop(move || {
                 with(|c| {
-                    c.st.borrow_mut().reading_capabilities = false;
+                    if let Some(st) = c.app.borrow_mut().displays.get_mut(&id) {
+                        st.reading_capabilities = false;
+                    }
                     c.render();
                 })
             });
@@ -979,131 +1643,209 @@ impl Controller {
         self.banner_hold.start(slint::TimerMode::SingleShot, BANNER_HOLD, || {
             with(|c| {
                 {
-                    let mut st = c.st.borrow_mut();
-                    st.shown_status = (Some(st.status), st.failure);
+                    let mut app = c.app.borrow_mut();
+                    let AppState { displays, blank, .. } = &mut *app;
+                    for st in displays.values_mut().chain([blank]) {
+                        st.shown_status = (Some(st.status), st.failure);
+                    }
                 }
                 c.render();
             })
         });
     }
 
-    fn on_result(self: &Rc<Self>, origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult) {
+    /// Results by origin; several come from one batch, in display order.
+    fn on_results(self: &Rc<Self>, origin: Origin, code: Option<u8>, preset: Option<String>,
+        mut results: Answers, job: Option<CliJob>) {
+        let order = self.app.borrow().ordered();
+        results.sort_by_key(|(id, _)| order.iter().position(|o| o == id));
         let what = match (code, &preset) {
             (Some(c), _) => format!("0x{c:02X}"),
             (None, Some(name)) => format!("preset {name}"),
-            (None, None) => "restore".into(),
+            (None, None) if origin == Origin::Window => "restore".into(),
+            (None, None) => "preset".into(),
         };
-        log::write(&format!("{} {what}: {:?}, {}", origin_name(origin), result.kind, result.message));
+        for (id, r) in &results {
+            log::write(&format!("{} {what} [{id}]: {:?}, {}", origin_name(origin), r.kind, r.message));
+        }
         match origin {
-            Origin::Window => self.result_in_window(code, preset, &result),
+            Origin::Window => {
+                for (id, r) in &results {
+                    self.result_in_window(id, code, preset.clone(), r);
+                }
+            }
             // automatic presets stay quiet; only a failure is worth a word, and only in an open window.
             Origin::Schedule => {
-                if result.outcome != WriteOutcome::Ok {
-                    self.auto_phase.set(None); // try again on the next tick
-                    self.show_toast(&format!("Automatic Day/Night: {}", result.message));
-                } else {
-                    self.remember_phase();
+                for (id, r) in &results {
+                    if r.outcome != WriteOutcome::Ok {
+                        if let Some(st) = self.app.borrow_mut().displays.get_mut(id) {
+                            st.auto_phase = None; // try again on the next tick
+                        }
+                        self.show_toast(&format!("Automatic Day/Night: {}", r.message));
+                    } else {
+                        self.remember_phase(id);
+                    }
                 }
             }
             Origin::Cli => {
-                self.osd_result(code, &result);
-                let job = self.waiting.borrow_mut().pop_front();
+                self.osd_results(code, &results);
                 if let Some(job) = job {
-                    let ok = result.outcome == WriteOutcome::Ok;
-                    let text = self.result_text(code, &result);
-                    let json = result_json(ok, &format!("{:?}", result.kind), &text);
-                    self.finish(job, tvc_cli::exit_code(Some(result.kind), true), &text, json, true);
+                    self.finish_results(job, code, &results);
                 }
             }
-            Origin::Hotkey | Origin::Tray => self.osd_result(code, &result),
+            Origin::Hotkey | Origin::Tray => self.osd_results(code, &results),
         }
     }
 
-    fn result_in_window(self: &Rc<Self>, code: Option<u8>, preset: Option<String>, result: &WriteResult) {
-        let ok = result.outcome == WriteOutcome::Ok;
-        let mut st = self.st.borrow_mut();
-        match code {
-            Some(c @ (BRIGHTNESS | CONTRAST)) => {
-                match (result.outcome, result.kept) {
-                    (WriteOutcome::Ok, _) => st.range_note.clear(),
-                    (WriteOutcome::Blocked, Some(kept)) => {
-                        let name = if c == BRIGHTNESS { "brightness" } else { "contrast" };
-                        let lock = if c == BRIGHTNESS { st.profile.brightness_lock_note.clone() } else { String::new() };
-                        st.range_note = format!("Your monitor kept {name} at {kept}{lock}");
-                    }
-                    (WriteOutcome::NotResponding, _) => {}
-                    _ => st.range_note = result.message.clone(),
-                }
-                if !ok {
-                    st.bump(c); // snap the slider back to the monitor's value
-                }
-            }
-            Some(c) => {
-                let action = st.def(c).is_some_and(|d| d.kind == ControlKind::Action);
-                if ok {
-                    st.notes.remove(&c);
-                    if action {
-                        // A reset changes many values: re-read every non-action card.
-                        let codes: Vec<u8> = st
-                            .controls
-                            .iter()
-                            .flat_map(|rc| rc.controls.values())
-                            .filter(|d| d.kind != ControlKind::Action && d.section != Section::Hidden)
-                            .map(|d| d.code)
-                            .collect();
-                        self.send(Command::Refresh(codes));
-                    }
-                } else if result.outcome != WriteOutcome::NotResponding {
-                    st.notes.insert(c, result.message.clone());
-                    if view::GAINS.contains(&c) || c == INPUT || c == COLOUR_MODE {
-                        drop(st);
-                        self.show_toast(&result.message);
-                        st = self.st.borrow_mut();
-                    }
-                }
-                st.bump(c);
-            }
-            None if preset.is_some() => {
-                if ok {
-                    st.preset_note.clear();
-                } else if result.outcome != WriteOutcome::NotResponding {
-                    st.preset_note = result.message.clone();
-                    drop(st);
-                    self.show_toast(&result.message);
-                    st = self.st.borrow_mut();
-                }
-            }
-            None => st.restore_text = if ok { "Backup restored".into() } else { result.message.clone() },
+    /// A write verb's answer: the 0.0.8 line or object for one target; for several a line each, or an array of
+    /// objects with `id` and `name`, and the first failure's exit code.
+    fn finish_results(&self, job: CliJob, code: Option<u8>, results: &[(MonitorId, WriteResult)]) {
+        struct Row {
+            id: MonitorId,
+            name: String,
+            exit: i32,
+            text: String,
+            json: String,
         }
-        drop(st);
+        let rows: Vec<Row> = results.iter().map(|(id, r)| {
+            let text = self.result_text(id, code, r);
+            let json = result_json(r.outcome == WriteOutcome::Ok, &format!("{:?}", r.kind), &text);
+            Row { id: id.clone(), name: self.app.borrow().name(id), exit: tvc_cli::exit_code(Some(r.kind), true), text, json }
+        }).collect();
+        let (exit, text, json) = match rows.as_slice() {
+            [row] => (row.exit, row.text.clone(), row.json.clone()),
+            _ => (
+                tvc_cli::combined_exit_code(&rows.iter().map(|r| r.exit).collect::<Vec<_>>()),
+                rows.iter().map(|r| format!("{}: {}", r.name, r.text)).collect::<Vec<_>>().join("\n"),
+                format!("[{}]", rows.iter().map(|r| tagged(&r.id, &r.name, &r.json)).collect::<Vec<_>>().join(",")),
+            ),
+        };
+        self.finish(job, exit, &text, json, true);
+    }
+
+    fn result_in_window(&self, id: &MonitorId, code: Option<u8>, preset: Option<String>, result: &WriteResult) {
+        let ok = result.outcome == WriteOutcome::Ok;
+        let mut toast = None;
+        let mut refresh = None;
+        {
+            let mut app = self.app.borrow_mut();
+            let Some(st) = app.displays.get_mut(id) else { return };
+            match code {
+                Some(c @ (BRIGHTNESS | CONTRAST)) => {
+                    match (result.outcome, result.kept) {
+                        (WriteOutcome::Ok, _) => st.range_note.clear(),
+                        (WriteOutcome::Blocked, Some(kept)) => {
+                            let name = if c == BRIGHTNESS { "brightness" } else { "contrast" };
+                            let lock = if c == BRIGHTNESS { st.profile.brightness_lock_note.clone() } else { String::new() };
+                            st.range_note = format!("Your monitor kept {name} at {kept}{lock}");
+                        }
+                        (WriteOutcome::NotResponding, _) => {}
+                        _ => st.range_note = result.message.clone(),
+                    }
+                    if !ok {
+                        st.bump(c); // snap the slider back to the monitor's value
+                    }
+                }
+                Some(c) => {
+                    let action = st.def(c).is_some_and(|d| d.kind == ControlKind::Action);
+                    if ok {
+                        st.notes.remove(&c);
+                        if action {
+                            // A reset changes many values: re-read every non-action card.
+                            let codes: Vec<u8> = st
+                                .controls
+                                .iter()
+                                .flat_map(|rc| rc.controls.values())
+                                .filter(|d| d.kind != ControlKind::Action && d.section != Section::Hidden)
+                                .map(|d| d.code)
+                                .collect();
+                            refresh = Some(codes);
+                        }
+                    } else if result.outcome != WriteOutcome::NotResponding {
+                        st.notes.insert(c, result.message.clone());
+                        if view::GAINS.contains(&c) || c == INPUT || c == COLOUR_MODE {
+                            toast = Some(result.message.clone());
+                        }
+                    }
+                    st.bump(c);
+                }
+                None if preset.is_some() => {
+                    if ok {
+                        st.preset_note.clear();
+                    } else if result.outcome != WriteOutcome::NotResponding {
+                        st.preset_note = result.message.clone();
+                        toast = Some(result.message.clone());
+                    }
+                }
+                None => st.restore_text = if ok { "Backup restored".into() } else { result.message.clone() },
+            }
+        }
+        if let Some(codes) = refresh {
+            self.send_to(id, Command::Refresh(codes));
+        }
+        if let Some(text) = toast {
+            self.show_toast(&text);
+        }
         self.render();
     }
 
-    fn osd_result(&self, code: Option<u8>, result: &WriteResult) {
-        let st = self.st.borrow();
-        if result.outcome == WriteOutcome::NotResponding && st.status != MonitorStatus::Connected {
-            drop(st);
-            self.osd_not_connected();
+    /// One OSD for a set of results: a level for a single display (on its screen) or for several that all moved;
+    /// otherwise the messages, the failures first.
+    fn osd_results(&self, code: Option<u8>, results: &[(MonitorId, WriteResult)]) {
+        let [(first, r), ..] = results else { return };
+        if results.len() == 1 {
+            self.osd_result(first, code, r);
             return;
         }
-        match (code, result.outcome, result.value) {
-            (Some(c @ (BRIGHTNESS | CONTRAST)), WriteOutcome::Ok, Some(v)) => {
-                let max = st.values.get(&c).map_or(100, |r| r.max);
-                let (glyph, label) = if c == BRIGHTNESS { (glyph::SUN, "Brightness") } else { (glyph::CONTRAST, "Contrast") };
-                drop(st);
-                OsdHost::show_on(&self.osd, Content::Level { glyph, label, value: v, max, display: "" }, None);
+        let failed: Vec<&(MonitorId, WriteResult)> = results.iter().filter(|(_, r)| r.outcome != WriteOutcome::Ok).collect();
+        let level = matches!(code, Some(BRIGHTNESS | CONTRAST)) && failed.is_empty();
+        match (level, r.value) {
+            (true, Some(v)) => {
+                let max = self.app.borrow().displays.get(first).and_then(|st| st.values.get(&code?)).map_or(100, |r| r.max);
+                let (glyph, label) = level_glyph(code);
+                let display = format!("{} displays", results.len());
+                OsdHost::show_on(&self.osd, Content::Level { glyph, label, value: v, max, display: &display }, None);
             }
             _ => {
-                drop(st);
-                OsdHost::show(&self.osd, Content::Message(&self.result_text(code, result)));
+                let shown: Vec<&(MonitorId, WriteResult)> = if failed.is_empty() { results.iter().collect() } else { failed };
+                let text = shown.iter()
+                    .map(|(id, r)| format!("{}: {}", self.app.borrow().name(id), self.result_text(id, code, r)))
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                OsdHost::show(&self.osd, Content::Message(&text));
             }
         }
     }
 
-    /// A result's text, plus the profile's lock note when the monitor kept its brightness.
-    fn result_text(&self, code: Option<u8>, result: &WriteResult) -> String {
-        let st = self.st.borrow();
-        let note = &st.profile.brightness_lock_note;
+    fn osd_result(&self, id: &MonitorId, code: Option<u8>, result: &WriteResult) {
+        let (connected, max, name, screen) = {
+            let app = self.app.borrow();
+            let st = app.state(Some(id));
+            let max = code.and_then(|c| st.values.get(&c)).map_or(100, |r| r.max);
+            (st.connected(), max, app.osd_name(id), st.screen)
+        };
+        if result.outcome == WriteOutcome::NotResponding && !connected {
+            let text = self.with_view(Some(id), view::unreachable_text);
+            OsdHost::show_on(&self.osd, Content::Message(&text), screen);
+            return;
+        }
+        match (code, result.outcome, result.value) {
+            (Some(BRIGHTNESS | CONTRAST), WriteOutcome::Ok, Some(v)) => {
+                let (glyph, label) = level_glyph(code);
+                OsdHost::show_on(&self.osd, Content::Level { glyph, label, value: v, max, display: &name }, screen);
+            }
+            _ => {
+                let text = self.result_text(id, code, result);
+                let text = if name.is_empty() { text } else { format!("{name}: {text}") };
+                OsdHost::show_on(&self.osd, Content::Message(&text), screen);
+            }
+        }
+    }
+
+    /// A result's text, plus the display's lock note when the monitor kept its brightness.
+    fn result_text(&self, id: &MonitorId, code: Option<u8>, result: &WriteResult) -> String {
+        let app = self.app.borrow();
+        let note = &app.state(Some(id)).profile.brightness_lock_note;
         if result.kind == ResultKind::Kept && code == Some(BRIGHTNESS) && !note.is_empty() {
             format!("{}{note}", result.message.trim_end_matches('.'))
         } else {
@@ -1122,9 +1864,10 @@ impl Controller {
     }
 
     fn refresh_setup_hints(&self) {
-        let mut st = self.st.borrow_mut();
-        let failure = if st.status == MonitorStatus::Connected { None } else { st.failure };
-        st.setup_hints = platform::setup::hints(failure, st.hotkeys_available);
+        let mut app = self.app.borrow_mut();
+        let st = app.state(app.selected.as_ref());
+        let failure = if st.connected() { None } else { st.failure };
+        app.setup_hints = platform::setup::hints(failure, app.hotkeys_available);
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -1165,12 +1908,12 @@ impl Controller {
             ui.window().with_winit_window(|w| w.focus_window());
         }
         platform::efficiency::set_window_visible(true);
-        self.send(Command::Refresh(DISPLAY_CODES.to_vec()));
+        self.send_shown(&Command::Refresh(DISPLAY_CODES.to_vec()));
         self.poll.start(slint::TimerMode::Repeated, POLL_EVERY, || {
             with(|c| {
                 let minimized = c.window.borrow().as_ref().is_some_and(|w| w.window().is_minimized());
                 if !minimized {
-                    c.send(Command::Poll(DISPLAY_CODES.to_vec()));
+                    c.send_shown(&Command::Poll(DISPLAY_CODES.to_vec()));
                 }
             })
         });
@@ -1199,13 +1942,25 @@ impl Controller {
         std::cell::Ref::filter_map(self.window.borrow(), |w| w.as_ref().filter(|w| w.window().is_visible())).ok()
     }
 
-    /// Pushes state into the window. It exists only from just before its show until it is closed, so this never
-    /// touches a hidden window.
+    /// Pushes state into the window: the selected display, the picker, and in Together mode the master sliders.
+    /// The window exists only from just before its show until it is closed, so this never touches a hidden one.
     fn render(&self) {
         let window = self.window.borrow();
         let Some(ui) = window.as_ref() else { return };
-        let st = self.st.borrow();
-        view::render(&ui.global::<App>(), &st);
+        let g = ui.global::<App>();
+        let mut app = self.app.borrow_mut();
+        let selected = app.selected.clone();
+        view::render(&g, app.view_of(selected.as_ref()));
+        let entries: Vec<DisplayEntry> = app.ordered().iter().filter_map(|id| app.entry(id)).collect();
+        let experimental = matches!(app.state(selected.as_ref()).level, SupportLevel::LenovoFamily | SupportLevel::GenericMccs);
+        let selected_id = match &selected {
+            Some(id) if !app.together => id.0.as_str(),
+            _ => "",
+        };
+        view::render_displays(&g, entries, selected_id, app.together_available(), experimental);
+        if app.together {
+            view::render_together(&g, &app.together_sliders());
+        }
     }
 
     fn show_toast(&self, text: &str) {
@@ -1241,13 +1996,13 @@ impl Controller {
         if let (true, Some(f)) = (yes, pending) {
             f(self);
         } else {
-            // Cancelled: snap every control back to the monitor's values.
-            let codes: Vec<u8> = self.st.borrow().values.keys().copied().collect();
-            let mut st = self.st.borrow_mut();
-            for c in codes {
-                st.bump(c);
+            // Cancelled: snap every control back to the monitors' values.
+            for st in self.app.borrow_mut().displays.values_mut() {
+                let codes: Vec<u8> = st.values.keys().copied().collect();
+                for c in codes {
+                    st.bump(c);
+                }
             }
-            drop(st);
             self.render();
         }
         let next = self.dialogs.borrow_mut().pop_front();
@@ -1259,127 +2014,275 @@ impl Controller {
     // ---------------------------------------------------------------------------------------------------------
     // Window actions
 
-    /// The engine reads the input first and skips a switch that is already done, so a stale value can't block one.
+    /// The displays the window shows that have this input button. A switch is confirmed unless it is to this PC on
+    /// verified displays. The engine reads the input first and skips a switch that is already done, so a stale
+    /// value can't block one.
     fn select_input(self: &Rc<Self>, code: u16) {
-        let st = self.st.borrow();
-        if st.status != MonitorStatus::Connected {
-            return;
-        }
-        let this_pc = code == st.settings.this_machine_input as u16;
-        drop(st);
-        let set = move |c: &Rc<Controller>| {
-            platform::wake::nudge();
-            c.send(Command::Set { code: INPUT, value: code, confirmed: false, origin: Origin::Window });
+        let (sends, confirm) = {
+            let app = self.app.borrow();
+            let mut confirm = false;
+            let mut sends = vec![];
+            for id in app.shown() {
+                let Some(st) = app.displays.get(&id).filter(|st| st.connected()) else { continue };
+                if !view::inputs(st).iter().any(|(c, _)| *c == code) {
+                    continue;
+                }
+                confirm |= st.experimental() || code != u16::from(app.settings.monitor(&id).this_machine_input);
+                sends.push((id, code));
+            }
+            (sends, confirm)
         };
-        if this_pc {
-            set(self);
-            return;
-        }
-        self.ask(self.input_dialog(code), Box::new(set));
+        self.switch_inputs(Origin::Window, sends, confirm);
     }
 
-    /// "Switch to HDMI?", from the profile's input definition.
-    fn input_dialog(&self, code: u16) -> Dialog {
-        let st = self.st.borrow();
-        let label = st.input_label(code);
-        let def = st.def(INPUT);
-        let title = def.and_then(|d| d.confirm_title.clone()).unwrap_or_else(|| "Switch to {label}?".into()).replace("{label}", &label);
-        let body = def.and_then(|d| d.confirm_body.clone()).unwrap_or_default();
-        let button = def.and_then(|d| d.confirm_button.clone()).unwrap_or_else(|| "Switch".into());
-        Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true }
+    /// "Switch to HDMI?", from the display's input definition; for several displays, one confirm listing them.
+    fn inputs_dialog(&self, sends: &[(MonitorId, u16)]) -> Dialog {
+        let app = self.app.borrow();
+        if let [(id, code)] = sends {
+            let st = app.state(Some(id));
+            let label = st.input_label(*code);
+            let def = st.def(INPUT);
+            let title = def.and_then(|d| d.confirm_title.clone()).unwrap_or_else(|| "Switch to {label}?".into()).replace("{label}", &label);
+            let body = def.and_then(|d| d.confirm_body.clone()).unwrap_or_default();
+            let button = def.and_then(|d| d.confirm_button.clone()).unwrap_or_else(|| "Switch".into());
+            return Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true };
+        }
+        let lines: Vec<String> = sends.iter()
+            .map(|(id, code)| format!("{} → {}", app.name(id), app.state(Some(id)).input_label(*code)))
+            .collect();
+        Dialog {
+            title: format!("Switch the input on {} displays?", sends.len()).into(),
+            message: lines.join("\n").into(),
+            primary: "Switch".into(),
+            secondary: "Cancel".into(),
+            visible: true,
+        }
+    }
+
+    /// A slider's displays and raw values: the selected display's own value, or in Together mode the master
+    /// percent turned into each included display's value.
+    fn range_targets(&self, code: u8, value: u16) -> Vec<(MonitorId, u16)> {
+        let app = self.app.borrow();
+        if !app.together {
+            return app.selected.iter().map(|id| (id.clone(), value)).collect();
+        }
+        app.included()
+            .into_iter()
+            .filter_map(|id| {
+                let st = app.displays.get(&id).filter(|st| st.connected())?;
+                let max = st.values.get(&code)?.max;
+                let raw = together_value(f32::from(value), app.settings.monitor(&id).offset, max);
+                Some((id, raw))
+            })
+            .collect()
     }
 
     fn range_changed(&self, code: u8, value: u16) {
-        self.send(Command::DragTo { code, value });
+        for (id, value) in self.range_targets(code, value) {
+            self.send_to(&id, Command::DragTo { code, value });
+        }
     }
 
     /// Slint's slider reports `released` on pointer up and on every arrow/Home/End key release. Finish the change
     /// 300 ms after the last one, so a run of key presses (or a click on the track) is one verified write.
     fn range_released(&self, code: u8, value: u16) {
-        let timer = slint::Timer::default();
-        // A fired timer stays in the map (not dropped inside its own callback) until the next release replaces it.
-        timer.start(slint::TimerMode::SingleShot, KEY_DEBOUNCE, move || {
-            with(|c| c.send(Command::EndDrag { code, value, origin: Origin::Window }))
-        });
-        self.debounce.borrow_mut().insert(code, timer);
+        for (id, value) in self.range_targets(code, value) {
+            let timer = slint::Timer::default();
+            let target = id.clone();
+            // A fired timer stays in the map (not dropped inside its own callback) until the next release replaces it.
+            timer.start(slint::TimerMode::SingleShot, KEY_DEBOUNCE, move || {
+                with(|c| c.send_to(&target, Command::EndDrag { code, value, origin: Origin::Window }))
+            });
+            self.debounce.borrow_mut().insert((id, code), timer);
+        }
+    }
+
+    fn selected_id(&self) -> Option<MonitorId> {
+        self.app.borrow().selected.clone()
     }
 
     fn colour_mode_selected(&self, index: usize) {
-        let st = self.st.borrow();
-        let Some((value, _)) = view::colour_modes(&st).get(index).cloned() else { return };
-        drop(st);
-        self.send(Command::Set { code: COLOUR_MODE, value, confirmed: false, origin: Origin::Window });
+        let Some(id) = self.selected_id() else { return };
+        let value = {
+            let app = self.app.borrow();
+            view::colour_modes(app.state(Some(&id))).get(index).map(|(v, _)| *v)
+        };
+        if let Some(value) = value {
+            self.send_to(&id, Command::Set { code: COLOUR_MODE, value, confirmed: false, origin: Origin::Window });
+        }
     }
 
     fn control_changed(&self, code: u8, index: usize) {
-        let st = self.st.borrow();
-        let Some(def) = st.def(code) else { return };
-        let opts = view::options(&st, def);
-        // A switch reports its value (0/1); a combo box its option index.
-        let value = if view::is_toggle(def, &opts) {
-            index as u16
-        } else {
-            match opts.get(index) {
-                Some((v, _)) => *v,
-                None => return,
+        let Some(id) = self.selected_id() else { return };
+        let value = {
+            let app = self.app.borrow();
+            let st = app.state(Some(&id));
+            let Some(def) = st.def(code) else { return };
+            let opts = view::options(st, def);
+            // A switch reports its value (0/1); a combo box its option index.
+            if view::is_toggle(def, &opts) {
+                index as u16
+            } else {
+                match opts.get(index) {
+                    Some((v, _)) => *v,
+                    None => return,
+                }
             }
         };
-        drop(st);
-        self.send(Command::Set { code, value, confirmed: false, origin: Origin::Window });
+        self.send_to(&id, Command::Set { code, value, confirmed: false, origin: Origin::Window });
     }
 
     fn control_action(self: &Rc<Self>, code: u8) {
-        let st = self.st.borrow();
-        let Some(def) = st.def(code) else { return };
-        let send = move |c: &Rc<Controller>| c.send(Command::Set { code, value: 1, confirmed: true, origin: Origin::Window });
-        if def.safety != SafetyClass::ConfirmRequired {
-            drop(st);
-            send(self);
-            return;
+        let Some(id) = self.selected_id() else { return };
+        let dialog = {
+            let app = self.app.borrow();
+            let Some(def) = app.state(Some(&id)).def(code) else { return };
+            (def.safety == SafetyClass::ConfirmRequired).then(|| {
+                let title = def.confirm_title.clone().or_else(|| def.confirm_message.clone()).unwrap_or_else(|| format!("Change {}?", def.name));
+                let body = def.confirm_body.clone().unwrap_or_default();
+                let button = def.confirm_button.clone().unwrap_or_else(|| "Continue".into());
+                Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true }
+            })
+        };
+        let send = move |c: &Rc<Controller>| c.send_to(&id, Command::Set { code, value: 1, confirmed: true, origin: Origin::Window });
+        match dialog {
+            Some(dialog) => self.ask(dialog, Box::new(send)),
+            None => send(self),
         }
-        let title = def.confirm_title.clone().or_else(|| def.confirm_message.clone()).unwrap_or_else(|| format!("Change {}?", def.name));
-        let body = def.confirm_body.clone().unwrap_or_default();
-        let button = def.confirm_button.clone().unwrap_or_else(|| "Continue".into());
-        drop(st);
-        self.ask(
-            Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true },
-            Box::new(send),
-        );
     }
 
+    /// Saves the selected display's current values as its own Day or Night preset.
     fn save_preset(self: &Rc<Self>, index: usize) {
-        let mut st = self.st.borrow_mut();
-        if st.values_stale || st.status != MonitorStatus::Connected {
-            drop(st);
+        let Some(id) = self.selected_id() else { return };
+        let name = {
+            let mut app = self.app.borrow_mut();
+            let st = app.state(Some(&id));
+            if st.values_stale || !st.connected() {
+                None
+            } else {
+                let cached = |code| st.values.get(&code).map(|r: &VcpReading| r.current);
+                let (b, c, m) = (cached(BRIGHTNESS), cached(CONTRAST), cached(COLOUR_MODE));
+                let entry = monitor_entry(&mut app.settings, &id);
+                let old = if index == 0 { &mut entry.day } else { &mut entry.night };
+                old.brightness = b.map_or(old.brightness, u32::from);
+                old.contrast = c.map_or(old.contrast, u32::from);
+                old.colour_mode = m.and_then(|m| u8::try_from(m).ok()).or(old.colour_mode);
+                Some(old.name.clone())
+            }
+        };
+        let Some(name) = name else {
             self.show_toast("Connect the monitor to save its current settings");
             return;
-        }
-        let cached = |code| st.values.get(&code).map(|r: &VcpReading| r.current);
-        let (b, c, m) = (cached(BRIGHTNESS), cached(CONTRAST), cached(COLOUR_MODE));
-        let old = if index == 0 { &st.settings.day } else { &st.settings.night };
-        let preset = Preset {
-            name: old.name.clone(),
-            brightness: b.map_or(old.brightness, u32::from),
-            contrast: c.map_or(old.contrast, u32::from),
-            colour_mode: m.and_then(|m| u8::try_from(m).ok()).or(old.colour_mode),
         };
-        let name = preset.name.clone();
-        if index == 0 { st.settings.day = preset } else { st.settings.night = preset }
-        drop(st);
         let saved = self.save_settings();
         self.show_toast(&if saved { format!("Saved as {name}") } else { format!("Couldn't save {name}") });
     }
 
     /// Saves, re-applies and re-renders. False when the file couldn't be written.
     fn save_settings(self: &Rc<Self>) -> bool {
-        let result = self.store.save(&self.st.borrow().settings);
+        let result = self.store.save(&self.app.borrow().settings);
         if let Err(e) = &result {
             log::write(&format!("Settings save failed: {e}"));
             self.show_toast(&format!("Couldn't save settings: {e}"));
         }
         self.apply_settings();
+        self.update_tray();
         self.render();
         result.is_ok()
+    }
+
+    /// A display id shows that display; "" shows All together, when two or more can be controlled.
+    fn select_display(self: &Rc<Self>, id: &str) {
+        {
+            let mut app = self.app.borrow_mut();
+            if id.is_empty() {
+                if !app.together_available() {
+                    return;
+                }
+                app.together = true;
+            } else {
+                let id = MonitorId(id.to_string());
+                if !app.displays.contains_key(&id) {
+                    return;
+                }
+                app.selected = Some(id);
+                app.together = false;
+            }
+        }
+        self.after_selection();
+    }
+
+    fn set_together(self: &Rc<Self>, on: bool) {
+        {
+            let mut app = self.app.borrow_mut();
+            app.together = on && app.together_available();
+        }
+        self.after_selection();
+    }
+
+    fn after_selection(self: &Rc<Self>) {
+        self.refresh_setup_hints();
+        self.send_shown(&Command::Refresh(DISPLAY_CODES.to_vec()));
+        self.update_tray();
+        self.render();
+    }
+
+    fn set_included(self: &Rc<Self>, id: &str, on: bool) {
+        monitor_entry(&mut self.app.borrow_mut().settings, &MonitorId(id.to_string())).included = on;
+        self.save_settings();
+    }
+
+    fn set_offset(self: &Rc<Self>, id: &str, offset: i32) {
+        monitor_entry(&mut self.app.borrow_mut().settings, &MonitorId(id.to_string())).offset = offset.clamp(-100, 100);
+        self.save_settings();
+    }
+
+    /// Copies the selected display's identity, level, capability warnings and raw capability string.
+    fn copy_capability_report(&self) {
+        let report = {
+            let app = self.app.borrow();
+            let Some(id) = app.selected.clone() else { return };
+            let raw = CapabilitiesCache::new(self.data_dir.join("monitors").join(id.folder_name())).load();
+            capability_report(&app.name(&id), &id, app.state(Some(&id)), raw.as_deref())
+        };
+        let ok = crate::clipboard::set(&report);
+        self.show_toast(if ok { "Capability report copied" } else { "Couldn't copy" });
+    }
+
+    /// The banner's button: leave safe mode on every display in it, or try the shown display again.
+    fn banner_action(&self) {
+        let (safe, retry) = {
+            let app = self.app.borrow();
+            let safe: Vec<MonitorId> =
+                app.displays.iter().filter(|(_, st)| st.attached && st.safe_mode).map(|(id, _)| id.clone()).collect();
+            (safe, app.selected.clone())
+        };
+        let shown_safe = self.app.borrow().state(retry.as_ref()).safe_mode;
+        if shown_safe {
+            for id in safe {
+                self.send_to(&id, Command::SetSafeMode(false));
+                self.send_to(&id, Command::RecheckAfterEvent); // read the capabilities skipped in safe mode
+            }
+            return;
+        }
+        match &retry {
+            Some(id) => {
+                if let Some(st) = self.app.borrow_mut().displays.get_mut(id) {
+                    st.retrying = true;
+                }
+                self.send_to(id, Command::RequestReconnect);
+            }
+            None => self.send_hub(HubCommand::Rescan),
+        }
+        self.render();
+        self.retry_timer.start(slint::TimerMode::SingleShot, RETRY_FOR, || {
+            with(|c| {
+                for st in c.app.borrow_mut().displays.values_mut() {
+                    st.retrying = false;
+                }
+                c.render();
+            })
+        });
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -1387,7 +2290,7 @@ impl Controller {
 
     fn edit_hotkey(self: &Rc<Self>, index: usize) {
         let Some(action) = Action::ALL.get(index).copied() else { return };
-        let original = self.st.borrow().settings.hotkeys.get(&action).cloned().unwrap_or_default();
+        let original = self.app.borrow().settings.hotkeys.get(&action).cloned().unwrap_or_default();
         if let Some(h) = self.hotkeys.borrow_mut().as_mut() {
             h.suspend();
         }
@@ -1441,10 +2344,10 @@ impl Controller {
         if ed.result.starts_with('!') {
             return (Severity::Error, "This shortcut isn't valid".into(), format!("Start with {keys_hint}."), false);
         }
-        let st = self.st.borrow();
+        let app = self.app.borrow();
         if !ed.result.is_empty() {
             if let Some(other) = Action::ALL.iter().find(|a| {
-                **a != ed.action && st.settings.hotkeys.get(a).is_some_and(|g| g.eq_ignore_ascii_case(&ed.result))
+                **a != ed.action && app.settings.hotkeys.get(a).is_some_and(|g| g.eq_ignore_ascii_case(&ed.result))
             }) {
                 return (Severity::Warning, format!("{} already uses this shortcut", other.label()), "Choose a different combination.".into(), false);
             }
@@ -1494,7 +2397,7 @@ impl Controller {
     fn editor_close(self: &Rc<Self>, save: bool) {
         let ed = self.editor.borrow_mut().take();
         if let (true, Some(ed)) = (save, ed) {
-            self.st.borrow_mut().settings.hotkeys.insert(ed.action, ed.result);
+            self.app.borrow_mut().settings.hotkeys.insert(ed.action, ed.result);
             self.save_settings(); // re-registers
         } else {
             self.register_hotkeys();
@@ -1508,11 +2411,11 @@ impl Controller {
             let mut ed = self.editor.borrow_mut();
             let Some(ed) = ed.as_mut() else { return };
             let default = ed.action.default_gesture();
-            let st = self.st.borrow();
+            let app = self.app.borrow();
             let other = Action::ALL
                 .iter()
                 .copied()
-                .find(|a| *a != ed.action && st.settings.hotkeys.get(a).is_some_and(|g| g.eq_ignore_ascii_case(default)));
+                .find(|a| *a != ed.action && app.settings.hotkeys.get(a).is_some_and(|g| g.eq_ignore_ascii_case(default)));
             if other.is_none() {
                 ed.result = default.to_string();
                 ed.held = (false, false, false, false);
@@ -1539,102 +2442,124 @@ impl Controller {
     }
 
     // ---------------------------------------------------------------------------------------------------------
-    // Finder
+    // Finder (the selected display only)
 
-    fn on_finder(&self, event: FinderEvent) {
-        let mut st = self.st.borrow_mut();
-        let f = &mut st.finder;
-        f.busy = false;
-        match event {
-            FinderEvent::Snapshot { count } => {
-                f.snapshot_count = Some(count);
-                f.status = None;
-            }
-            FinderEvent::NoSnapshot => f.status = Some((Severity::Warning, "Take a snapshot first.".into())),
-            FinderEvent::Refused(kind) => {
-                let text = match kind {
-                    ResultKind::SafeMode => "Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first.",
-                    ResultKind::Asleep => "The monitor is asleep or this PC is locked. Try again once it's awake.",
-                    _ => "The monitor didn't answer. Try again.",
-                };
-                f.status = Some((Severity::Warning, text.into()));
-            }
-            FinderEvent::Changes(changes) => {
-                f.status = Some(if changes.is_empty() {
-                    (Severity::Info, "Nothing changed. Make sure the setting really changed on screen, then compare again.".into())
-                } else {
-                    (Severity::Info, "Select a change to name it.".into())
-                });
-                f.changes = changes;
-                f.selected = None;
-                if f.changes.len() == 1 {
-                    drop(st);
-                    self.finder_select(0);
-                    return;
+    /// Runs `f` on the selected display's state, then renders.
+    fn with_selected(&self, f: impl FnOnce(&mut State)) {
+        let Some(id) = self.selected_id() else { return };
+        if let Some(st) = self.app.borrow_mut().displays.get_mut(&id) {
+            f(st);
+        }
+        self.render();
+    }
+
+    fn finder_command(&self, command: Command) {
+        self.with_selected(|st| st.finder.busy = true);
+        if let Some(id) = self.selected_id() {
+            self.send_to(&id, command);
+        }
+    }
+
+    fn on_finder(&self, id: &MonitorId, event: FinderEvent) {
+        let select_first = {
+            let mut app = self.app.borrow_mut();
+            let shown = app.selected.as_ref() == Some(id) && matches!(event, FinderEvent::Changes(_));
+            let Some(st) = app.displays.get_mut(id) else { return };
+            let f = &mut st.finder;
+            f.busy = false;
+            match event {
+                FinderEvent::Snapshot { count } => {
+                    f.snapshot_count = Some(count);
+                    f.status = None;
+                }
+                FinderEvent::NoSnapshot => f.status = Some((Severity::Warning, "Take a snapshot first.".into())),
+                FinderEvent::Refused(kind) => {
+                    let text = match kind {
+                        ResultKind::SafeMode => "Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first.",
+                        ResultKind::Asleep => "The monitor is asleep or this PC is locked. Try again once it's awake.",
+                        _ => "The monitor didn't answer. Try again.",
+                    };
+                    f.status = Some((Severity::Warning, text.into()));
+                }
+                FinderEvent::Changes(changes) => {
+                    f.status = Some(if changes.is_empty() {
+                        (Severity::Info, "Nothing changed. Make sure the setting really changed on screen, then compare again.".into())
+                    } else {
+                        (Severity::Info, "Select a change to name it.".into())
+                    });
+                    f.changes = changes;
+                    f.selected = None;
+                }
+                FinderEvent::Saved { code, result } => {
+                    let name = f.name.clone();
+                    f.status = Some(match result {
+                        Ok(()) => (Severity::Success, format!("Saved \"{name}\" (0x{code:02X}). It now appears in Monitor settings.")),
+                        Err(e) => (Severity::Error, format!("Couldn't save: {e}")),
+                    });
                 }
             }
-            FinderEvent::Saved { code, result } => {
-                let name = f.name.clone();
-                f.status = Some(match result {
-                    Ok(()) => (Severity::Success, format!("Saved \"{name}\" (0x{code:02X}). It now appears in Monitor settings.")),
-                    Err(e) => (Severity::Error, format!("Couldn't save: {e}")),
-                });
-            }
+            shown && st.finder.changes.len() == 1
+        };
+        if select_first {
+            self.finder_select(0);
+            return;
         }
-        drop(st);
         self.render();
     }
 
     fn finder_select(&self, index: usize) {
-        let mut st = self.st.borrow_mut();
-        let Some(change) = st.finder.changes.get(index).cloned() else { return };
-        let def = st.def(change.code).cloned();
-        let named = def.as_ref().filter(|d| d.safety != SafetyClass::ReadOnlyUntilNamed);
-        let listed: Option<Vec<u16>> = st
-            .controls
-            .as_ref()
-            .and_then(|rc| rc.capabilities.vcp.get(&change.code).cloned().flatten())
-            .map(|l| l.into_iter().map(u16::from).collect());
-        let values: Vec<u16> = listed.unwrap_or_else(|| vec![change.before, change.after]);
-        let rows = values
-            .into_iter()
-            .map(|v| {
-                let tag = if v == change.before { " (before)" } else if v == change.after { " (now)" } else { "" };
-                let label = named.and_then(|d| u8::try_from(v).ok().and_then(|b| d.value_labels.get(&b).cloned())).unwrap_or_default();
-                (v, format!("0x{v:02X}{tag}"), label)
-            })
-            .collect();
-        let f = &mut st.finder;
-        f.selected = Some(index);
-        f.name = named.map(|d| d.name.clone()).unwrap_or_default();
-        f.values = rows;
-        f.form += 1;
-        drop(st);
-        self.render();
+        self.with_selected(|st| {
+            let Some(change) = st.finder.changes.get(index).cloned() else { return };
+            let def = st.def(change.code).cloned();
+            let named = def.as_ref().filter(|d| d.safety != SafetyClass::ReadOnlyUntilNamed);
+            let listed: Option<Vec<u16>> = st
+                .controls
+                .as_ref()
+                .and_then(|rc| rc.capabilities.vcp.get(&change.code).cloned().flatten())
+                .map(|l| l.into_iter().map(u16::from).collect());
+            let values: Vec<u16> = listed.unwrap_or_else(|| vec![change.before, change.after]);
+            let rows = values
+                .into_iter()
+                .map(|v| {
+                    let tag = if v == change.before { " (before)" } else if v == change.after { " (now)" } else { "" };
+                    let label = named.and_then(|d| u8::try_from(v).ok().and_then(|b| d.value_labels.get(&b).cloned())).unwrap_or_default();
+                    (v, format!("0x{v:02X}{tag}"), label)
+                })
+                .collect();
+            let f = &mut st.finder;
+            f.selected = Some(index);
+            f.name = named.map(|d| d.name.clone()).unwrap_or_default();
+            f.values = rows;
+            f.form += 1;
+        });
     }
 
     fn finder_save(&self) {
-        let mut st = self.st.borrow_mut();
-        let f = &mut st.finder;
-        let Some(change) = f.selected.and_then(|i| f.changes.get(i)).cloned() else { return };
-        let name = f.name.trim().to_string();
-        if name.is_empty() {
-            f.status = Some((Severity::Warning, "Enter a name for the setting first.".into()));
-            drop(st);
-            self.render();
-            return;
+        let Some(id) = self.selected_id() else { return };
+        let def = {
+            let mut app = self.app.borrow_mut();
+            let Some(st) = app.displays.get_mut(&id) else { return };
+            let f = &mut st.finder;
+            let Some(change) = f.selected.and_then(|i| f.changes.get(i)).cloned() else { return };
+            let name = f.name.trim().to_string();
+            if name.is_empty() {
+                f.status = Some((Severity::Warning, "Enter a name for the setting first.".into()));
+                None
+            } else {
+                let labels: BTreeMap<u8, String> = f
+                    .values
+                    .iter()
+                    .filter(|(_, _, l)| !l.trim().is_empty())
+                    .filter_map(|(v, _, l)| Some((u8::try_from(*v).ok()?, l.trim().to_string())))
+                    .collect();
+                f.name = name.clone();
+                f.busy = true;
+                Some(ControlDefinition::new(change.code, name, ControlKind::Enum, Section::Advanced, SafetyClass::Normal, labels))
+            }
+        };
+        if let Some(def) = def {
+            self.send_to(&id, Command::SaveOverlay(def));
         }
-        let labels: BTreeMap<u8, String> = f
-            .values
-            .iter()
-            .filter(|(_, _, l)| !l.trim().is_empty())
-            .filter_map(|(v, _, l)| Some((u8::try_from(*v).ok()?, l.trim().to_string())))
-            .collect();
-        f.name = name.clone();
-        f.busy = true;
-        drop(st);
-        let def = ControlDefinition::new(change.code, name, ControlKind::Enum, Section::Advanced, SafetyClass::Normal, labels);
-        self.send(Command::SaveOverlay(def));
         self.render();
     }
 }
@@ -1648,42 +2573,60 @@ impl Controller {
         if self.headless.get() {
             return; // a one-shot run never applies Day/Night
         }
-        if self.st.borrow().settings.auto_day_night == AutoMode::Off {
+        if self.app.borrow().settings.auto_day_night == AutoMode::Off {
             self.auto_timer.stop();
-            self.auto_phase.set(None);
+            self.forget_phases();
         } else if !self.auto_timer.running() {
             self.auto_timer.start(slint::TimerMode::Repeated, AUTO_EVERY, || with(|c| c.auto_tick()));
         }
     }
 
-    /// Applies Day or Night when the scheduled phase differs from the one applied last. The latest event at or
-    /// before now wins, so a change missed during sleep is caught up on wake.
-    fn auto_tick(&self) {
-        let st = self.st.borrow();
-        if self.headless.get() || st.status != MonitorStatus::Connected || st.asleep || st.safe_mode {
-            return;
+    /// The next tick applies the scheduled preset on every display, whatever each applied last.
+    fn forget_phases(&self) {
+        for st in self.app.borrow_mut().displays.values_mut() {
+            st.auto_phase = None;
         }
-        let Some(phase) = schedule::current(&st.settings.auto_day_night, localtime::unix_now(), localtime::utc_offset()) else {
-            return;
-        };
-        if self.auto_phase.get() == Some(phase) {
-            return;
-        }
-        let preset = if phase == Phase::Night { st.settings.night.clone() } else { st.settings.day.clone() };
-        drop(st);
-        self.auto_phase.set(Some(phase));
-        self.send(Command::ApplyPreset { preset, origin: Origin::Schedule });
     }
 
-    /// Saves the phase the schedule just applied, so the next start catches up only when it changed.
-    fn remember_phase(&self) {
-        let mut st = self.st.borrow_mut();
-        let phase = self.auto_phase.get();
-        if phase.is_none() || st.settings.last_applied_phase == phase {
+    /// Applies Day or Night on each connected display whose last applied phase differs from the schedule's, with
+    /// that display's own preset. The latest event at or before now wins, so a change missed during sleep, or
+    /// while a display was unplugged, is caught up on wake or connect.
+    fn auto_tick(&self) {
+        if self.headless.get() {
             return;
         }
-        st.settings.last_applied_phase = phase;
-        if let Err(e) = self.store.save(&st.settings) {
+        let sends = {
+            let mut app = self.app.borrow_mut();
+            let AppState { settings, displays, .. } = &mut *app;
+            let Some(phase) = schedule::current(&settings.auto_day_night, localtime::unix_now(), localtime::utc_offset()) else {
+                return;
+            };
+            let mut sends = vec![];
+            for (id, st) in displays.iter_mut() {
+                if !st.connected() || st.asleep || st.safe_mode || st.auto_phase == Some(phase) {
+                    continue;
+                }
+                st.auto_phase = Some(phase);
+                let own = settings.monitor(id);
+                sends.push((id.clone(), if phase == Phase::Night { own.night } else { own.day }));
+            }
+            sends
+        };
+        for (id, preset) in sends {
+            self.send_to(&id, Command::ApplyPreset { preset, origin: Origin::Schedule });
+        }
+    }
+
+    /// Saves the phase the schedule just applied on a display, so the next start catches up only when it changed.
+    fn remember_phase(&self, id: &MonitorId) {
+        let mut app = self.app.borrow_mut();
+        let Some(phase) = app.displays.get(id).and_then(|st| st.auto_phase) else { return };
+        let entry = monitor_entry(&mut app.settings, id);
+        if entry.last_applied_phase == Some(phase) {
+            return;
+        }
+        entry.last_applied_phase = Some(phase);
+        if let Err(e) = self.store.save(&app.settings) {
             log::write(&format!("Settings save failed: {e}"));
         }
     }
@@ -1691,44 +2634,44 @@ impl Controller {
     /// 0 = off, 1 = at set times, 2 = at sunrise and sunset (uses the remembered times or place).
     fn set_auto_mode(self: &Rc<Self>, index: i32) {
         {
-            let mut st = self.st.borrow_mut();
-            st.auto_note.clear();
-            let (day, night) = st.settings.auto_times;
-            st.settings.auto_day_night = match index {
+            let mut app = self.app.borrow_mut();
+            app.auto_note.clear();
+            let (day, night) = app.settings.auto_times;
+            app.settings.auto_day_night = match index {
                 1 => AutoMode::Times { day, night },
-                2 => match st.settings.auto_location {
+                2 => match app.settings.auto_location {
                     Some((lat, lon)) => AutoMode::Sun { lat, lon },
                     None => {
-                        st.auto_note = "Enter your latitude and longitude, then Save.".into();
+                        app.auto_note = "Enter your latitude and longitude, then Save.".into();
                         AutoMode::Off
                     }
                 },
                 _ => AutoMode::Off,
             };
         }
-        self.auto_phase.set(None);
+        self.forget_phases();
         self.save_settings();
         self.auto_tick();
     }
 
     fn save_auto_times(self: &Rc<Self>, day: &str, night: &str) {
         let (Some(day), Some(night)) = (parse_hhmm(day), parse_hhmm(night)) else {
-            self.st.borrow_mut().auto_note = "Use 24-hour times like 07:00 and 19:30.".into();
+            self.app.borrow_mut().auto_note = "Use 24-hour times like 07:00 and 19:30.".into();
             self.render();
             return;
         };
         if day == night {
-            self.st.borrow_mut().auto_note = "Day and Night need different times.".into();
+            self.app.borrow_mut().auto_note = "Day and Night need different times.".into();
             self.render();
             return;
         }
         {
-            let mut st = self.st.borrow_mut();
-            st.auto_note.clear();
-            st.settings.auto_times = (day, night);
-            st.settings.auto_day_night = AutoMode::Times { day, night };
+            let mut app = self.app.borrow_mut();
+            app.auto_note.clear();
+            app.settings.auto_times = (day, night);
+            app.settings.auto_day_night = AutoMode::Times { day, night };
         }
-        self.auto_phase.set(None);
+        self.forget_phases();
         self.save_settings();
         self.auto_tick();
     }
@@ -1736,18 +2679,18 @@ impl Controller {
     fn save_auto_location(self: &Rc<Self>, lat: &str, lon: &str) {
         let parse = |t: &str, limit: f64| t.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.abs() <= limit);
         let (Some(lat), Some(lon)) = (parse(lat, 90.0), parse(lon, 180.0)) else {
-            self.st.borrow_mut().auto_note =
+            self.app.borrow_mut().auto_note =
                 "Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive).".into();
             self.render();
             return;
         };
         {
-            let mut st = self.st.borrow_mut();
-            st.auto_note.clear();
-            st.settings.auto_location = Some((lat, lon));
-            st.settings.auto_day_night = AutoMode::Sun { lat, lon };
+            let mut app = self.app.borrow_mut();
+            app.auto_note.clear();
+            app.settings.auto_location = Some((lat, lon));
+            app.settings.auto_day_night = AutoMode::Sun { lat, lon };
         }
-        self.auto_phase.set(None);
+        self.forget_phases();
         self.save_settings();
         self.auto_tick();
     }
@@ -1771,6 +2714,59 @@ pub fn get_codes(target: GetTarget) -> Vec<u8> {
     }
 }
 
+/// `--get`'s (key, text, JSON value) fields for one display.
+fn get_fields(st: &State, target: GetTarget) -> Vec<(&'static str, String, String)> {
+    let wants = |t: GetTarget| target == GetTarget::All || target == t;
+    let mut fields = vec![];
+    for (t, code, key) in [(GetTarget::Brightness, BRIGHTNESS, "brightness"), (GetTarget::Contrast, CONTRAST, "contrast")] {
+        if let Some(v) = st.value(code).filter(|_| wants(t)) {
+            fields.push((key, v.to_string(), v.to_string()));
+        }
+    }
+    if let Some(l) = st.value(INPUT).filter(|_| wants(GetTarget::Input)).map(|v| st.input_label(v)) {
+        fields.push(("input", l.clone(), json_str(&l)));
+    }
+    let mode = st.value(COLOUR_MODE).filter(|_| wants(GetTarget::ColourMode));
+    if let Some(l) = mode.and_then(|v| st.def(COLOUR_MODE).map(|d| view::label(d, v))) {
+        fields.push(("colourMode", l.clone(), json_str(&l)));
+    }
+    fields
+}
+
+fn level_glyph(code: Option<u8>) -> (&'static str, &'static str) {
+    if code == Some(BRIGHTNESS) { (glyph::SUN, "Brightness") } else { (glyph::CONTRAST, "Contrast") }
+}
+
+/// The text "Copy capability report" puts on the clipboard.
+fn capability_report(name: &str, id: &MonitorId, st: &State, raw: Option<&str>) -> String {
+    let identity = st.monitor.as_ref().map(|m| m.info.identity.clone()).unwrap_or_default();
+    let known = |v: Option<&str>| v.filter(|v| !v.is_empty()).unwrap_or("unknown").to_string();
+    let mut lines = vec![
+        format!("{} capability report", tvc_cli::version_line()),
+        format!("Display: {name}"),
+        format!("Id: {id}"),
+        format!("EDID id: {}", known(Some(&identity.edid_id))),
+        format!("Serial: {}", known(identity.serial.as_deref())),
+        format!("Connector: {}", known(identity.connector.as_deref())),
+        format!("Support: {} ({:?})", view::support_label(&st.level), st.level),
+    ];
+    let caps = st.controls.as_ref().map(|rc| &rc.capabilities);
+    if let Some(caps) = caps {
+        lines.push(format!("Model: {}", known(Some(caps.model.trim()))));
+        lines.push(format!("MCCS version: {}", known(Some(&caps.mccs_ver))));
+    }
+    match caps.map(|c| c.warnings.as_slice()).unwrap_or_default() {
+        [] => lines.push("Warnings: none".into()),
+        warnings => {
+            lines.push("Warnings:".into());
+            lines.extend(warnings.iter().map(|w| format!("- {w}")));
+        }
+    }
+    lines.push("Capabilities:".into());
+    lines.push(raw.unwrap_or("(not read from the display yet)").to_string());
+    lines.join("\n")
+}
+
 /// A failed verb's line: `text`, or with `--json` the verb's JSON shape (`{"error":…}` for `--get`).
 pub fn failure_line(command: &CliCommand, json: bool, kind: &str, text: &str) -> String {
     if json { failure_json(command, kind, text) } else { text.to_string() }
@@ -1785,6 +2781,13 @@ fn failure_json(command: &CliCommand, kind: &str, text: &str) -> String {
 
 fn result_json(ok: bool, kind: &str, message: &str) -> String {
     format!("{{\"ok\":{ok},\"kind\":{},\"message\":{}}}", json_str(kind), json_str(message))
+}
+
+/// `object` (a JSON object) with the display's `id` and `name` first.
+fn tagged(id: &MonitorId, name: &str, object: &str) -> String {
+    let rest = object.strip_prefix('{').unwrap_or(object);
+    let sep = if rest.starts_with('}') { "" } else { "," };
+    format!("{{\"id\":{},\"name\":{}{sep}{rest}", json_str(&id.0), json_str(name))
 }
 
 /// A verb as its canonical arguments, for log lines.
@@ -1888,51 +2891,41 @@ fn wire(ui: &MainWindow) {
     app.on_control_action(|code| with(|c| c.control_action(code as u8)));
     app.on_apply_preset(|i| with(|c| c.apply_preset(i as usize, Origin::Window)));
     app.on_save_preset(|i| with(|c| c.save_preset(i as usize)));
-    app.on_banner_action(|| {
-        with(|c| {
-            if c.st.borrow().safe_mode {
-                c.send(Command::SetSafeMode(false));
-                c.send(Command::RecheckAfterEvent); // read the capabilities skipped in safe mode
-            } else {
-                c.st.borrow_mut().retrying = true;
-                c.render();
-                c.send(Command::RequestReconnect);
-                c.retry_timer.start(slint::TimerMode::SingleShot, RETRY_FOR, || {
-                    with(|c| {
-                        c.st.borrow_mut().retrying = false;
-                        c.render();
-                    })
-                });
-            }
-        })
-    });
+    app.on_banner_action(|| with(|c| c.banner_action()));
     app.on_set_auto_mode(|i| with(|c| c.set_auto_mode(i)));
     app.on_save_auto_times(|day, night| with(|c| c.save_auto_times(&day, &night)));
     app.on_save_auto_location(|lat, lon| with(|c| c.save_auto_location(&lat, &lon)));
-    app.on_restore_backup(|| with(|c| c.send(Command::RestoreBackup { origin: Origin::Window })));
-    // Multi-display callbacks; w4-controller implements them.
-    app.on_select_display(|_id| {});
-    app.on_set_included(|_id, _on| {});
-    app.on_set_offset(|_id, _offset| {});
-    app.on_copy_capability_report(|| {});
+    app.on_restore_backup(|| {
+        with(|c| {
+            if let Some(id) = c.selected_id() {
+                c.send_to(&id, Command::RestoreBackup { origin: Origin::Window });
+            }
+        })
+    });
+    app.on_select_display(|id| with(|c| c.select_display(&id)));
+    app.on_set_included(|id, on| with(|c| c.set_included(&id, on)));
+    app.on_set_offset(|id, offset| with(|c| c.set_offset(&id, offset)));
+    app.on_copy_capability_report(|| with(|c| c.copy_capability_report()));
     app.on_dialog_result(|yes| with(|c| c.on_dialog_result(yes)));
     app.on_set_background(|on| {
         with(|c| {
-            c.st.borrow_mut().settings.background_mode = on;
+            c.app.borrow_mut().settings.background_mode = on;
             c.save_settings();
         })
     });
     app.on_set_start(|on| {
         with(|c| {
-            c.st.borrow_mut().settings.start_with_windows = on;
+            c.app.borrow_mut().settings.start_with_windows = on;
             c.save_settings();
         })
     });
+    // This PC's input on the selected display.
     app.on_set_this_pc(|i| {
         with(|c| {
-            let code = view::inputs(&c.st.borrow()).get(i as usize).map(|(code, _)| *code);
+            let Some(id) = c.selected_id() else { return };
+            let code = view::inputs(c.app.borrow().state(Some(&id))).get(i as usize).map(|(code, _)| *code);
             if let Some(code) = code.and_then(|v| u8::try_from(v).ok()) {
-                c.st.borrow_mut().settings.this_machine_input = code;
+                monitor_entry(&mut c.app.borrow_mut().settings, &id).this_machine_input = code;
                 c.save_settings();
             }
         })
@@ -1956,31 +2949,22 @@ fn wire(ui: &MainWindow) {
         })
     });
     app.on_editor_reset(|| with(|c| c.editor_reset()));
-    app.on_find_hidden(|| {
-        with(|c| {
-            c.st.borrow_mut().finder = FinderState::default();
-            c.render();
-        })
-    });
-    app.on_finder_snapshot(|| {
-        with(|c| {
-            c.st.borrow_mut().finder.busy = true;
-            c.render();
-            c.send(Command::FinderSnapshot);
-        })
-    });
-    app.on_finder_compare(|| {
-        with(|c| {
-            c.st.borrow_mut().finder.busy = true;
-            c.render();
-            c.send(Command::FinderCompare);
-        })
-    });
+    app.on_find_hidden(|| with(|c| c.with_selected(|st| st.finder = FinderState::default())));
+    app.on_finder_snapshot(|| with(|c| c.finder_command(Command::FinderSnapshot)));
+    app.on_finder_compare(|| with(|c| c.finder_command(Command::FinderCompare)));
     app.on_finder_select(|i| with(|c| c.finder_select(i as usize)));
-    app.on_finder_name_edited(|t| with(|c| c.st.borrow_mut().finder.name = t.to_string()));
+    app.on_finder_name_edited(|t| {
+        with(|c| {
+            let Some(id) = c.selected_id() else { return };
+            if let Some(st) = c.app.borrow_mut().displays.get_mut(&id) {
+                st.finder.name = t.to_string();
+            }
+        })
+    });
     app.on_finder_value_edited(|i, t| {
         with(|c| {
-            if let Some(row) = c.st.borrow_mut().finder.values.get_mut(i as usize) {
+            let Some(id) = c.selected_id() else { return };
+            if let Some(row) = c.app.borrow_mut().displays.get_mut(&id).and_then(|st| st.finder.values.get_mut(i as usize)) {
                 row.2 = t.to_string();
             }
         })

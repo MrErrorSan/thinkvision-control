@@ -28,7 +28,7 @@ use windows_sys::Win32::Foundation::{
     ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS, ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_HANDLE, ERROR_SUCCESS, HANDLE,
     LPARAM, RECT,
 };
-use windows_sys::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW};
+use windows_sys::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW};
 use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY};
 
 use crate::{ascii, edid, not_connected};
@@ -308,6 +308,25 @@ fn gdi_monitors() -> Vec<(String, HMONITOR)> {
             }
         })
         .collect()
+}
+
+/// The work area (x, y, width, height, physical pixels) of the screen a display from [`crate::discovery`] shows, for
+/// placing the OSD on it: the HMONITOR showing the target with this device path. A backlight panel's target names no
+/// device path, so it gets the built-in display's. None = unknown, and the OSD uses the primary screen.
+pub fn screen_rect(target: &str) -> Option<(i32, i32, i32, i32)> {
+    let all = joined()?;
+    let display = if target.starts_with(crate::backlight::TARGET_PREFIX) {
+        all.iter().find(|d| display_kind(d.technology, &d.edid_id) == DisplayKind::BuiltIn)
+    } else {
+        all.iter().find(|d| d.path.eq_ignore_ascii_case(target))
+    }?;
+    // SAFETY: zeroed POD with its size field set; the HMONITOR came from EnumDisplayMonitors.
+    let r = unsafe {
+        let mut info: MONITORINFO = std::mem::zeroed();
+        info.cbSize = size_of::<MONITORINFO>() as u32;
+        (GetMonitorInfoW(display.monitor?, &mut info) != 0).then_some(info.rcWork)?
+    };
+    Some((r.left, r.top, r.right - r.left, r.bottom - r.top))
 }
 
 /// The physical monitor of `display`, from its HMONITOR alone; the others that HMONITOR returned are destroyed.

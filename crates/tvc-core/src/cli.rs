@@ -1,16 +1,21 @@
-//! Command-line verbs: `--preset day|night`, `--input hdmi|dp|usbc|this`, `--step brightness=+5`,
+//! Command-line verbs: `--preset day|night`, `--input hdmi|dp|usbc|this|1|2|3`, `--step brightness=+5`,
 //! `--get brightness|contrast|input|colour-mode|all`, `--help`, plus the flags `--startup`, `--json`, `--yes` and
 //! `--version`. `--x value` and `--x=value` both work, case-insensitively. Every argument must be valid, or
 //! [`parse`] returns a [`CliError`]; of several valid verbs the first wins, and the rest are ignored. `--help` (`-h`,
 //! `/?`) wins wherever it appears, even next to a bad argument. A `thinkvision://…` argument (how the OS opens a
 //! link) counts as a verb; see [`parse_url`]. No verb gives [`CliCommand::Show`].
+//!
+//! `--display <name|id|all>` (or a `thinkvision://display/<name|id|all>/…` link) fills [`Parsed::display`], kept as
+//! typed; the first one wins. It needs a verb: with none it is a [`CliError`], and `--help` and `--version` ignore
+//! it. The app resolves it with [`resolve_display`] against the attached displays, runs the verb on each target and
+//! exits with [`combined_exit_code`] of the per-target [`exit_code`]s.
 
 use crate::result::ResultKind;
 
 const MAX_STEP: i32 = 100;
 
 // The first name per choice is the canonical one `format` writes. Kinds match a display's input kinds
-// (`InputOption::kind`); w4-cli adds the slots `1`, `2`, `3`.
+// (`InputOption::kind`). The slots `1..=MAX_SLOT` are parsed apart.
 const INPUTS: [(&str, &str); 6] =
     [("hdmi", "hdmi"), ("dp", "dp"), ("displayport", "dp"), ("usbc", "usbc"), ("usb-c", "usbc"), ("this", "")];
 
@@ -24,6 +29,8 @@ pub enum InputChoice {
     /// An input kind: "hdmi", "dp" or "usbc".
     Kind(String),
 }
+
+const MAX_SLOT: u8 = 3;
 
 fn input_choice(kind: &str) -> InputChoice {
     if kind.is_empty() { InputChoice::This } else { InputChoice::Kind(kind.into()) }
@@ -116,7 +123,7 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
                     *flag = true;
                     Ok(None)
                 }
-                (None, _) if matches!(name.as_str(), "preset" | "input" | "step" | "get") => {
+                (None, _) if matches!(name.as_str(), "preset" | "input" | "step" | "get" | "display") => {
                     let value = inline.or_else(|| {
                         let next = args.get(i)?.as_ref();
                         (!next.starts_with('-') && next != "/?").then(|| {
@@ -125,7 +132,11 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
                         })
                     });
                     match value.map(str::trim).filter(|v| !v.is_empty()) {
-                        Some(v) => parse_verb(&name, v).map(Some),
+                        Some(v) if name == "display" => {
+                            parsed.display.get_or_insert_with(|| v.to_string());
+                            Ok(None)
+                        }
+                        Some(v) => parse_verb(&name, v).map(|c| Some((c, None))),
                         None => Err(format!("'--{typed}' needs a value ({})", choices(&name))),
                     }
                 }
@@ -139,7 +150,13 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
             Err(format!("unexpected argument '{arg}'"))
         };
         match outcome {
-            Ok(verb) => command = command.or(verb),
+            Ok(Some((verb, display))) if command.is_none() => {
+                command = Some(verb);
+                if let Some(display) = display {
+                    parsed.display.get_or_insert(display);
+                }
+            }
+            Ok(_) => {}
             Err(message) => error = error.or(Some(message)),
         }
     }
@@ -148,6 +165,9 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
         (false, Some(message)) => return Err(CliError { message }),
         (false, None) => command.unwrap_or_default(),
     };
+    if let Some(display) = parsed.display.as_ref().filter(|_| parsed.command == CliCommand::Show && !parsed.version) {
+        return Err(CliError { message: format!("'--display {display}' needs a verb (--preset, --input, --step or --get)") });
+    }
     Ok(parsed)
 }
 
@@ -157,25 +177,56 @@ pub fn version_line() -> String {
 }
 
 /// A `thinkvision:` link, case-insensitive, with or without `//` and a trailing `/`:
-/// `open`, `preset/day|night`, `input/hdmi|dp|displayport|usbc|usb-c|this`, `step/brightness|contrast/+N|-N`,
-/// `get/brightness|contrast|input|colour-mode|color-mode|all`. None when it isn't one of these.
+/// `open`, `preset/day|night`, `input/hdmi|dp|displayport|usbc|usb-c|this|1|2|3`, `step/brightness|contrast/+N|-N`,
+/// `get/brightness|contrast|input|colour-mode|color-mode|all`. Any but `open` may follow `display/<name|id|all>/`
+/// (percent-encoded, case kept), which [`parse`] puts in [`Parsed::display`]; this drops it. None when it isn't one
+/// of these.
 pub fn parse_url(url: &str) -> Option<CliCommand> {
-    url_command(url).ok()
+    url_command(url).ok().map(|(command, _)| command)
 }
 
-fn url_command(url: &str) -> Result<CliCommand, String> {
+fn url_command(url: &str) -> Result<(CliCommand, Option<String>), String> {
+    let unknown = || format!("'{}' is not a known thinkvision: link (see --help)", url.trim());
     if !is_url(url) {
         return Err(format!("'{url}' is not a thinkvision: link"));
     }
-    let lower = url.trim().to_lowercase().replace("%2b", "+");
-    let path = lower["thinkvision:".len()..].trim_start_matches('/').trim_end_matches('/');
-    let parts: Vec<&str> = path.split('/').collect();
-    match parts[..] {
-        ["" | "open"] => Ok(CliCommand::Show),
-        ["preset" | "input" | "get", value] => parse_verb(parts[0], value),
-        ["step", target, delta] => parse_verb("step", &format!("{target}={delta}")),
-        _ => Err(format!("'{}' is not a known thinkvision: link (see --help)", url.trim())),
+    let mut path = url.trim()["thinkvision:".len()..].trim_start_matches('/').trim_end_matches('/');
+    let mut display = None;
+    if let Some((_, rest)) = path.split_once('/').filter(|(head, _)| head.eq_ignore_ascii_case("display")) {
+        let (name, rest) = rest.split_once('/').ok_or_else(unknown)?;
+        let name = percent_decode(name).ok_or_else(unknown)?;
+        display = Some(name.trim().to_string()).filter(|n| !n.is_empty());
+        if display.is_none() {
+            return Err(unknown());
+        }
+        path = rest;
     }
+    let lower = path.to_lowercase().replace("%2b", "+");
+    let parts: Vec<&str> = lower.split('/').collect();
+    let command = match parts[..] {
+        ["" | "open"] if display.is_none() => CliCommand::Show,
+        ["preset" | "input" | "get", value] => parse_verb(parts[0], value)?,
+        ["step", target, delta] => parse_verb("step", &format!("{target}={delta}"))?,
+        _ => return Err(unknown()),
+    };
+    Ok((command, display))
+}
+
+/// Decodes `%XX` escapes as UTF-8; None when malformed.
+fn percent_decode(text: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut rest = text.as_bytes();
+    while let [first, tail @ ..] = rest {
+        if *first == b'%' {
+            let hex = std::str::from_utf8(tail.get(..2)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            rest = &tail[2..];
+        } else {
+            bytes.push(*first);
+            rest = tail;
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 fn is_url(arg: &str) -> bool {
@@ -190,7 +241,8 @@ pub fn format(command: &CliCommand) -> Option<Vec<String>> {
         CliCommand::Show => Some(Vec::new()),
         CliCommand::Preset { night } => args("--preset", if night { "night" } else { "day" }.into()),
         CliCommand::Input(ref choice) => match choice {
-            InputChoice::Slot(n) => args("--input", n.to_string()),
+            InputChoice::Slot(n) if (1..=MAX_SLOT).contains(n) => args("--input", n.to_string()),
+            InputChoice::Slot(_) => None,
             _ => INPUTS.iter().find(|(_, k)| input_choice(k) == *choice).and_then(|(n, _)| args("--input", n.to_string())),
         },
         CliCommand::Step { code, delta } if (-MAX_STEP..=MAX_STEP).contains(&delta) => {
@@ -218,16 +270,48 @@ pub fn exit_code(kind: Option<ResultKind>, status_found: bool) -> i32 {
     }
 }
 
+/// The exit code of a verb run on several displays: 0 only when every target succeeded, else the first non-zero
+/// code in target order. `codes` holds each target's [`exit_code`].
+pub fn combined_exit_code(codes: &[i32]) -> i32 {
+    codes.iter().copied().find(|&code| code != 0).unwrap_or(0)
+}
+
+/// The ids `--display <wanted>` targets, from `displays` as `(id, name)` pairs. `all` (any case) gives every id; an
+/// exact id match wins; otherwise `wanted` must equal exactly one name, ignoring case. An ambiguous name, or none,
+/// is a [`CliError`] listing the candidates, or the attached displays, as "name (id)".
+pub fn resolve_display<'a>(wanted: &str, displays: &'a [(String, String)]) -> Result<Vec<&'a str>, CliError> {
+    let wanted = wanted.trim();
+    if wanted.eq_ignore_ascii_case("all") {
+        return Ok(displays.iter().map(|(id, _)| id.as_str()).collect());
+    }
+    if let Some((id, _)) = displays.iter().find(|(id, _)| id == wanted) {
+        return Ok(vec![id.as_str()]);
+    }
+    let lower = wanted.to_lowercase();
+    let matches: Vec<_> = displays.iter().filter(|(_, name)| name.to_lowercase() == lower).collect();
+    fn list<'b>(displays: impl Iterator<Item = &'b (String, String)>) -> String {
+        displays.map(|(id, name)| format!("{name} ({id})")).collect::<Vec<_>>().join(", ")
+    }
+    let message = match matches[..] {
+        [(id, _)] => return Ok(vec![id.as_str()]),
+        [] if displays.is_empty() => format!("no display is called '{wanted}': none is attached"),
+        [] => format!("no display is called '{wanted}' (attached: {})", list(displays.iter())),
+        _ => format!("'{wanted}' matches several displays, give an id: {}", list(matches.into_iter())),
+    };
+    Err(CliError { message })
+}
+
 /// Usage text for `--help`.
 pub fn help() -> &'static str {
     "ThinkVision Control
 
-Usage: thinkvision-control [verb] [--json] [--yes] [--startup]
+Usage: thinkvision-control [verb] [--display name|id|all] [--json] [--yes] [--startup]
 On Windows, scripts should run tvc (tvc.exe), the console launcher, with the same arguments.
 
 Verbs (the first one counts):
   --preset day|night                 Apply the Day or Night preset
-  --input hdmi|dp|usbc|this          Switch the input (this = this PC's input)
+  --input hdmi|dp|usbc|this|1|2|3    Switch the input (this = this PC's input,
+                                     1-3 = the display's first to third input)
   --step brightness|contrast=+N|-N   Change brightness or contrast by N (up to 100)
   --get brightness|contrast|input|colour-mode|all
                                      Print current values
@@ -236,13 +320,21 @@ Verbs (the first one counts):
   (none)                             Open the window
 
 Flags:
+  --display name|id|all   Act on one display (an id, or a name in any case that
+                          matches exactly one display) or on all of them.
+                          Without it, the verb acts on the default display.
   --json      Print the result as JSON
   --yes       Confirm an --input switch without asking on screen
   --startup   Start in the tray without a window
 
+--get on several displays prints a JSON array with one object per display;
+on one display it prints a single object, as before.
+
 Exit codes: 0 OK, 1 monitor not found, 2 bad arguments or value out of range,
             3 input switch needs --yes, 4 not supported,
             5 monitor not answering (or asleep, or safe mode), 8 timed out.
+            With several displays: 0 only if every display succeeded, else
+            the code of the first one that failed.
 
 Links (thinkvision://):
   thinkvision://open
@@ -250,6 +342,7 @@ Links (thinkvision://):
   thinkvision://input/hdmi             (also dp, usbc, this)
   thinkvision://step/brightness/+10    thinkvision://step/contrast/-5
   thinkvision://get/all
+  thinkvision://display/<name|id|all>/step/brightness/+5   (any link but open)
 "
 }
 
@@ -257,7 +350,8 @@ Links (thinkvision://):
 fn choices(verb: &str) -> &'static str {
     match verb {
         "preset" => "day, night",
-        "input" => "hdmi, dp, usbc, this",
+        "input" => "hdmi, dp, usbc, this, 1, 2, 3",
+        "display" => "a display name, id or all",
         "get" => "brightness, contrast, input, colour-mode, all",
         _ => "brightness=+N or contrast=-N",
     }
@@ -272,7 +366,10 @@ fn parse_verb(name: &str, value: &str) -> Result<CliCommand, String> {
             "night" => Some(CliCommand::Preset { night: true }),
             _ => None,
         },
-        "input" => INPUTS.iter().find(|(n, _)| *n == lower).map(|(_, k)| CliCommand::Input(input_choice(k))),
+        "input" => match lower.parse::<u8>() {
+            Ok(n) if (1..=MAX_SLOT).contains(&n) => Some(CliCommand::Input(InputChoice::Slot(n))),
+            _ => INPUTS.iter().find(|(n, _)| *n == lower).map(|(_, k)| CliCommand::Input(input_choice(k))),
+        },
         "get" => TARGETS.iter().find(|(n, _)| *n == lower).map(|(_, t)| CliCommand::Get(*t)),
         _ => return parse_step(&lower),
     };

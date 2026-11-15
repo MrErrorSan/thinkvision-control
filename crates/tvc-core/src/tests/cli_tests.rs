@@ -13,6 +13,7 @@ fn format_round_trips_through_parse() {
     let commands = [
         CliCommand::Preset { night: false }, CliCommand::Preset { night: true },
         CliCommand::Input(InputChoice::Kind("hdmi".into())), CliCommand::Input(InputChoice::Kind("dp".into())), CliCommand::Input(InputChoice::Kind("usbc".into())), CliCommand::Input(InputChoice::This),
+        CliCommand::Input(InputChoice::Slot(1)), CliCommand::Input(InputChoice::Slot(3)),
         CliCommand::Step { code: 0x10, delta: 5 }, CliCommand::Step { code: 0x12, delta: -5 },
         CliCommand::Get(GetTarget::Brightness), CliCommand::Get(GetTarget::Contrast), CliCommand::Get(GetTarget::Input),
         CliCommand::Get(GetTarget::ColourMode), CliCommand::Get(GetTarget::All), CliCommand::Help,

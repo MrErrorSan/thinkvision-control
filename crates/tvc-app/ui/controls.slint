@@ -1,10 +1,12 @@
 // Building blocks: cards, rows, the input selector, tabs, banner, keycaps, dialog.
 import { Slider, Switch, Button, ComboBox, ProgressIndicator } from "std-widgets.slint";
 import { Theme, Glyphs, Icon } from "theme.slint";
-import { Severity, Banner, InputItem, Dialog } from "types.slint";
+import { Severity, Banner, InputItem, Dialog, DisplayEntry } from "types.slint";
 
+// `hint` is a short secondary line next to the title ("Names from the monitor's capability report").
 export component SectionHeader inherits VerticalLayout {
     in property <string> text;
+    in property <string> hint;
     in property <bool> first;
     padding-top: root.first ? 4px : 20px;
     padding-bottom: 8px;
@@ -13,6 +15,12 @@ export component SectionHeader inherits VerticalLayout {
         font-size: 14px;
         font-weight: 600;
         color: Theme.text;
+    }
+    if root.hint != "": Text {
+        text: root.hint;
+        font-size: 12px;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
     }
 }
 
@@ -38,8 +46,9 @@ export component CardFrame inherits Rectangle {
     border-color: Theme.card-stroke;
 }
 
-// Icon + title + description on the left, the control (children) on the right. The group carries the title, so
-// the control inside is labelled by what it does only. `note` is a failure; `reason` says why it's disabled.
+// Icon + title + description on the left, the control (children) on the right; in a narrow window a wide control
+// (a combo box, a long button) goes under the text instead. The group carries the title, so the control inside is
+// labelled by what it does only. `note` is a failure; `reason` says why it's disabled.
 export component Card inherits CardFrame {
     in property <string> glyph;
     in property <string> title;
@@ -48,6 +57,8 @@ export component Card inherits CardFrame {
     in property <string> reason;
     in property <bool> enabled: true;
     property <string> why: root.enabled ? "" : root.reason;
+    property <bool> stacked: Theme.narrow && controls.preferred-width > 96px;
+    property <length> controls-left: root.glyph != "" ? 52px : 16px;
 
     pure function join(a: string, b: string) -> string {
         if a == "" { return b; }
@@ -60,66 +71,77 @@ export component Card inherits CardFrame {
     accessible-label: root.title;
     accessible-description: root.join(root.join(root.description, root.note), root.why);
 
-    HorizontalLayout {
+    VerticalLayout {
         padding-left: 16px;
         padding-right: 16px;
         padding-top: 10px;
         padding-bottom: 10px;
-        spacing: 14px;
-
-        if root.glyph != "": Icon {
-            text: root.glyph;
-            font-size: 22px;
-            width: 22px;
-            color: root.enabled ? Theme.text : Theme.text-disabled;
-        }
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 1;
-            min-width: 0px;
-            Text {
-                text: root.title;
-                font-size: 14px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 14px;
+            if root.glyph != "": Icon {
+                text: root.glyph;
+                font-size: 22px;
+                width: 22px;
                 color: root.enabled ? Theme.text : Theme.text-disabled;
-                overflow: elide;
-                accessible-role: none;
             }
-            if root.description != "": Text {
-                text: root.description;
-                font-size: 12px;
-                color: root.enabled ? Theme.text-secondary : Theme.text-disabled;
-                wrap: word-wrap;
-                accessible-role: none;
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                min-width: 0px;
+                Text {
+                    text: root.title;
+                    font-size: 14px;
+                    color: root.enabled ? Theme.text : Theme.text-disabled;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                if root.description != "": Text {
+                    text: root.description;
+                    font-size: 12px;
+                    color: root.enabled ? Theme.text-secondary : Theme.text-disabled;
+                    wrap: word-wrap;
+                    accessible-role: none;
+                }
+                if root.note != "": Text {
+                    text: root.note;
+                    font-size: 12px;
+                    color: Theme.error-fg;
+                    wrap: word-wrap;
+                    accessible-role: none;
+                }
+                if root.why != "": Text {
+                    text: root.why;
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    wrap: word-wrap;
+                    accessible-role: none;
+                }
             }
-            if root.note != "": Text {
-                text: root.note;
-                font-size: 12px;
-                color: Theme.error-fg;
-                wrap: word-wrap;
-                accessible-role: none;
-            }
-            if root.why != "": Text {
-                text: root.why;
-                font-size: 12px;
-                color: Theme.text-secondary;
-                wrap: word-wrap;
-                accessible-role: none;
+            // Room for the control, which is placed over it.
+            if !root.stacked: Rectangle {
+                width: controls.preferred-width;
+                min-height: controls.preferred-height;
             }
         }
-        VerticalLayout {
-            alignment: center;
-            horizontal-stretch: 0;
-            HorizontalLayout {
-                alignment: end;
-                spacing: 8px;
-                @children
-            }
-        }
+        if root.stacked: Rectangle { height: controls.preferred-height; }
+    }
+    // @children can't move between layouts, so the control sits outside them and is placed by hand.
+    controls := HorizontalLayout {
+        x: root.stacked ? root.controls-left : root.width - 16px - self.preferred-width;
+        y: root.stacked ? root.height - 10px - self.preferred-height : (root.height - self.preferred-height) / 2;
+        width: root.stacked ? root.width - root.controls-left - 16px : self.preferred-width;
+        height: self.preferred-height;
+        // Beside the text it is exactly as wide as its children; under it they share the full width.
+        alignment: stretch;
+        spacing: 8px;
+        @children
     }
 }
 
-// Glyph, label, slider and value on one line. `changed` fires while dragging, `released` once at the end.
-export component SliderRow inherits HorizontalLayout {
+// Glyph, label, slider and value on one line; in a narrow window the slider takes the full width under the label,
+// so the drag target stays long. `changed` fires while dragging, `released` once at the end.
+export component SliderRow inherits Rectangle {
     in property <string> glyph;
     in property <string> label;
     in property <float> value;
@@ -134,27 +156,38 @@ export component SliderRow inherits HorizontalLayout {
     changed value => { slider.value = root.value; }
     changed revision => { slider.value = root.value; }
 
-    padding-left: 16px;
-    padding-right: 16px;
-    height: 52px;
-    spacing: 12px;
+    property <bool> wrap: Theme.narrow;
+    property <length> pad: root.wrap ? 12px : 16px;
+    property <length> line: root.wrap ? 36px : root.height;
+    property <length> text-x: root.pad + 22px + 12px;
+    property <length> value-x: root.width - root.pad - 32px;
+    height: root.wrap ? 80px : 52px;
 
     Icon {
+        x: root.pad;
+        y: 0px;
+        height: root.line;
         text: root.glyph;
         font-size: 20px;
         width: 22px;
         color: root.enabled ? Theme.text : Theme.text-disabled;
     }
     Text {
+        x: root.text-x;
+        y: 0px;
+        width: root.wrap ? root.value-x - root.text-x - 12px : 96px;
+        height: root.line;
         text: root.label;
-        width: 96px;
         font-size: 14px;
         vertical-alignment: center;
         overflow: elide;
         color: root.enabled ? Theme.text : Theme.text-disabled;
     }
     slider := Slider {
-        horizontal-stretch: 1;
+        x: root.wrap ? root.text-x : root.text-x + 96px + 12px;
+        y: root.wrap ? root.line : (root.height - self.height) / 2;
+        width: root.wrap ? root.width - root.text-x - root.pad : root.value-x - 12px - self.x;
+        height: 36px;
         minimum: 0;
         maximum: root.maximum;
         step: 1;
@@ -164,7 +197,10 @@ export component SliderRow inherits HorizontalLayout {
         released(v) => { root.released(Math.round(v)); }
     }
     Text {
+        x: root.value-x;
+        y: 0px;
         width: 32px;
+        height: root.line;
         text: root.known ? Math.round(slider.value) : "—";
         horizontal-alignment: right;
         vertical-alignment: center;
@@ -271,20 +307,27 @@ export component InputTile inherits TileFace {
     accessible-action-default => { if root.enabled { root.clicked(); } }
 }
 
-// Segmented input selector; equal-width tiles.
-export component InputSelector inherits HorizontalLayout {
+// Segmented input selector; equal-width tiles, two per row in a narrow window.
+export component InputSelector inherits Rectangle {
     in property <[InputItem]> inputs;
     in property <int> active;          // code of the current input, -1 = unknown
     in property <bool> enabled: true;
     in property <bool> compact;        // hide the "This PC" caption on narrow windows
     callback select(int);
 
-    spacing: 6px;
+    property <int> columns: Theme.narrow && root.inputs.length > 2 ? 2 : max(1, root.inputs.length);
+    property <int> rows: Math.ceil(root.inputs.length / root.columns);
+    property <length> tile-width: (root.width - (root.columns - 1) * 6px) / root.columns;
+    property <length> tile-height: root.compact ? 44px : 56px;
+    height: root.rows * root.tile-height + max(0, root.rows - 1) * 6px;
     accessible-role: radio-group;
     accessible-label: "Input";
 
     for item[i] in root.inputs: InputTile {
-        horizontal-stretch: 1;
+        x: Math.mod(i, root.columns) * (root.tile-width + 6px);
+        y: Math.floor(i / root.columns) * (root.tile-height + 6px);
+        width: root.tile-width;
+        height: root.tile-height;
         label: item.label;
         this-pc: item.this-pc;
         item-index: i;
@@ -296,15 +339,18 @@ export component InputSelector inherits HorizontalLayout {
     }
 }
 
-// Top tab strip: text tabs, 3 px accent underline under the selected one.
+// Top tab strip: text tabs, 3 px accent underline under the selected one. A tab that isn't `shown` takes no room
+// and no focus.
 export component Tab inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
+    in property <bool> shown: true;
     out property <bool> has-focus: fs.has-focus;
     callback clicked;
 
     forward-focus: fs;
-    width: t.preferred-width + 24px;
+    visible: root.shown;
+    width: root.shown ? t.preferred-width + 24px : 0px;
     height: 40px;
     accessible-role: tab;
     accessible-label: root.label;
@@ -315,6 +361,7 @@ export component Tab inherits Rectangle {
     fs := FocusScope {
         x: 0;
         width: 0;   // takes no clicks
+        enabled: root.shown;
         key-pressed(e) => {
             if e.text == Key.Space || e.text == Key.Return { root.clicked(); return accept; }
             reject
@@ -692,4 +739,443 @@ export component EmptyState inherits CardFrame {
         }
         if root.busy: ProgressIndicator { indeterminate: true; }
     }
+}
+
+// A short label next to the display's name: "Experimental" (warning) or "Built-in" and "Together" (neutral).
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <bool> warning;
+    width: label.preferred-width + 16px;
+    height: 20px;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: root.warning ? Theme.warning-fg : Theme.control-stroke;
+    background: root.warning ? Theme.warning-bg : Theme.info-bg;
+    label := Text {
+        text: root.text;
+        font-size: 11px;
+        font-weight: 600;
+        color: root.warning ? Theme.text : Theme.text-secondary;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}
+
+// The words the picker uses for a display.
+global DisplayWords {
+    // The chip's second line: what's wrong with it, else how it's connected and how far it's supported.
+    public pure function caption(d: DisplayEntry) -> string {
+        if d.state == "disconnected" { return "Disconnected"; }
+        if d.state == "not-responding" { return "Not responding"; }
+        if d.state == "connecting" { return "Connecting…"; }
+        if d.state == "unreachable" { return "Can't be reached"; }
+        if d.kind == "built-in" { return "Built-in · brightness only"; }
+        let level = d.level == "verified" ? "Verified" : d.level == "experimental" ? "Experimental" : "Read-only";
+        d.detail == "" ? level : d.detail + " · " + level
+    }
+}
+
+// Slint borders are solid, so a disconnected display's chip draws its dashed outline from short strokes.
+component DashedBorder inherits Rectangle {
+    property <length> dash: 6px;
+    property <length> period: 10px;
+    property <int> across: Math.floor((root.width - 2 * Theme.radius) / root.period);
+    property <int> down: Math.floor((root.height - 2 * Theme.radius) / root.period);
+    for i in root.across: Rectangle {
+        x: Theme.radius + i * root.period;
+        y: 0px;
+        width: root.dash;
+        height: 1px;
+        background: Theme.text-secondary;
+    }
+    for i in root.across: Rectangle {
+        x: Theme.radius + i * root.period;
+        y: root.height - 1px;
+        width: root.dash;
+        height: 1px;
+        background: Theme.text-secondary;
+    }
+    for i in root.down: Rectangle {
+        x: 0px;
+        y: Theme.radius + i * root.period;
+        width: 1px;
+        height: root.dash;
+        background: Theme.text-secondary;
+    }
+    for i in root.down: Rectangle {
+        x: root.width - 1px;
+        y: Theme.radius + i * root.period;
+        width: 1px;
+        height: root.dash;
+        background: Theme.text-secondary;
+    }
+}
+
+// One display in the picker: a radio button. A disconnected display is dashed and can't be picked; one that isn't
+// responding is greyed.
+component DisplayChip inherits Rectangle {
+    in property <string> title;
+    in property <string> caption;
+    in property <bool> selected;
+    in property <bool> gone;
+    in property <bool> dim;
+    in property <int> item-index;
+    in property <int> item-count;
+    callback clicked;
+
+    forward-focus: fs;
+    height: 48px;
+    min-width: 0px;
+    border-radius: Theme.radius;
+    border-width: root.gone ? 0px : root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.accent : Theme.control-stroke;
+    background: root.selected ? Theme.accent.transparentize(92%)
+              : ta.has-hover && !root.gone ? Theme.card-bg-secondary : Theme.card-bg;
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-enabled: !root.gone;
+    accessible-label: root.title;
+    accessible-description: root.caption;
+    accessible-item-index: root.item-index;
+    accessible-item-count: root.item-count;
+    accessible-action-default => { if !root.gone { root.clicked(); } }
+
+    ta := TouchArea {
+        enabled: !root.gone;
+        clicked => { root.clicked(); }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;   // takes no clicks
+        enabled: !root.gone;
+        key-pressed(e) => {
+            if e.text == Key.Space || e.text == Key.Return { root.clicked(); return accept; }
+            reject
+        }
+    }
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+        Text {
+            text: root.title;
+            font-size: 13px;
+            font-weight: 600;
+            overflow: elide;
+            color: root.gone || root.dim ? Theme.text-secondary : Theme.text;
+            accessible-role: none;
+        }
+        Text {
+            text: root.caption;
+            font-size: 12px;
+            overflow: elide;
+            color: Theme.text-secondary;
+            accessible-role: none;
+        }
+    }
+    if root.gone: DashedBorder { }
+    if fs.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// One display in the dropdown's list.
+component MenuRow inherits Rectangle {
+    in property <string> title;
+    in property <string> caption;
+    in property <bool> checked;
+    in property <bool> highlighted;
+    in property <bool> gone;
+    in property <int> item-index;
+    in property <int> item-count;
+    callback clicked;
+
+    height: 44px;
+    border-radius: 4px;
+    background: root.highlighted || ta.has-hover ? Theme.subtle-hover : transparent;
+    accessible-role: list-item;
+    accessible-label: root.title;
+    accessible-description: root.caption;
+    accessible-item-selected: root.checked;
+    accessible-item-index: root.item-index;
+    accessible-item-count: root.item-count;
+    accessible-enabled: !root.gone;
+    accessible-action-default => { if !root.gone { root.clicked(); } }
+
+    ta := TouchArea {
+        enabled: !root.gone;
+        clicked => { root.clicked(); }
+    }
+    Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: root.checked ? 16px : 0px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+    }
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        alignment: center;
+        Text {
+            text: root.title;
+            font-size: 14px;
+            font-weight: root.checked ? 600 : 400;
+            overflow: elide;
+            color: root.gone ? Theme.text-secondary : Theme.text;
+            accessible-role: none;
+        }
+        Text {
+            text: root.caption;
+            font-size: 12px;
+            overflow: elide;
+            color: Theme.text-secondary;
+            accessible-role: none;
+        }
+    }
+    if root.highlighted: FocusRing { border-radius: root.border-radius; }
+}
+
+// The picker as a dropdown, for when the chips don't fit. Up and Down move in the open list, Enter or Space
+// picks, Escape closes.
+component DisplayMenu inherits Rectangle {
+    in property <[DisplayEntry]> displays;
+    in property <string> selected;
+    in property <string> selected-name;
+    in property <bool> together-available;
+    callback select(string);
+
+    property <int> count: root.displays.length + (root.together-available ? 1 : 0);
+    property <int> highlight;
+
+    function open() {
+        root.highlight = root.displays.length;   // All together, unless a row is the selected one (see its init)
+        popup.show();
+    }
+    function choose(i: int) {
+        if i < root.displays.length && root.displays[i].state == "disconnected" { return; }
+        popup.close();
+        root.select(i < root.displays.length ? root.displays[i].id : "");
+    }
+
+    forward-focus: fs;
+    height: 40px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.control-stroke;
+    background: ta.has-hover ? Theme.card-bg-secondary : Theme.card-bg;
+    accessible-role: combobox;
+    accessible-label: "Display";
+    accessible-value: root.selected-name;
+    accessible-expandable: true;
+    accessible-action-default => { root.open(); }
+    accessible-action-expand => { root.open(); }
+
+    ta := TouchArea { clicked => { root.open(); } }
+    fs := FocusScope {
+        x: 0;
+        width: 0;   // takes no clicks
+        key-pressed(e) => {
+            if e.text == Key.Space || e.text == Key.Return || e.text == Key.DownArrow { root.open(); return accept; }
+            reject
+        }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        Text {
+            horizontal-stretch: 1;
+            text: root.selected-name;
+            font-size: 14px;
+            color: Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+        Icon {
+            text: Glyphs.chevron-down;
+            font-size: 13px;
+            width: 12px;
+        }
+    }
+    if fs.has-focus: FocusRing { border-radius: root.border-radius; }
+
+    popup := PopupWindow {
+        x: 0px;
+        y: root.height + 4px;
+        width: root.width;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.layer-bg;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.card-stroke;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000044;
+            FocusScope {
+                init => { self.focus(); }
+                key-pressed(e) => {
+                    if e.text == Key.Escape { popup.close(); return accept; }
+                    if e.text == Key.DownArrow { root.highlight = Math.min(root.highlight + 1, root.count - 1); return accept; }
+                    if e.text == Key.UpArrow { root.highlight = Math.max(root.highlight - 1, 0); return accept; }
+                    if e.text == Key.Space || e.text == Key.Return { root.choose(root.highlight); return accept; }
+                    reject
+                }
+                VerticalLayout {
+                    padding: 4px;
+                    accessible-role: list;
+                    accessible-label: "Display";
+                    for d[i] in root.displays: MenuRow {
+                        init => { if d.id == root.selected { root.highlight = i; } }
+                        title: d.name;
+                        caption: DisplayWords.caption(d);
+                        checked: d.id == root.selected;
+                        highlighted: i == root.highlight;
+                        gone: d.state == "disconnected";
+                        item-index: i;
+                        item-count: root.count;
+                        clicked => { root.choose(i); }
+                    }
+                    if root.together-available: MenuRow {
+                        title: "All together";
+                        caption: "Move every included display";
+                        checked: root.selected == "";
+                        highlighted: root.highlight == root.displays.length;
+                        item-index: root.displays.length;
+                        item-count: root.count;
+                        clicked => { root.choose(root.displays.length); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Which display the tabs show: chips (a radio group), or a dropdown when there are more than three displays or the
+// window is too narrow for the chips. "All together" (id "") is offered when `together-available`.
+export component DisplayPicker inherits VerticalLayout {
+    in property <[DisplayEntry]> displays;
+    in property <string> selected;
+    in property <string> selected-name;
+    in property <bool> together-available;
+    callback select(string);
+
+    property <int> count: root.displays.length + (root.together-available ? 1 : 0);
+    property <bool> menu: root.displays.length > 3 || (Theme.narrow && root.count > 2);
+
+    if root.menu: DisplayMenu {
+        displays: root.displays;
+        selected: root.selected;
+        selected-name: root.selected-name;
+        together-available: root.together-available;
+        select(id) => { root.select(id); }
+    }
+    if !root.menu: HorizontalLayout {
+        spacing: 8px;
+        accessible-role: radio-group;
+        accessible-label: "Display";
+        for d[i] in root.displays: DisplayChip {
+            horizontal-stretch: 1;
+            title: d.name;
+            caption: DisplayWords.caption(d);
+            selected: d.id == root.selected;
+            gone: d.state == "disconnected";
+            dim: d.state == "not-responding";
+            item-index: i;
+            item-count: root.count;
+            clicked => { root.select(d.id); }
+        }
+        if root.together-available: DisplayChip {
+            horizontal-stretch: 1;
+            title: "All together";
+            caption: "Move every included display";
+            selected: root.selected == "";
+            item-index: root.displays.length;
+            item-count: root.count;
+            clicked => { root.select(""); }
+        }
+    }
+}
+
+// Together-mode offset in percent, in steps of 5: a spin box. Up or Right raises it, Down or Left lowers it.
+export component OffsetStepper inherits Rectangle {
+    in property <int> value;
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback changed(int);
+
+    property <int> step: 5;
+    pure function signed(v: int) -> string {
+        v > 0 ? "+" + v : v < 0 ? "−" + (-v) : "±0"
+    }
+    function bump(by: int) {
+        if root.enabled { root.changed(Math.max(-100, Math.min(100, root.value + by))); }
+    }
+
+    forward-focus: fs;
+    width: 100px;
+    height: 32px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.control-stroke;
+    background: Theme.card-bg;
+    opacity: root.enabled ? 1 : 0.45;
+    accessible-role: spinbox;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-value: root.signed(root.value);
+    accessible-value-minimum: -100;
+    accessible-value-maximum: 100;
+    accessible-value-step: root.step;
+    accessible-action-increment => { root.bump(root.step); }
+    accessible-action-decrement => { root.bump(-root.step); }
+
+    fs := FocusScope {
+        x: 0;
+        width: 0;   // takes no clicks
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if e.text == Key.UpArrow || e.text == Key.RightArrow { root.bump(root.step); return accept; }
+            if e.text == Key.DownArrow || e.text == Key.LeftArrow { root.bump(-root.step); return accept; }
+            reject
+        }
+    }
+    HorizontalLayout {
+        Rectangle {
+            width: 32px;
+            background: lower.pressed ? Theme.subtle-pressed : lower.has-hover ? Theme.subtle-hover : transparent;
+            lower := TouchArea {
+                enabled: root.enabled;
+                clicked => { fs.focus(); root.bump(-root.step); }
+            }
+            Text { text: "−"; font-size: 14px; color: Theme.text; accessible-role: none; }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.signed(root.value);
+            font-size: 13px;
+            color: Theme.text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        Rectangle {
+            width: 32px;
+            background: raise.pressed ? Theme.subtle-pressed : raise.has-hover ? Theme.subtle-hover : transparent;
+            raise := TouchArea {
+                enabled: root.enabled;
+                clicked => { fs.focus(); root.bump(root.step); }
+            }
+            Text { text: "+"; font-size: 14px; color: Theme.text; accessible-role: none; }
+        }
+    }
+    if fs.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// A bare switch whose state follows `on` whenever it changes, even after the user flipped it.
+export component SyncSwitch inherits Switch {
+    in property <bool> on;
+    init => { self.checked = root.on; }
+    changed on => { self.checked = root.on; }
 }

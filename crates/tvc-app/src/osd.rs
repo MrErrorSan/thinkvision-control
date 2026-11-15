@@ -2,6 +2,7 @@
 //! is shown and hidden by layered alpha on Windows. winit's own show after the first one activates the window and
 //! rewrites its ex-styles, and hiding through Win32 behind Slint's back makes Slint's loop spin (background NOTES).
 
+use std::cell::Cell;
 use std::time::Duration;
 
 use slint::winit_030::winit::window::WindowAttributes;
@@ -10,14 +11,26 @@ use slint::ComponentHandle;
 
 use crate::Osd;
 
-pub const TITLE: &str = "ThinkVision OSD";
 const VISIBLE_FOR: Duration = Duration::from_millis(1200);
 const WIDTH: f32 = 320.0;
 const HEIGHT: f32 = 64.0;
 const ABOVE_WORK_AREA: f32 = 96.0;
 
-/// Window attributes for the OSD: never activated on show, no taskbar button. Called from the winit hook.
+/// A work area: x, y, width, height in physical pixels.
+type Rect = (i32, i32, i32, i32);
+
+thread_local! {
+    /// Set while the OSD's window adapter is created, which is when Slint runs the winit attributes hook.
+    static CREATING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The winit attributes hook for every window. While the OSD is being created, its attributes: never activated on
+/// show, no taskbar button; any other window's are unchanged. The hook runs before Slint applies the component's
+/// title, so the OSD is told apart by when the hook runs, not by its title.
 pub fn attributes(attrs: WindowAttributes) -> WindowAttributes {
+    if !CREATING.get() {
+        return attrs;
+    }
     #[cfg(windows)]
     {
         use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
@@ -37,23 +50,34 @@ pub enum Content<'a> {
 pub struct OsdHost {
     window: Option<Osd>,
     shown: bool,
+    /// The work area the OSD was last placed on; None = the primary screen.
+    screen: Option<Rect>,
     timer: slint::Timer,
 }
 
 impl OsdHost {
-    /// Shows the OSD on the screen with this work area (x, y, width, height), from `tvc_ddc::screen_rect`; None =
-    /// the primary screen. Stub until w4-tray-osd: always the primary screen.
-    pub fn show_on(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content, screen: Option<(i32, i32, i32, i32)>) {
-        let _ = screen;
-        Self::show(this, content);
+    /// Shows or updates the OSD where it is, or on the primary screen when hidden; it hides 1.2 s after the last call.
+    pub fn show(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content) {
+        let screen = {
+            let host = this.borrow();
+            if host.shown { host.screen } else { None }
+        };
+        Self::show_on(this, content, screen);
     }
 
-    /// Shows or updates the OSD; it hides 1.2 s after the last call.
-    pub fn show(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content) {
+    /// Shows or updates the OSD on the screen with this work area, from `tvc_ddc::screen_rect`; None = the primary
+    /// screen. It hides 1.2 s after the last call.
+    pub fn show_on(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content, screen: Option<Rect>) {
         let mut host = this.borrow_mut();
         let created = host.window.is_none();
         if created {
-            let Ok(osd) = Osd::new() else { return };
+            CREATING.set(true);
+            // `window()` creates the window adapter, and with it runs the winit hook, if `new` didn't.
+            let osd = Osd::new().inspect(|osd| {
+                osd.window();
+            });
+            CREATING.set(false);
+            let Ok(osd) = osd else { return };
             // The kept OSD stays "visible" (alpha 0), so Windows may pick it as the process's main window. It can't
             // be clicked or focused, so a close request can only come from outside (installer upgrade, taskkill
             // without /F): exit in order rather than hide it behind Slint's back.
@@ -68,23 +92,27 @@ impl OsdHost {
             Content::Level { glyph, label, value, max, display } => {
                 osd.set_message("".into());
                 osd.set_glyph(glyph.into());
-                osd.set_label(if display.is_empty() { label.into() } else { format!("{display} · {label}").into() });
+                osd.set_label(label.into());
+                osd.set_display(display.into());
                 osd.set_value_text(value.to_string().into());
                 osd.set_fraction(if max == 0 { 0.0 } else { value.min(max) as f32 / max as f32 });
             }
             Content::Message(text) => osd.set_message(text.into()),
         }
         if created {
-            place(osd);
+            place(osd, screen, true);
             let _ = osd.show(); // first show of a with_active(false) window = no activation
             // Not called directly: `host` is still borrowed here.
             let weak = std::rc::Rc::downgrade(this);
             slint::Timer::single_shot(Duration::ZERO, move || style_when_ready(weak, 0));
-        } else if !host.shown {
-            place(osd); // the work area may have changed since the last show
-            native_show(osd, true);
+        } else if !host.shown || host.screen != screen {
+            place(osd, screen, true); // the work area may have changed since the last show
+            if !host.shown {
+                native_show(osd, true);
+            }
         }
         host.shown = true;
+        host.screen = screen;
         let weak = std::rc::Rc::downgrade(this);
         host.timer.start(slint::TimerMode::SingleShot, VISIBLE_FOR, move || {
             if let Some(this) = weak.upgrade() {
@@ -119,6 +147,16 @@ mod win {
         pub fn SetWindowPos(h: isize, after: isize, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
         pub fn SetLayeredWindowAttributes(h: isize, key: u32, alpha: u8, flags: u32) -> i32;
         pub fn SystemParametersInfoW(action: u32, param: u32, pv: *mut core::ffi::c_void, ini: u32) -> i32;
+        pub fn MonitorFromPoint(pt: Point, flags: u32) -> isize;
+    }
+    #[link(name = "shcore")]
+    extern "system" {
+        pub fn GetDpiForMonitor(monitor: isize, kind: u32, dpi_x: *mut u32, dpi_y: *mut u32) -> i32;
+    }
+    #[repr(C)]
+    pub struct Point {
+        pub x: i32,
+        pub y: i32,
     }
     #[link(name = "dwmapi")]
     extern "system" {
@@ -137,29 +175,65 @@ fn hwnd(osd: &Osd) -> Option<isize> {
         .flatten()
 }
 
-/// Bottom centre of the primary work area, the card's bottom edge 96 px above it.
+/// Where the card's top-left corner goes: centred on the work area, its bottom edge 96 px above the area's bottom.
+fn bottom_centre((x, y, width, height): Rect, scale: f32) -> (i32, i32) {
+    let (w, h, gap) = ((WIDTH * scale) as i32, (HEIGHT * scale) as i32, (ABOVE_WORK_AREA * scale) as i32);
+    (x + width / 2 - w / 2, y + height - h - gap)
+}
+
+/// Bottom centre of `screen`, else of the primary work area, sized for that screen's DPI. When the move changes the
+/// window's DPI, winit resizes and shifts it, so it is placed once more after that (`again`).
 #[cfg(windows)]
-fn place(osd: &Osd) {
-    let mut r = [0i32; 4]; // left, top, right, bottom (physical px)
-    // SAFETY: SPI_GETWORKAREA writes one RECT into `r`.
-    if unsafe { win::SystemParametersInfoW(0x0030, 0, r.as_mut_ptr().cast(), 0) } != 0 {
-        let scale = osd.window().scale_factor();
-        let (w, h, gap) = ((WIDTH * scale) as i32, (HEIGHT * scale) as i32, (ABOVE_WORK_AREA * scale) as i32);
-        osd.window().set_position(slint::PhysicalPosition::new((r[0] + r[2]) / 2 - w / 2, r[3] - h - gap));
+fn place(osd: &Osd, screen: Option<Rect>, again: bool) {
+    let Some(work) = screen.or_else(primary_work_area) else { return };
+    let current = osd.window().scale_factor();
+    let scale = monitor_scale(work).unwrap_or(current);
+    let (x, y) = bottom_centre(work, scale);
+    osd.window().set_position(slint::PhysicalPosition::new(x, y));
+    if again && (scale - current).abs() > 0.01 {
+        let weak = osd.as_weak();
+        slint::Timer::single_shot(Duration::from_millis(50), move || {
+            if let Some(osd) = weak.upgrade() {
+                place(&osd, screen, false);
+            }
+        });
     }
 }
 
+#[cfg(windows)]
+fn primary_work_area() -> Option<Rect> {
+    let mut r = [0i32; 4]; // left, top, right, bottom (physical px)
+    // SAFETY: SPI_GETWORKAREA writes one RECT into `r`.
+    (unsafe { win::SystemParametersInfoW(0x0030, 0, r.as_mut_ptr().cast(), 0) } != 0)
+        .then(|| (r[0], r[1], r[2] - r[0], r[3] - r[1]))
+}
+
+/// The scale factor of the monitor nearest the work area's centre.
+#[cfg(windows)]
+fn monitor_scale((x, y, width, height): Rect) -> Option<f32> {
+    let centre = win::Point { x: x + width / 2, y: y + height / 2 };
+    let (mut dpi_x, mut dpi_y) = (0u32, 0u32);
+    // SAFETY: MonitorFromPoint takes the point by value and, with MONITOR_DEFAULTTONEAREST, always returns a monitor;
+    // GetDpiForMonitor (MDT_EFFECTIVE_DPI) writes two u32s.
+    let ok = unsafe {
+        let monitor = win::MonitorFromPoint(centre, 2 /* MONITOR_DEFAULTTONEAREST */);
+        win::GetDpiForMonitor(monitor, 0, &mut dpi_x, &mut dpi_y) == 0
+    };
+    (ok && dpi_x > 0).then(|| dpi_x as f32 / 96.0)
+}
+
 #[cfg(not(windows))]
-fn place(osd: &Osd) {
-    // winit offers no work area; centre near the bottom of the primary monitor when known.
+fn place(osd: &Osd, screen: Option<Rect>, _again: bool) {
+    // winit offers no work area; without a screen, centre near the bottom of the primary monitor when known.
     osd.window().with_winit_window(|w| {
-        if let Some(m) = w.primary_monitor().or_else(|| w.current_monitor()) {
-            let (s, p, scale) = (m.size(), m.position(), m.scale_factor() as f32);
-            let (w_px, h_px, gap) = ((WIDTH * scale) as i32, (HEIGHT * scale) as i32, (ABOVE_WORK_AREA * scale) as i32);
-            w.set_outer_position(slint::winit_030::winit::dpi::PhysicalPosition::new(
-                p.x + s.width as i32 / 2 - w_px / 2,
-                p.y + s.height as i32 - h_px - gap,
-            ));
+        let target = screen.map(|r| (r, w.scale_factor() as f32)).or_else(|| {
+            let m = w.primary_monitor().or_else(|| w.current_monitor())?;
+            let (s, p) = (m.size(), m.position());
+            Some(((p.x, p.y, s.width as i32, s.height as i32), m.scale_factor() as f32))
+        });
+        if let Some((work, scale)) = target {
+            let (x, y) = bottom_centre(work, scale);
+            w.set_outer_position(slint::winit_030::winit::dpi::PhysicalPosition::new(x, y));
         }
     });
 }

@@ -7,8 +7,10 @@ use std::rc::Rc;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
 use tvc_core::engine::MonitorStatus;
+use tvc_core::identity::BackendKind;
 use tvc_core::link::{DisplayKind, LinkFailure};
 use tvc_core::profile::{ControlDefinition, ControlKind, Group, Section};
+use tvc_core::support::SupportLevel;
 
 use crate::controller::State;
 use crate::{
@@ -27,25 +29,38 @@ pub struct TogetherSlider {
     pub reason: String,
 }
 
-/// Together mode: the master sliders replace `main-ranges`. Stub until w4-ui (the reason isn't shown yet).
+/// Together mode: the master sliders replace `main-ranges`, and each slider's reason (why it's greyed, or which
+/// display lacks it) goes in `range-note`, one line each, under the sliders.
 pub fn render_together(app: &App, sliders: &[TogetherSlider]) {
-    let rows: Vec<RangeRow> = sliders.iter().map(|s| RangeRow {
-        code: i32::from(s.code),
-        label: if s.available { s.label.clone() } else { format!("{} — {}", s.label, s.reason) }.into(),
-        glyph: s.glyph.clone().into(),
-        value: s.value,
-        maximum: 100.0,
-        enabled: s.available,
-        revision: 0,
-    }).collect();
-    app.set_main_ranges(ModelRc::new(VecModel::from(rows)));
+    let rows: Vec<RangeRow> = sliders
+        .iter()
+        .map(|t| RangeRow {
+            code: i32::from(t.code),
+            label: s(&t.label),
+            glyph: s(&t.glyph),
+            value: t.value,
+            maximum: 100.0,
+            enabled: t.available,
+            revision: 0,
+        })
+        .collect();
+    sync(app.get_main_ranges(), rows, |m| app.set_main_ranges(m));
+    let reasons: Vec<String> =
+        sliders.iter().filter(|t| !t.reason.is_empty()).map(|t| format!("{}: {}", t.label, t.reason)).collect();
+    app.set_range_note(s(reasons.join("\n")));
 }
 
-/// The display picker (multi-display contract): `entries` in picker order, `selected_id` "" for All together.
-/// The controller builds the entries; w4-ui may keep the models in place like `sync` does.
+/// The display picker (multi-display contract): `entries` in picker order, `selected_id` "" for All together, which
+/// also titles the header.
 pub fn render_displays(app: &App, entries: Vec<DisplayEntry>, selected_id: &str, together_available: bool,
     experimental: bool) {
-    app.set_displays(ModelRc::new(VecModel::from(entries)));
+    if selected_id.is_empty() && together_available {
+        let included = entries.iter().filter(|e| e.included).count();
+        app.set_model_name(s("All displays"));
+        app.set_status_glyph(s(glyph::CONNECTED));
+        app.set_status_text(s(format!("{included} of {} included · the sliders move them together", entries.len())));
+    }
+    sync(app.get_displays(), entries, |m| app.set_displays(m));
     app.set_selected_id(selected_id.into());
     app.set_together_available(together_available);
     app.set_experimental(experimental);
@@ -56,13 +71,15 @@ pub const CONTRAST: u8 = 0x12;
 pub const COLOUR_MODE: u8 = 0x14;
 pub const GAINS: [u8; 3] = [0x16, 0x18, 0x1A];
 pub const INPUT: u8 = 0x60;
+pub const VOLUME: u8 = 0x62;
 /// The codes the Display tab shows; refreshed on show and polled while visible.
-pub const DISPLAY_CODES: [u8; 7] = [BRIGHTNESS, CONTRAST, COLOUR_MODE, 0x16, 0x18, 0x1A, INPUT];
+pub const DISPLAY_CODES: [u8; 8] = [BRIGHTNESS, CONTRAST, COLOUR_MODE, 0x16, 0x18, 0x1A, INPUT, VOLUME];
 
 pub mod glyph {
     pub const SUN: &str = "\u{e1f8}";
     pub const MOON: &str = "\u{f87e}";
     pub const CONTRAST: &str = "\u{f2be}";
+    pub const SPEAKER: &str = "\u{eb43}";
     pub const CONNECTED: &str = "\u{f295}";
     pub const CONNECTING: &str = "\u{f191}";
     pub const NOT_FOUND: &str = "\u{f60a}";
@@ -180,10 +197,19 @@ pub fn monitor_name(st: &State) -> String {
     st.controls.as_ref().map(|rc| rc.capabilities.model.trim().to_owned()).unwrap_or_default()
 }
 
-/// The window's title line: the monitor's own name, else a plain description of the state.
+/// The laptop's own panel: brightness through the OS backlight, nothing else.
+pub fn built_in(st: &State) -> bool {
+    st.monitor.as_ref().is_some_and(|m| m.info.backend == BackendKind::Backlight || m.info.kind == DisplayKind::BuiltIn)
+}
+
+/// The window's title line: the monitor's own name, else the one the OS gives it, else a plain description of the
+/// state.
 pub fn header_name(st: &State) -> String {
+    let os_name = st.monitor.as_ref().map(|m| m.info.name.trim().to_owned()).unwrap_or_default();
     match monitor_name(st) {
         name if !name.is_empty() => name,
+        _ if !os_name.is_empty() => os_name,
+        _ if built_in(st) => "Built-in display".into(),
         _ if st.status == MonitorStatus::Connected => "Your display".into(),
         _ if st.status == MonitorStatus::NotFound => not_found(st).header.into(),
         _ => "Display".into(),
@@ -285,6 +311,7 @@ pub fn status_line(st: &State) -> (&'static str, String) {
         return (glyph::MOON, "Asleep".into());
     }
     match st.status {
+        MonitorStatus::Connected if built_in(st) => (glyph::CONNECTED, "Brightness through the system".into()),
         MonitorStatus::Connected => {
             let input = st
                 .value(INPUT)
@@ -292,7 +319,8 @@ pub fn status_line(st: &State) -> (&'static str, String) {
                 .map(|(_, l)| format!("Input: {l}"))
                 .unwrap_or_else(|| "Connected".into());
             let fw = st.firmware().map(|f| format!(" · Firmware {f}")).unwrap_or_default();
-            (glyph::CONNECTED, input + &fw)
+            let unverified = if experimental(st) { " · No verified profile" } else { "" };
+            (glyph::CONNECTED, input + &fw + unverified)
         }
         MonitorStatus::Connecting => (glyph::CONNECTING, "Looking for your monitor…".into()),
         MonitorStatus::NotFound => (glyph::NOT_FOUND, not_found(st).status.into()),
@@ -301,13 +329,17 @@ pub fn status_line(st: &State) -> (&'static str, String) {
 }
 
 /// How far the app supports a display, in the words the window uses.
-pub fn support_label(level: &tvc_core::support::SupportLevel) -> &'static str {
-    use tvc_core::support::SupportLevel;
+pub fn support_label(level: &SupportLevel) -> &'static str {
     match level {
         SupportLevel::Verified { .. } => "Verified",
         SupportLevel::LenovoFamily | SupportLevel::GenericMccs => "Experimental",
         SupportLevel::ReadOnly => "Read-only",
     }
+}
+
+/// Below Verified, but trusted to write: standard (or same-family) controls that may not behave as labelled.
+fn experimental(st: &State) -> bool {
+    matches!(st.level, SupportLevel::LenovoFamily | SupportLevel::GenericMccs)
 }
 
 /// About: the display's own name (as it reported it over DDC/CI, else its EDID name) and how far the app supports it.
@@ -334,6 +366,7 @@ fn empty_state(st: &State) -> (&'static str, &'static str) {
 /// Why the monitor's cards are greyed out; "" while they aren't.
 fn disabled_reason(st: &State) -> &'static str {
     match st.status {
+        MonitorStatus::Connected if st.level == SupportLevel::ReadOnly => "Read only on this display",
         MonitorStatus::Connected => "",
         MonitorStatus::Connecting => "Available once the monitor answers",
         MonitorStatus::NotResponding => "Available when the monitor responds again",
@@ -366,7 +399,8 @@ pub fn banner(st: &State) -> Banner {
     }
     let (status, failure) = st.shown_status;
     let (severity, title, message, action): (Severity, String, String, &str) = match (status, failure) {
-        (None, _) | (Some(MonitorStatus::Connected), _) => return Banner::default(),
+        (Some(MonitorStatus::Connected), _) => return support_banner(st),
+        (None, _) => return Banner::default(),
         (Some(MonitorStatus::Connecting), _) => (Severity::Info, "Looking for your monitor…".into(), String::new(), ""),
         (_, Some(LinkFailure::PermissionDenied)) => (
             Severity::Warning,
@@ -400,6 +434,35 @@ pub fn banner(st: &State) -> Banner {
     Banner { visible: true, severity, title: s(title), message: s(message), action: s(action) }
 }
 
+/// The bar a connected display gets for how far it's supported; none when Verified.
+fn support_banner(st: &State) -> Banner {
+    let name = match header_name(st) {
+        name if name == "Your display" => "this display".to_owned(),
+        name => name,
+    };
+    let (severity, title, message) = match st.level {
+        _ if built_in(st) => (
+            Severity::Info,
+            "Brightness only",
+            "The built-in display isn't controlled over DDC/CI. Its brightness is set through the system, the same way as the brightness keys.".to_owned(),
+        ),
+        SupportLevel::Verified { .. } => return Banner::default(),
+        SupportLevel::LenovoFamily | SupportLevel::GenericMccs => (
+            Severity::Warning,
+            "Experimental",
+            format!("There's no verified profile for {name}, so only standard controls are shown. Some may not behave as labelled."),
+        ),
+        SupportLevel::ReadOnly => (
+            Severity::Warning,
+            "Read only",
+            format!("{} didn't confirm which settings it supports, so its values are shown but nothing is changed.", capitalised(&name)),
+        ),
+    };
+    Banner { visible: true, severity, title: s(title), message: s(message), action: s("") }
+}
+
+/// `enabled` means the value is known: read while connected, or kept from before the display stopped responding.
+/// The page greys the row whenever the display isn't connected.
 fn range_row(st: &State, code: u8, label: &str, glyph: &str) -> RangeRow {
     let reading = st.values.get(&code);
     RangeRow {
@@ -408,7 +471,7 @@ fn range_row(st: &State, code: u8, label: &str, glyph: &str) -> RangeRow {
         glyph: s(glyph),
         value: reading.map_or(0.0, |r| r.current as f32),
         maximum: reading.map_or(100.0, |r| r.max.max(1) as f32),
-        enabled: reading.is_some() && !st.values_stale,
+        enabled: reading.is_some() && (!st.values_stale || st.status == MonitorStatus::NotResponding),
         revision: st.revision(code),
     }
 }
@@ -422,16 +485,6 @@ fn preset_summary(st: &State, p: &tvc_core::store::Preset) -> String {
     format!("Brightness {}, contrast {}{mode}", p.brightness, p.contrast)
 }
 
-/// Where `code` is listed in the embedded profile's `controls` (tvc-core exposes no order); unknown codes after.
-/// This reads p32p20.json's text, so it orders every monitor like that one.
-fn profile_rank(code: u8) -> (usize, u8) {
-    const PROFILE: &str = include_str!("../../tvc-core/src/profile/p32p20.json");
-    let controls = PROFILE.find("\"controls\"").map_or("", |i| &PROFILE[i..]);
-    let needle = format!("\"code\": \"0x{code:02X}\"");
-    let rank = controls.match_indices("\"code\": \"0x").position(|(i, _)| controls[i..].starts_with(&needle));
-    (rank.unwrap_or(usize::MAX), code)
-}
-
 /// The Monitor tab's groups. `shown` is what the window shows now: each group keeps its rows model and each card
 /// its options model, so a render updates only the cards whose content changed.
 fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup> {
@@ -441,9 +494,11 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
         shown.iter().flat_map(|g| g.rows.iter()).map(|r| (r.code, r.options)).collect();
     let mut groups: Vec<(&str, Vec<ControlRow>)> =
         vec![("Picture", vec![]), ("Ports", vec![]), ("On-screen menu", vec![]), ("More settings", vec![]), ("Reset and restore", vec![])];
-    // Known codes in profile order, the rest by code.
+    // Codes in the profile's order, the rest by code.
+    let order = &st.profile.control_order;
     let mut defs: Vec<&ControlDefinition> = rc.controls.values().collect();
-    defs.sort_by_cached_key(|d| profile_rank(d.code));
+    defs.sort_by_key(|d| (order.iter().position(|c| *c == d.code).unwrap_or(usize::MAX), d.code));
+    let writable = st.level != SupportLevel::ReadOnly;
     for def in defs {
         if !def.is_visible() || DISPLAY_CODES.contains(&def.code) || def.kind == ControlKind::Range {
             continue;
@@ -478,7 +533,7 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
             options: strings(shown_options.get(&code).cloned(), opts.into_iter().map(|(_, l)| l)),
             index,
             button: s(button),
-            enabled: true,
+            enabled: writable,
             revision: st.revision(def.code),
         });
     }
@@ -492,23 +547,24 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
         .collect()
 }
 
+/// One display's state. In Together mode `render_displays` titles the header and `render_together` fills the
+/// sliders, so this leaves them alone and shows a banner only for safe mode.
 pub fn render(app: &App, st: &State) {
-    // One display until w4-controller passes the real list.
-    render_displays(app, Vec::new(), "", false, false);
-    if st.monitor.is_none() && st.selected_together() {
-        render_together(app, &[]);
+    let together = st.selected_together();
+    if !together {
+        let (status_glyph, status_text) = status_line(st);
+        app.set_model_name(s(header_name(st)));
+        app.set_status_glyph(s(status_glyph));
+        app.set_status_text(s(status_text));
     }
-    let (status_glyph, status_text) = status_line(st);
-    app.set_model_name(s(header_name(st)));
-    app.set_status_glyph(s(status_glyph));
-    app.set_status_text(s(status_text));
     app.set_connected(st.status == MonitorStatus::Connected);
     app.set_values_stale(st.values_stale);
-    app.set_banner(banner(st));
+    app.set_banner(if together && !st.safe_mode { Banner::default() } else { banner(st) });
     app.set_loading(
-        st.status == MonitorStatus::Connecting
-            || (st.retrying && st.status != MonitorStatus::Connected)
-            || st.reading_capabilities,
+        !together
+            && (st.status == MonitorStatus::Connecting
+                || (st.retrying && st.status != MonitorStatus::Connected)
+                || st.reading_capabilities),
     );
     app.set_disabled_reason(s(disabled_reason(st)));
     let (empty_title, empty_message) = empty_state(st);
@@ -531,23 +587,25 @@ pub fn render(app: &App, st: &State) {
     );
     app.set_active_input(st.value(INPUT).map_or(-1, |v| v as i32));
     app.set_input_note(s(st.notes.get(&INPUT).map_or("", String::as_str)));
-    let mut ranges = vec![];
-    if st.def(BRIGHTNESS).is_some() {
-        ranges.push(range_row(st, BRIGHTNESS, "Brightness", glyph::SUN));
+    if !together {
+        let ranges = [(BRIGHTNESS, "Brightness", glyph::SUN), (CONTRAST, "Contrast", glyph::CONTRAST), (VOLUME, "Volume", glyph::SPEAKER)]
+            .into_iter()
+            .filter(|(code, ..)| st.def(*code).is_some())
+            .map(|(code, label, glyph)| range_row(st, code, label, glyph))
+            .collect();
+        sync(app.get_main_ranges(), ranges, |m| app.set_main_ranges(m));
+        app.set_range_note(s(&st.range_note));
     }
-    if st.def(CONTRAST).is_some() {
-        ranges.push(range_row(st, CONTRAST, "Contrast", glyph::CONTRAST));
-    }
-    sync(app.get_main_ranges(), ranges, |m| app.set_main_ranges(m));
-    app.set_range_note(s(&st.range_note));
-    sync(
-        app.get_presets(),
+    // The built-in panel has no Day and Night presets: it keeps the brightness set for it.
+    let presets = if built_in(st) {
+        vec![]
+    } else {
         vec![
             PresetRow { name: s(&st.settings.day.name), glyph: s(glyph::SUN), summary: s(preset_summary(st, &st.settings.day)) },
             PresetRow { name: s(&st.settings.night.name), glyph: s(glyph::MOON), summary: s(preset_summary(st, &st.settings.night)) },
-        ],
-        |m| app.set_presets(m),
-    );
+        ]
+    };
+    sync(app.get_presets(), presets, |m| app.set_presets(m));
     app.set_preset_note(s(&st.preset_note));
     let modes = colour_modes(st);
     let mode = st.value(COLOUR_MODE);

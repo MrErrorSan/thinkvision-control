@@ -1,15 +1,26 @@
 // The three tabs. Each is a column of sections; the window wraps it in a scroll view.
 import { Button, LineEdit, ProgressIndicator } from "std-widgets.slint";
-import { Theme, Glyphs } from "theme.slint";
-import { ControlKind } from "types.slint";
+import { Theme, Glyphs, Icon } from "theme.slint";
+import { ControlKind, DisplayEntry } from "types.slint";
 import { App } from "app.slint";
-import { SectionHeader, CardFrame, Card, SliderRow, RowDivider, TileButton, InputSelector, Keycap, LabelledSwitch, ExpanderCard, InfoBar, SyncCombo, FocusRing, IconButton, EmptyState } from "controls.slint";
+import { SectionHeader, CardFrame, Card, SliderRow, RowDivider, TileButton, InputSelector, Keycap, LabelledSwitch, ExpanderCard, InfoBar, SyncCombo, FocusRing, IconButton, EmptyState, OffsetStepper, SyncSwitch } from "controls.slint";
+
+// VCP codes the pages tell apart: contrast (0x12) and volume (0x62).
+global Codes {
+    out property <int> contrast: 18;
+    out property <int> volume: 98;
+}
 
 export component DisplayPage inherits VerticalLayout {
     in property <bool> compact;
     property <bool> custom-open;
     property <bool> has-colour: App.colour-modes.length > 0 || App.custom-colour.length > 0;
     property <bool> has-any: App.inputs.length > 0 || App.main-ranges.length > 0 || root.has-colour;
+    // Connected and writable; `disabled-reason` says why not (e.g. a read-only display).
+    property <bool> writable: App.connected && App.disabled-reason == "";
+    // `main-ranges` is brightness, contrast, then volume, each only when the display has it.
+    property <bool> has-picture: App.main-ranges.length > 0 && App.main-ranges[0].code != Codes.volume;
+    property <bool> has-volume: App.main-ranges.length > 0 && App.main-ranges[App.main-ranges.length - 1].code == Codes.volume;
 
     if !root.has-any: EmptyState {
         title: App.empty-title;
@@ -17,12 +28,16 @@ export component DisplayPage inherits VerticalLayout {
         busy: App.loading;
     }
 
-    if App.inputs.length > 0: SectionHeader { text: "Input"; first: true; }
+    if App.inputs.length > 0: SectionHeader {
+        text: "Input";
+        hint: App.experimental ? "Names from the monitor's capability report" : "";
+        first: true;
+    }
     if App.inputs.length > 0: InputSelector {
         inputs: App.inputs;
         active: App.active-input;
         // No second confirm while one is open.
-        enabled: App.connected && !App.dialog.visible;
+        enabled: root.writable && !App.dialog.visible;
         compact: root.compact;
         select(code) => { App.select-input(code); }
     }
@@ -33,21 +48,25 @@ export component DisplayPage inherits VerticalLayout {
         wrap: word-wrap;
     }
 
-    if App.main-ranges.length > 0: SectionHeader { text: "Brightness and contrast"; first: App.inputs.length == 0; }
-    if App.main-ranges.length > 0: CardFrame {
+    if root.has-picture: SectionHeader {
+        text: App.main-ranges.length > 1 && App.main-ranges[1].code == Codes.contrast ? "Brightness and contrast" : App.main-ranges[0].label;
+        first: App.inputs.length == 0;
+    }
+    if root.has-picture: CardFrame {
         VerticalLayout {
             padding-top: 2px;
             padding-bottom: 2px;
             for r[i] in App.main-ranges: VerticalLayout {
-                if i > 0: RowDivider { }
-                SliderRow {
+                if r.code != Codes.volume && i > 0: RowDivider { }
+                // Greyed, still showing the last values, while the display isn't responding.
+                if r.code != Codes.volume: SliderRow {
                     glyph: r.glyph;
                     label: r.label;
                     value: r.value;
                     revision: r.revision;
                     maximum: r.maximum;
-                    enabled: r.enabled && App.connected;
-                    known: r.enabled && App.connected;
+                    enabled: r.enabled && root.writable;
+                    known: r.enabled;
                     changed(v) => { App.range-changed(r.code, v); }
                     released(v) => { App.range-released(r.code, v); }
                 }
@@ -61,6 +80,27 @@ export component DisplayPage inherits VerticalLayout {
         wrap: word-wrap;
     }
 
+    if root.has-volume: SectionHeader { text: "Sound"; first: App.inputs.length == 0 && !root.has-picture; }
+    if root.has-volume: CardFrame {
+        VerticalLayout {
+            padding-top: 2px;
+            padding-bottom: 2px;
+            for r in App.main-ranges: VerticalLayout {
+                if r.code == Codes.volume: SliderRow {
+                    glyph: r.glyph;
+                    label: r.label;
+                    value: r.value;
+                    revision: r.revision;
+                    maximum: r.maximum;
+                    enabled: r.enabled && root.writable;
+                    known: r.enabled;
+                    changed(v) => { App.range-changed(r.code, v); }
+                    released(v) => { App.range-released(r.code, v); }
+                }
+            }
+        }
+    }
+
     if App.presets.length > 0 && root.has-any: SectionHeader { text: "Presets"; }
     if App.presets.length > 0 && root.has-any: HorizontalLayout {
         spacing: 6px;
@@ -69,7 +109,7 @@ export component DisplayPage inherits VerticalLayout {
             glyph: p.glyph;
             label: p.name;
             caption: root.compact ? "" : p.summary;
-            enabled: App.connected;
+            enabled: root.writable;
             clicked => { App.apply-preset(i); }
         }
     }
@@ -78,6 +118,27 @@ export component DisplayPage inherits VerticalLayout {
         font-size: 12px;
         color: Theme.error-fg;
         wrap: word-wrap;
+    }
+    // Only the built-in panel has no presets: say so instead of showing nothing.
+    if App.presets.length == 0 && root.has-any: SectionHeader { text: "Day and Night"; }
+    if App.presets.length == 0 && root.has-any: CardFrame {
+        HorizontalLayout {
+            padding: 12px;
+            padding-left: 16px;
+            spacing: 12px;
+            Icon {
+                text: Glyphs.moon;
+                font-size: 18px;
+                width: 18px;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: "The built-in display has no Day and Night presets. It keeps the brightness you set here.";
+                font-size: 12px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+            }
+        }
     }
 
     if root.has-colour: SectionHeader { text: "Colour"; first: App.inputs.length == 0 && App.main-ranges.length == 0; }
@@ -88,12 +149,12 @@ export component DisplayPage inherits VerticalLayout {
             title: "Colour mode";
             note: App.colour-note;
             reason: App.disabled-reason;
-            enabled: App.connected;
+            enabled: root.writable;
             SyncCombo {
                 model: App.colour-modes;
                 index: App.colour-mode-index;
                 revision: App.colour-revision;
-                enabled: App.connected;
+                enabled: root.writable;
                 selected => { App.colour-mode-selected(self.current-index); }
             }
         }
@@ -109,11 +170,205 @@ export component DisplayPage inherits VerticalLayout {
                 value: r.value;
                 revision: r.revision;
                 maximum: r.maximum;
-                enabled: r.enabled && App.custom-colour-available && App.connected;
-                known: r.enabled && App.connected;
+                enabled: r.enabled && App.custom-colour-available && root.writable;
+                known: r.enabled;
                 changed(v) => { App.range-changed(r.code, v); }
                 released(v) => { App.range-released(r.code, v); }
             }
+        }
+    }
+
+    // No verified profile: the report is how the display gets one.
+    if App.experimental: SectionHeader { text: "Help support this display"; }
+    if App.experimental: Card {
+        glyph: Glyphs.copy;
+        title: "Capability report";
+        description: "What " + App.model-name + " says it can do. Paste it into a new issue.";
+        Button {
+            text: "Copy capability report";
+            clicked => { App.copy-capability-report(); }
+        }
+    }
+}
+
+// One display in Together mode: whether it's included, and its offset from the master sliders.
+component IncludedRow inherits VerticalLayout {
+    in property <DisplayEntry> entry;
+    property <bool> gone: root.entry.state == "disconnected";
+
+    pure function can-do(d: DisplayEntry) -> string {
+        if d.state == "disconnected" { return "Disconnected · its offset is kept"; }
+        if d.state == "not-responding" { return "Not responding"; }
+        if d.kind == "built-in" { return "Brightness only"; }
+        d.has-volume ? "Brightness, contrast, volume" : "Brightness, contrast"
+    }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            Text {
+                text: root.entry.name;
+                font-size: 14px;
+                overflow: elide;
+                color: root.gone ? Theme.text-secondary : Theme.text;
+            }
+            Text {
+                text: root.can-do(root.entry);
+                font-size: 12px;
+                overflow: elide;
+                color: Theme.text-secondary;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            SyncSwitch {
+                on: root.entry.included;
+                accessible-label: "Include " + root.entry.name;
+                toggled => { App.set-included(root.entry.id, self.checked); }
+            }
+        }
+    }
+    if root.entry.included: Rectangle {
+        background: Theme.card-bg-secondary;
+        HorizontalLayout {
+            padding-left: Theme.narrow ? 16px : 32px;
+            padding-right: 16px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+            spacing: 12px;
+            Text {
+                horizontal-stretch: 1;
+                text: "Offset from the master sliders";
+                font-size: 13px;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            OffsetStepper {
+                value: root.entry.offset;
+                label: root.entry.name + " offset";
+                changed(v) => { App.set-offset(root.entry.id, v); }
+            }
+        }
+    }
+}
+
+// All together: which displays are included, then one master slider per control (in percent) with the included
+// displays that lack it greyed underneath, and the Day and Night presets for all of them.
+export component TogetherPage inherits VerticalLayout {
+    in property <bool> compact;
+
+    // Why an included display doesn't follow the master slider for `code`; "" when it does.
+    pure function missing(d: DisplayEntry, code: int) -> string {
+        if d.state == "disconnected" { return "Disconnected · its offset is kept"; }
+        if d.state == "not-responding" { return "Not responding"; }
+        if (code == Codes.contrast || code == Codes.volume) && d.kind == "built-in" { return "Not controlled over DDC/CI"; }
+        if code == Codes.volume && !d.has-volume { return "No volume control reported"; }
+        ""
+    }
+
+    SectionHeader { text: "Included displays"; first: true; }
+    CardFrame {
+        VerticalLayout {
+            for d[i] in App.displays: VerticalLayout {
+                if i > 0: RowDivider { }
+                IncludedRow { entry: d; }
+            }
+        }
+    }
+
+    SectionHeader { text: "Move together"; hint: "Offsets keep the gap between displays"; }
+    VerticalLayout {
+        spacing: 4px;
+        for r in App.main-ranges: CardFrame {
+            VerticalLayout {
+                padding-top: 2px;
+                padding-bottom: 2px;
+                SliderRow {
+                    glyph: r.glyph;
+                    label: r.label;
+                    value: r.value;
+                    revision: r.revision;
+                    maximum: r.maximum;
+                    enabled: r.enabled;
+                    known: r.enabled;
+                    changed(v) => { App.range-changed(r.code, v); }
+                    released(v) => { App.range-released(r.code, v); }
+                }
+                for d in App.displays: VerticalLayout {
+                    if d.included && root.missing(d, r.code) != "": Rectangle {
+                        background: Theme.card-bg-secondary;
+                        accessible-role: text;
+                        accessible-label: d.name + ": " + root.missing(d, r.code);
+                        HorizontalLayout {
+                            padding-left: Theme.narrow ? 16px : 50px;
+                            padding-right: 16px;
+                            padding-top: 8px;
+                            padding-bottom: 8px;
+                            spacing: 12px;
+                            Text {
+                                horizontal-stretch: 1;
+                                text: d.name;
+                                font-size: 13px;
+                                color: Theme.text-disabled;
+                                overflow: elide;
+                                accessible-role: none;
+                            }
+                            Text {
+                                horizontal-stretch: 2;
+                                text: root.missing(d, r.code);
+                                font-size: 12px;
+                                color: Theme.text-secondary;
+                                wrap: word-wrap;
+                                accessible-role: none;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Why a master slider is greyed, or which displays it leaves out.
+    if App.range-note != "": Text {
+        text: App.range-note;
+        font-size: 12px;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+        accessible-live-region: polite;
+    }
+
+    if App.presets.length > 0: SectionHeader { text: "Presets"; hint: "Every included display"; }
+    if App.presets.length > 0: HorizontalLayout {
+        spacing: 6px;
+        for p[i] in App.presets: TileButton {
+            horizontal-stretch: 1;
+            glyph: p.glyph;
+            label: p.name;
+            caption: root.compact ? "" : "Brightness and contrast";
+            clicked => { App.apply-preset(i); }
+        }
+    }
+    if App.presets.length > 0 && App.preset-note != "": Text {
+        text: App.preset-note;
+        font-size: 12px;
+        color: Theme.error-fg;
+        wrap: word-wrap;
+    }
+
+    VerticalLayout {
+        padding-top: 14px;
+        Text {
+            text: "Input, colour and the Monitor tab stay per display. Pick a display above to change them.";
+            font-size: 12px;
+            color: Theme.text-secondary;
+            wrap: word-wrap;
         }
     }
 }
@@ -312,19 +567,51 @@ export component ShortcutDialog inherits Rectangle {
                     }
                     Text { text: App.editor.hint; font-size: 12px; color: Theme.text-secondary; wrap: word-wrap; }
                 }
+                // Reset and Clear on the left, Save and Cancel on the right; in a narrow window Save and Cancel go
+                // on a second line.
                 Rectangle {
+                    property <length> pad: Theme.narrow ? 16px : 24px;
+                    property <length> line: reset-button.preferred-height;
                     background: Theme.card-bg-secondary;
                     border-bottom-left-radius: Theme.radius;
                     border-bottom-right-radius: Theme.radius;
-                    HorizontalLayout {
-                        padding: 24px;
-                        spacing: 8px;
-                        // Reset may ask to confirm; never while a confirm is open.
-                        reset-button := Button { text: "Reset to default"; enabled: !App.dialog.visible; clicked => { App.editor-reset(); } }
-                        clear-button := Button { text: "Clear"; enabled: App.editor.can-clear; clicked => { App.editor-clear(); } }
-                        Rectangle { horizontal-stretch: 1; }
-                        save-button := Button { text: "Save"; primary: true; enabled: App.editor.can-save; clicked => { App.editor-save(); } }
-                        cancel-button := Button { text: "Cancel"; clicked => { App.editor-cancel(); } }
+                    height: Theme.narrow ? 2 * self.pad + 2 * self.line + 8px : 2 * self.pad + self.line;
+                    // Reset may ask to confirm; never while a confirm is open.
+                    reset-button := Button {
+                        x: parent.pad;
+                        y: parent.pad;
+                        width: self.preferred-width;
+                        height: parent.line;
+                        text: "Reset to default";
+                        enabled: !App.dialog.visible;
+                        clicked => { App.editor-reset(); }
+                    }
+                    clear-button := Button {
+                        x: reset-button.x + reset-button.width + 8px;
+                        y: parent.pad;
+                        width: self.preferred-width;
+                        height: parent.line;
+                        text: "Clear";
+                        enabled: App.editor.can-clear;
+                        clicked => { App.editor-clear(); }
+                    }
+                    cancel-button := Button {
+                        x: parent.width - parent.pad - self.width;
+                        y: Theme.narrow ? parent.pad + parent.line + 8px : parent.pad;
+                        width: self.preferred-width;
+                        height: parent.line;
+                        text: "Cancel";
+                        clicked => { App.editor-cancel(); }
+                    }
+                    save-button := Button {
+                        x: cancel-button.x - 8px - self.width;
+                        y: cancel-button.y;
+                        width: self.preferred-width;
+                        height: parent.line;
+                        text: "Save";
+                        primary: true;
+                        enabled: App.editor.can-save;
+                        clicked => { App.editor-save(); }
                     }
                 }
             }
@@ -492,12 +779,12 @@ component AutoDayNightCard inherits CardFrame {
             RowDivider { }
             HorizontalLayout {
                 padding: 12px;
-                padding-left: 52px;
+                padding-left: Theme.narrow ? 16px : 52px;
                 spacing: 8px;
                 Text { text: "Day"; vertical-alignment: center; color: Theme.text; }
-                day := LineEdit { text: App.auto-day; width: 80px; accessible-label: "Day preset time"; }
+                day := LineEdit { text: App.auto-day; width: Theme.narrow ? 64px : 80px; accessible-label: "Day preset time"; }
                 Text { text: "Night"; vertical-alignment: center; color: Theme.text; }
-                night := LineEdit { text: App.auto-night; width: 80px; accessible-label: "Night preset time"; }
+                night := LineEdit { text: App.auto-night; width: Theme.narrow ? 64px : 80px; accessible-label: "Night preset time"; }
                 Rectangle { horizontal-stretch: 1; }
                 Button { text: "Save"; clicked => { App.save-auto-times(day.text, night.text); } }
             }
@@ -506,7 +793,7 @@ component AutoDayNightCard inherits CardFrame {
             RowDivider { }
             HorizontalLayout {
                 padding: 12px;
-                padding-left: 52px;
+                padding-left: Theme.narrow ? 16px : 52px;
                 spacing: 8px;
                 lat := LineEdit { text: App.auto-lat; placeholder-text: "Latitude, e.g. 31.52"; accessible-label: "Latitude"; }
                 lon := LineEdit { text: App.auto-lon; placeholder-text: "Longitude, e.g. 74.36"; accessible-label: "Longitude"; }
@@ -559,8 +846,9 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    SectionHeader { text: "This PC"; }
-    Card {
+    // Not for a display without inputs (the built-in panel).
+    if App.input-labels.length > 0: SectionHeader { text: "This PC"; }
+    if App.input-labels.length > 0: Card {
         glyph: Glyphs.display;
         title: "This PC's input";
         description: "We ask before you switch the monitor away from it";

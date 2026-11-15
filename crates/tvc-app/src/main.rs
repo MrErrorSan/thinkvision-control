@@ -185,7 +185,7 @@ fn select_backend(scheme: i32) -> Result<(), slint::PlatformError> {
     slint::BackendSelector::new()
         .with_winit_window_attributes_hook(move |attrs: WindowAttributes| {
             let attrs = if theme.is_some() { attrs.with_theme(theme) } else { attrs };
-            if attrs.title == osd::TITLE { osd::attributes(attrs) } else { attrs }
+            osd::attributes(attrs)
         })
         .select()
 }

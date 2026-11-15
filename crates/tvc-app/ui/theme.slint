@@ -11,6 +11,7 @@ export global Theme {
     out property <color> card-bg-secondary: dark ? #282828 : #f6f6f6;
     out property <color> card-stroke: dark ? #1c1c1c : #e5e5e5;
     out property <color> divider: dark ? #ffffff15 : #00000012;
+    out property <color> control-stroke: dark ? #ffffff1f : #0000001f;
 
     out property <color> text: dark ? #ffffff : #1b1b1b;
     out property <color> text-secondary: dark ? #c5c5c5 : #616161;
@@ -35,8 +36,12 @@ export global Theme {
     out property <color> focus-outer: dark ? #ffffff : #000000e6;
     out property <color> focus-inner: dark ? #000000b3 : #ffffff;
 
+    // The main window is narrower than 440 px: slider rows wrap, cards stack their control under the text, the
+    // gutter shrinks. Set by the main window.
+    in-out property <bool> narrow;
+
     out property <length> radius: 6px;
-    out property <length> gutter: 20px;
+    out property <length> gutter: narrow ? 16px : 20px;
 }
 
 // Fluent UI System Icons, _24_regular; the same codepoints the 0.0.4 app uses.
@@ -73,6 +78,7 @@ export global Glyphs {
     out property <string> chevron-right: "\u{f2b1}";
     out property <string> chevron-down: "\u{f2a4}";
     out property <string> chevron-up: "\u{f2b7}";
+    out property <string> speaker: "\u{eb43}";
 }
 
 // The glyphs fill 0.918 em with no left bearing, so a glyph meant to look N px wide uses font-size N / 0.918.

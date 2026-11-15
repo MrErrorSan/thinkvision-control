@@ -113,6 +113,22 @@ impl Drop for Hotkeys {
     }
 }
 
+/// Where the mouse pointer is, in physical screen pixels, for shortcuts aimed at the display under it. None where
+/// this isn't known (Linux, macOS): those shortcuts then go to every display.
+#[cfg(windows)]
+pub fn pointer() -> Option<(i32, i32)> {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let mut p = POINT { x: 0, y: 0 };
+    // SAFETY: `p` is a valid, writable POINT for the duration of the call.
+    (unsafe { GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
+}
+
+#[cfg(not(windows))]
+pub fn pointer() -> Option<(i32, i32)> {
+    None
+}
+
 fn allowed_here(g: Gesture) -> bool {
     !cfg!(target_os = "macos") || mac_allows(g)
 }
