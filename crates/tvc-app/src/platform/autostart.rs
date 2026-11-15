@@ -18,6 +18,12 @@ pub fn apply(enabled: bool) -> io::Result<()> {
     imp::apply(enabled)
 }
 
+/// The app's path for commands the user binds: the install.sh copy, else the running binary.
+#[cfg(target_os = "linux")]
+pub fn exe_path() -> Option<std::path::PathBuf> {
+    imp::exe_path()
+}
+
 #[cfg(windows)]
 mod imp {
     use crate::platform::wide;
@@ -82,7 +88,7 @@ mod imp {
 
     /// The install.sh location when it exists, else the running binary (`/proc/self/exe`) without the " (deleted)"
     /// it shows once an update has replaced the file.
-    fn exe_path() -> Option<PathBuf> {
+    pub(super) fn exe_path() -> Option<PathBuf> {
         let installed = crate::platform::home().join(".local/share/thinkvision-control/thinkvision-control");
         if installed.is_file() {
             return Some(installed);

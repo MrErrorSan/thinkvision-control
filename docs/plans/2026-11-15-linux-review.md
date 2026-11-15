@@ -12,6 +12,33 @@ Vendored sources checked: `~/.cargo/registry/src/*/` for slint 1.18.1 (`i-slint-
 
 ## (a) Findings
 
+### Status after the code fixes
+
+Implemented on `release/0.1.0` after b93dedc; checked with clippy for Linux, Windows and macOS only, so every item still needs its test in (c). Every fallback only adds to what 0.0.8 did: a connector that already has a bus is never probed or changed, and a missing D-Bus, logind or portal falls back to the 0.0.8 behaviour (sysfs write, `gdbus`, the OSD window, the tray made at once).
+
+| ID | Status | Note |
+|---|---|---|
+| LNX-01 | Done | `linux/discovery.rs`: with `/sys/module/nvidia` loaded, a connected external connector without a bus is matched to an unclaimed `NVIDIA i2c adapter` on its GPU by reading 128 bytes at 0x50 under the flock and comparing them with the sysfs EDID; cached per connector and EDID (misses too, unless a read was refused for permission). `linux-nvidia` card (copyable modprobe option, no button), and the "can't be reached"/"No supported display" text points to it. When the adapters can't be opened for permission, the I²C access card shows instead. |
+| LNX-02 | Done | `controller.rs` `tray_host_ready`: the tray is created once `org.kde.StatusNotifierWatcher` has an owner (zbus `NameHasOwner`, polled every 2 s); after 60 s the window opens. Closing the window with no tray and no host exits instead of hiding (not minimise: GNOME's "Quit" would only minimise it again). The host check runs on every desktop, with a `linux-tray-host` card per desktop outside GNOME. |
+| LNX-03 | Done | `backlight/sysfs.rs`: the sysfs write first; on EACCES, logind `Session.SetBrightness` on `/org/freedesktop/login1/session/auto`, checked at open by writing the current value. New `linux-backlight-permission` card (rule plus `usermod -aG video`, says to log in again) instead of the I²C one. |
+| LNX-04 | Done | Backlights named `ddcci*` or under an `/i2c-` device are skipped; a `raw` one needs a built-in connector. `linux-ddcci` card when the module is loaded, with an "Unload the driver" button. |
+| LNX-05 | Done | X11: the OSD is override-redirect with `_NET_WM_WINDOW_TYPE_NOTIFICATION`, placed again once its native window exists. Wayland: Plasma's `org.kde.osdService.showText`, else a transient `org.freedesktop.Notifications` notification that replaces the last one; the window only when neither is on the bus or a call fails. A layer-shell OSD is still a later wave. |
+| LNX-06 | Done | `slint::set_xdg_app_id("thinkvision-control")` right after `select_backend` (Slint needs the platform first); `StartupNotify`, `StartupWMClass` and `SingleMainWindow` in the .desktop. |
+| LNX-07 | Done | `taskbar.rs`: the portal's `color-scheme` (read, then followed through `SettingChanged`) picks the glyph; GNOME keeps the white one. |
+| LNX-08 | Done | `clipboard.rs`: arboard (the clipboard Slint's winit backend uses), kept for the process; the tools remain the fallback, and "Couldn't copy" shows on failure. |
+| LNX-09 | Partial | Card text: Plasma 6 path and COSMIC; the command uses the installed path without " (deleted)". The GlobalShortcuts portal is still a recommendation. |
+| LNX-10 | Done | PowerDevil counts only with libddcutil in `/proc/<pid>/maps` (unreadable maps count as before); the fix also writes `~/.config/plasma-workspace/env/thinkvision-no-ddcutil.sh`. `linux-other-ddc` card for `com.ddcutil.DdcutilService`, vdu_controls, ddcui and the ddcutil GNOME extension. |
+| LNX-11 | Done | zbus is a direct dependency (already in the build through ksni). logind signals, the session path, `NameHasOwner`, `SetBrightness` and the portal go through it; the `gdbus` code stays as the fallback and logs once when it's missing too. |
+| LNX-12 | Done | `i2c.rs` `open_fresh`: EACCES on a node changed in the last 10 s is retried for up to 2 s before `PermissionDenied`. |
+| LNX-13 | Partial | A later launch leaves its `XDG_ACTIVATION_TOKEN` in `$XDG_RUNTIME_DIR/thinkvision-control.activation` (the wire format is unchanged, so 0.0.8 copies still parse requests); the next main window is created with it. An already open window can't take a token in winit, so it gets `request_user_attention` instead. |
+| LNX-14 | Partial | Done: `/usr/bin/pkexec`; a `/proc` scan for known polkit agents adds "run the command in a terminal" to root fixes when none is found; `enabled-extensions` through `gsettings` when `gnome-extensions enable` must wait for a login; Ubuntu without its extension installs it; the package manager by `/etc/os-release` first. Not done: (3) polkit outside a logind session, (4) root-password wording in the app's cards. |
+| LNX-15 | Done | README lists the libraries; `libudev-dev` dropped from `ci.yml` and the README. Still in `release.yml:58` (outside this change). `RUST_FONTCONFIG_DLOPEN` not set. |
+| LNX-16 | Done | README: glibc 2.35+. |
+| LNX-17 | Done | `install.sh` (in `scripts/make-linux-tarball.sh`) runs one root script with sudo, else pkexec, else prints a `su -c` line; it no longer says to log out. `uninstall.sh` likewise. README names root's password for openSUSE and Debian. |
+| LNX-18 | Done | Without `xdg-mime`, `install.sh` adds the handler under `[Default Applications]` in `mimeapps.list`; it runs `kbuildsycoca6` when present. |
+| LNX-19 | Not done | Packaging (.deb, .rpm, AUR, OBS) is a separate decision; the recommendation stands. |
+| LNX-20 to 25 | Not done | Need a Linux machine (A4). |
+
 ### A1. Fix now in code (no Linux machine needed)
 
 | ID | Sev | Scope | Finding and evidence | Fix |
@@ -83,6 +110,8 @@ Package and uuid facts, confirmed for the card:
 ## (b) Verification matrix
 
 P1 rows must pass before 0.1.0 ships Linux beyond "preview".
+
+0.0.8 reported working on the user's Linux setup with the P32p-20 (distro and desktop to confirm). Treat that path (DRM connector, its i2c bus, DDC over i2c-dev) as known-good: 0.1.0 must not regress it.
 
 | # | Distro | DE | Session | GPU | Focus | Pri |
 |---|---|---|---|---|---|---|

@@ -4,7 +4,8 @@
 //! Windows: one hidden top-level window on its own thread — `WM_DISPLAYCHANGE`, `WM_DEVICECHANGE` for the monitor
 //! interface class, `WM_POWERBROADCAST` (suspend, resume, `GUID_CONSOLE_DISPLAY_STATE`) and `WM_WTSSESSION_CHANGE`;
 //! 500 ms. Linux: NETLINK_KOBJECT_UEVENT drm hotplug (falling back to polling `/sys/class/drm/*/status` every 3 s),
-//! 1.5 s; logind `PrepareForSleep` and the session's `LockedHint` read from a `gdbus monitor` child process.
+//! 1.5 s; logind `PrepareForSleep` and the session's `LockedHint` over zbus, or a `gdbus monitor` child process when zbus
+//! can't reach the system bus.
 //! macOS: display reconfiguration + IOKit system power on a CFRunLoop thread, NSWorkspace screens sleep/wake and the
 //! `com.apple.screenIsLocked`/`Unlocked` distributed notifications; 500 ms.
 //!
@@ -428,8 +429,77 @@ mod imp {
             None => poll_sysfs(&s, &flag),
         });
         let (flag, slot) = (stop.clone(), gdbus.clone());
-        let _ = thread::Builder::new().name("tvc-logind".into()).spawn(move || watch_logind(&sink, &slot, &flag));
+        let _ = thread::Builder::new().name("tvc-logind".into()).spawn(move || {
+            if !follow_logind(&sink) {
+                watch_logind(&sink, &slot, &flag);
+            }
+        });
         Watcher { stop, gdbus }
+    }
+
+    /// Follows logind on the system bus through zbus: `PrepareForSleep` on this thread, our session's `LockedHint`
+    /// on another. Returns only when it couldn't start (no system bus, the match refused), for the `gdbus` fallback;
+    /// otherwise it blocks for the life of the process.
+    fn follow_logind(sink: &Arc<Sink>) -> bool {
+        use zbus::blocking::MessageIterator;
+        let Some(bus) = crate::platform::dbus::system() else { return false };
+        let sleep_rule = "type='signal',sender='org.freedesktop.login1',path='/org/freedesktop/login1',\
+                          interface='org.freedesktop.login1.Manager',member='PrepareForSleep'";
+        let Ok(sleeps) = MessageIterator::for_match_rule(sleep_rule, &bus, None) else { return false };
+        if let Some(session) = own_session_path_zbus(&bus) {
+            let rule = format!(
+                "type='signal',sender='org.freedesktop.login1',path='{session}',\
+                 interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',\
+                 arg0='org.freedesktop.login1.Session'"
+            );
+            if let Ok(changes) = MessageIterator::for_match_rule(rule.as_str(), &bus, None) {
+                let sink = sink.clone();
+                let _ = thread::Builder::new().name("tvc-logind-lock".into()).spawn(move || {
+                    for message in changes.flatten() {
+                        if let Some(event) = locked_hint(&message) {
+                            sink.send(event);
+                        }
+                    }
+                });
+            }
+        }
+        for message in sleeps.flatten() {
+            if let Ok(going) = message.body().deserialize::<bool>() {
+                sink.send(if going { SystemEvent::Suspending } else { SystemEvent::Resumed });
+            }
+        }
+        true
+    }
+
+    /// `LockedHint` from a session's `PropertiesChanged`.
+    fn locked_hint(message: &zbus::Message) -> Option<SystemEvent> {
+        use std::collections::HashMap;
+        use zbus::zvariant::OwnedValue;
+        let body = message.body();
+        let (_, changed, _): (String, HashMap<String, OwnedValue>, Vec<String>) = body.deserialize().ok()?;
+        let locked = changed.get("LockedHint")?.downcast_ref::<bool>().ok()?;
+        Some(if locked { SystemEvent::Locked } else { SystemEvent::Unlocked })
+    }
+
+    /// [`own_session_path`] over zbus: `$XDG_SESSION_ID`, else the user's graphical session (`User.Display`).
+    fn own_session_path_zbus(bus: &zbus::blocking::Connection) -> Option<String> {
+        use zbus::zvariant::{OwnedObjectPath, OwnedValue};
+        if let Some(id) = std::env::var("XDG_SESSION_ID").ok().filter(|id| !id.is_empty()) {
+            return Some(super::session_path(&id));
+        }
+        let reply = bus
+            .call_method(
+                Some("org.freedesktop.login1"),
+                "/org/freedesktop/login1/user/self",
+                Some("org.freedesktop.DBus.Properties"),
+                "Get",
+                &("org.freedesktop.login1.User", "Display"),
+            )
+            .ok()?;
+        let value: OwnedValue = reply.body().deserialize().ok()?;
+        let (_, path): (String, OwnedObjectPath) = value.try_into().ok()?;
+        // "/" means the user has no graphical session.
+        Some(path.to_string()).filter(|p| p.len() > 1)
     }
 
     fn kill(slot: &Mutex<Option<Child>>) {
@@ -439,7 +509,7 @@ mod imp {
         }
     }
 
-    /// Follows logind through `gdbus monitor` (glib's CLI: no D-Bus crate, no root needed — `dbus-monitor` and
+    /// The fallback: follows logind through `gdbus monitor` (glib's CLI, no root needed — `dbus-monitor` and
     /// `busctl monitor` need eavesdropping rights on the system bus). Restarts it if it exits; gives up when gdbus
     /// isn't installed, leaving only display changes.
     fn watch_logind(sink: &Sink, slot: &Mutex<Option<Child>>, stop: &AtomicBool) {
@@ -459,7 +529,10 @@ mod imp {
                     Ok(())
                 });
             }
-            let Ok(mut child) = command.spawn() else { return };
+            let Ok(mut child) = command.spawn() else {
+                tvc_core::log::write("logind: no system bus and no gdbus, so lock and suspend go unnoticed");
+                return;
+            };
             let Some(stdout) = child.stdout.take() else { return };
             *lock(slot) = Some(child);
             if stop.load(Ordering::Relaxed) {

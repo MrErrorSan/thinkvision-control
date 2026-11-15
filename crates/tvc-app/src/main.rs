@@ -87,6 +87,9 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     };
     select_backend(scheme)?;
+    // Wayland's app id (X11's WM_CLASS): lets the desktop match windows to thinkvision-control.desktop.
+    #[cfg(target_os = "linux")]
+    let _ = slint::set_xdg_app_id("thinkvision-control");
 
     let headless = parsed.command != CliCommand::Show && !demo;
     let mode = match parsed.command {
@@ -175,7 +178,8 @@ fn state_dirs(data_dir: &Path) -> Vec<PathBuf> {
     std::iter::once(data_dir.to_path_buf()).chain(monitors).collect()
 }
 
-/// One winit hook for every window: the forced theme (developer flag) and the OSD's no-activate attributes.
+/// One winit hook for every window: the forced theme (developer flag), the OSD's no-activate attributes and, on
+/// Linux, the launcher's activation token for the main window.
 fn select_backend(scheme: i32) -> Result<(), slint::PlatformError> {
     let theme = match scheme {
         1 => Some(Theme::Dark),
@@ -185,7 +189,23 @@ fn select_backend(scheme: i32) -> Result<(), slint::PlatformError> {
     slint::BackendSelector::new()
         .with_winit_window_attributes_hook(move |attrs: WindowAttributes| {
             let attrs = if theme.is_some() { attrs.with_theme(theme) } else { attrs };
+            #[cfg(target_os = "linux")]
+            let attrs = with_activation_token(attrs);
             osd::attributes(attrs)
         })
         .select()
+}
+
+/// A window other than the OSD takes the pending activation token, so Wayland compositors give it focus.
+#[cfg(target_os = "linux")]
+fn with_activation_token(attrs: WindowAttributes) -> WindowAttributes {
+    use slint::winit_030::winit::platform::startup_notify::WindowAttributesExtStartupNotify;
+    use slint::winit_030::winit::window::ActivationToken;
+    if osd::creating() {
+        return attrs;
+    }
+    match platform::instance::take_activation_token() {
+        Some(token) => attrs.with_activation_token(ActivationToken::from_raw(token)),
+        None => attrs,
+    }
 }

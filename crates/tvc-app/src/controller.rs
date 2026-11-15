@@ -611,6 +611,9 @@ pub struct Controller {
     left_over: RefCell<Vec<LeftOver>>,
     retry_timer: slint::Timer,
     auto_timer: slint::Timer,
+    /// Linux: polls for a tray host before the tray is created (`tray_host_ready`).
+    #[cfg(target_os = "linux")]
+    tray_wait: slint::Timer,
 }
 
 impl Controller {
@@ -660,6 +663,8 @@ impl Controller {
             left_over: RefCell::new(left_over),
             retry_timer: slint::Timer::default(),
             auto_timer: slint::Timer::default(),
+            #[cfg(target_os = "linux")]
+            tray_wait: slint::Timer::default(),
         })
     }
 
@@ -1221,6 +1226,16 @@ impl Controller {
         if self.tray.borrow().is_some() {
             return;
         }
+        #[cfg(target_os = "linux")]
+        {
+            if !self.tray_host_ready() {
+                return;
+            }
+            // The panel's light or dark scheme picks the glyph; follow its changes.
+            platform::taskbar::watch(|| {
+                let _ = slint::invoke_from_event_loop(|| with(|c| c.update_tray()));
+            });
+        }
         let Ok(tray) = Tray::new() else {
             log::write("Tray: could not create the icon");
             return;
@@ -1238,6 +1253,37 @@ impl Controller {
         tray.on_quit(|| with(|c| c.quit()));
         *self.tray.borrow_mut() = Some(tray);
         self.update_tray();
+    }
+
+    /// Linux: whether to create the tray now. ksni gives up for good when no StatusNotifier host is on the session
+    /// bus, so a tray made at login before the panel is up would never appear. Without a host this polls every 2 s
+    /// and creates the tray once one appears; after 60 s without one it opens the window, so the app never runs
+    /// unseen. True also when the bus can't be asked (the tray is made as before).
+    #[cfg(target_os = "linux")]
+    fn tray_host_ready(self: &Rc<Self>) -> bool {
+        if platform::dbus::tray_host_present() != Some(false) {
+            self.tray_wait.stop();
+            return true;
+        }
+        if !self.tray_wait.running() {
+            log::write("Tray: no tray host on the session bus yet; waiting for one");
+            let mut waited = 0u32;
+            self.tray_wait.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || {
+                waited += 2;
+                with(|c| {
+                    if !c.background_mode() || c.tray.borrow().is_some() {
+                        c.tray_wait.stop();
+                    } else if platform::dbus::tray_host_present() != Some(false) {
+                        c.tray_wait.stop();
+                        c.ensure_tray();
+                    } else if waited == 60 && c.window.borrow().is_none() {
+                        log::write("Tray: still no tray host after 60 s; opening the window");
+                        c.show_window();
+                    }
+                })
+            });
+        }
+        false
     }
 
     /// The tray's tip and badge from the shown display (another one when that isn't connected).
@@ -1870,7 +1916,8 @@ impl Controller {
         let mut app = self.app.borrow_mut();
         let st = app.state(app.selected.as_ref());
         let failure = if st.connected() { None } else { st.failure };
-        let hints = platform::setup::hints(failure, app.hotkeys_available);
+        let backlight = st.monitor.as_ref().is_some_and(|m| m.info.backend == BackendKind::Backlight);
+        let hints = platform::setup::hints(failure, backlight, app.hotkeys_available);
         app.setup_runs.retain(|id, run| run.running || run.checking || hints.iter().any(|h| h.id == *id));
         app.setup_hints = hints;
     }
@@ -1952,6 +1999,8 @@ impl Controller {
         if self.headless.get() {
             self.start_resident(false);
         }
+        #[cfg(target_os = "linux")]
+        let created = self.window.borrow().is_none();
         if self.window.borrow().is_none() {
             let Ok(ui) = MainWindow::new() else {
                 log::write("Could not create the main window");
@@ -1981,6 +2030,10 @@ impl Controller {
             let _ = ui.show();
             ui.window().set_minimized(false);
             ui.window().with_winit_window(|w| w.focus_window());
+            #[cfg(target_os = "linux")]
+            if !created {
+                raise_on_wayland(ui);
+            }
         }
         platform::efficiency::set_window_visible(true);
         self.send_shown(&Command::Refresh(DISPLAY_CODES.to_vec()));
@@ -2004,6 +2057,13 @@ impl Controller {
         }
         platform::efficiency::set_window_visible(false);
         if !self.background_mode() {
+            self.quit();
+            return;
+        }
+        // No tray and no tray host to make one: a hidden window would leave the app running unseen.
+        #[cfg(target_os = "linux")]
+        if self.tray.borrow().is_none() && platform::dbus::tray_host_present() == Some(false) {
+            log::write("Tray: no tray host on this desktop, so closing the window exits");
             self.quit();
             return;
         }
@@ -2802,6 +2862,21 @@ fn get_fields(st: &State, target: GetTarget) -> Vec<(&'static str, String, Strin
 
 fn level_glyph(code: Option<u8>) -> (&'static str, &'static str) {
     if code == Some(BRIGHTNESS) { (glyph::SUN, "Brightness") } else { (glyph::CONTRAST, "Contrast") }
+}
+
+/// Wayland ignores `focus_window`, and a window only takes focus with the launcher's activation token when it is
+/// created: for one that is already open, drop the token and ask for attention instead (GNOME shows "is ready",
+/// KDE highlights its taskbar entry).
+#[cfg(target_os = "linux")]
+fn raise_on_wayland(ui: &MainWindow) {
+    use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use slint::winit_030::winit::window::UserAttentionType;
+    let _ = platform::instance::take_activation_token();
+    ui.window().with_winit_window(|w| {
+        if matches!(w.window_handle().map(|h| h.as_raw()), Ok(RawWindowHandle::Wayland(_))) {
+            w.request_user_attention(Some(UserAttentionType::Informational));
+        }
+    });
 }
 
 /// The text "Copy capability report" puts on the clipboard.

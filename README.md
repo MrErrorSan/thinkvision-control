@@ -53,7 +53,9 @@ Download from [Releases](../../releases).
 tar xzf thinkvision-control-*-linux-x64.tar.gz && ./thinkvision-control-*-linux-x64/install.sh
 ```
 
-It installs for your user and offers to set up access to the monitor (asks for your password once). Log out and back in, then start **ThinkVision Control** from your app launcher.
+It installs for your user and offers to set up access to the monitor. That asks for your password once (on openSUSE, and on Debian with a root account, root's), through sudo or, without it, pkexec. Then start **ThinkVision Control** from your app launcher.
+
+It needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 41, Linux Mint 22 and later; current Arch and openSUSE Tumbleweed) and `libfontconfig.so.1`. It loads the rest when it starts, all present on a desktop install: `libxkbcommon.so.0`, and `libwayland-client.so.0` and `libwayland-cursor.so.0` on Wayland, or `libxcb.so.1`, `libX11.so.6`, `libX11-xcb.so.1`, `libXcursor.so.1`, `libXrandr.so.2`, `libXi.so.6` and `libxkbcommon-x11.so.0` on X11.
 
 **macOS (Apple Silicon):** there's no download yet. Build and install it with:
 
@@ -115,7 +117,7 @@ The same as links: `thinkvision://preset/night`, `thinkvision://input/this`, `th
 With [Rust](https://rustup.rs): `cargo run --release -p tvc-app`. The toolchain is pinned in `rust-toolchain.toml`; rustup installs it on first use. On Linux, first install the system packages (Debian/Ubuntu names):
 
 ```bash
-sudo apt-get install pkg-config libfontconfig1-dev libudev-dev libxkbcommon-dev
+sudo apt-get install pkg-config libfontconfig1-dev libxkbcommon-dev
 ```
 
 Installers: `scripts/make-windows-setup.ps1` (needs [Inno Setup](https://jrsoftware.org/isinfo.php)), `scripts/make-linux-tarball.sh`, `scripts/make-macos-app.sh`. They add `THIRD-PARTY-NOTICES.txt` when [cargo-about](https://github.com/EmbarkStudios/cargo-about) is installed (`cargo install cargo-about --locked --features cli`). Tests: `cargo test --workspace`.

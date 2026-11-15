@@ -6,6 +6,8 @@ mod discovery;
 mod i2c;
 #[cfg(target_os = "linux")]
 pub(crate) use discovery::LinuxDiscovery;
+#[cfg(target_os = "linux")]
+pub use discovery::{nvidia_access_denied, nvidia_without_ddc};
 
 use std::cmp::Ordering;
 
@@ -60,6 +62,18 @@ pub fn bus_from_children<'a>(entries: impl IntoIterator<Item = &'a str>) -> Opti
     entries.into_iter().filter_map(|e| Some((bus_number(e)?, e))).min().map(|(_, e)| e)
 }
 
+/// An i2c adapter of NVIDIA's proprietary driver, by its sysfs `name` (`NVIDIA i2c adapter 3 at 1:00.0`). That
+/// driver links its adapters to the GPU, not to the DRM connectors, so discovery matches them by EDID.
+pub fn is_nvidia_adapter(name: &str) -> bool {
+    name.trim_start().starts_with("NVIDIA i2c adapter")
+}
+
+/// Whether an EDID base block read from a bus at 0x50 is the connector's sysfs EDID: the first 128 bytes equal,
+/// with a valid header.
+pub fn edid_matches(probed: &[u8], sysfs: &[u8]) -> bool {
+    probed.len() >= 128 && sysfs.len() >= 128 && probed[..128] == sysfs[..128] && edid::id(probed).is_some()
+}
+
 /// EDID id and serial from a connector's EDID: empty and None without a valid header.
 pub fn edid_identity(data: &[u8]) -> (String, Option<String>) {
     match edid::id(data) {
@@ -109,7 +123,7 @@ fn natural_key(name: &str) -> Vec<Result<u64, &str>> {
     key
 }
 
-fn bus_number(device: &str) -> Option<u32> {
+pub(crate) fn bus_number(device: &str) -> Option<u32> {
     bus_name(device).strip_prefix("i2c-")?.parse().ok()
 }
 
@@ -218,6 +232,21 @@ mod tests {
         let vm = display_info("card0-HDMI-A-1", "HDMI-A-1".into(), &qemu, Some("i2c-1"));
         assert_eq!(vm.identity.edid_id, "RHT1234");
         assert_eq!((vm.kind, vm.backend), (DisplayKind::Virtual, BackendKind::None));
+    }
+
+    #[test]
+    fn nvidia_adapters_and_edid_match() {
+        assert!(is_nvidia_adapter("NVIDIA i2c adapter 3 at 1:00.0\n"));
+        assert!(!is_nvidia_adapter("AMDGPU DM i2c hw bus 0"));
+        assert!(!is_nvidia_adapter("i915 gmbus dpb"));
+        let edid = p32p20(1234, Some("P32p-20"));
+        assert!(edid_matches(&edid, &edid));
+        let mut longer = edid.clone();
+        longer.extend_from_slice(&[0; 128]); // an extension block in sysfs
+        assert!(edid_matches(&edid[..128], &longer));
+        assert!(!edid_matches(&p32p20(99, Some("P32p-20")), &edid));
+        assert!(!edid_matches(&edid[..64], &edid));
+        assert!(!edid_matches(&[0; 128], &[0; 128]));
     }
 
     #[test]

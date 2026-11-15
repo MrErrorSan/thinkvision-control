@@ -24,7 +24,7 @@ jobs:
       - run: rustup toolchain install
       - name: Install build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libudev-dev libxkbcommon-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libxkbcommon-dev
       - name: Test
         run: cargo test --workspace --locked
       - name: Clippy

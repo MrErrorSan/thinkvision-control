@@ -113,6 +113,12 @@ pub fn pick_backlight<N: AsRef<str>, T: AsRef<str>>(devices: &[(N, T)]) -> Optio
         .map(|(_, name)| name)
 }
 
+/// A backlight that the kernel ddcci driver (`ddcci-driver-linux`) registers for an external monitor: named
+/// `ddcci…`, or with its canonical `device` path under an i2c adapter. It is not a built-in panel.
+pub fn is_ddcci_backlight(name: &str, device_path: &str) -> bool {
+    name.starts_with("ddcci") || device_path.contains("/i2c-")
+}
+
 /// The DRM connector (`card0-eDP-1`) that is the panel, from `(name, connected)` pairs: the backlight's own `device`
 /// when that is a built-in connector, else the first built-in one that is connected, else the first built-in one.
 pub fn panel_connector<'a, N: AsRef<str>>(device: Option<&str>, connectors: &'a [(N, bool)]) -> Option<&'a str> {
@@ -197,6 +203,14 @@ mod tests {
         assert_eq!(pick(&[]), None);
         // Same type: natural order, so 2 comes before 10.
         assert_eq!(pick(&[("acpi_video10", "firmware"), ("acpi_video2", "firmware")]).as_deref(), Some("acpi_video2"));
+    }
+
+    #[test]
+    fn ddcci_backlights_are_external_monitors() {
+        assert!(is_ddcci_backlight("ddcci5", ""));
+        assert!(is_ddcci_backlight("x", "/sys/devices/pci0000:00/0000:00:02.0/i2c-5/5-0037"));
+        assert!(!is_ddcci_backlight("intel_backlight", "/sys/devices/pci0000:00/0000:00:02.0/drm/card1/card1-eDP-1"));
+        assert!(!is_ddcci_backlight("acpi_video0", "/sys/devices/pci0000:00/0000:00:02.0"));
     }
 
     #[test]

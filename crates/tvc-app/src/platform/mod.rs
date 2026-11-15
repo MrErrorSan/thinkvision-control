@@ -4,6 +4,8 @@
 
 pub mod autostart;
 pub mod console;
+#[cfg(target_os = "linux")]
+pub mod dbus;
 pub mod efficiency;
 pub mod hotkeys;
 pub mod instance;

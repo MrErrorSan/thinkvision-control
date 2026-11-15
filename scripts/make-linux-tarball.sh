@@ -66,9 +66,25 @@ cp thinkvision-control.svg "$HOME/.local/share/icons/hicolor/scalable/apps/"
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$HOME/.local/share/applications" || true
 fi
-# thinkvision:// links (thinkvision://preset/night, ...) open the app.
+# thinkvision:// links (thinkvision://preset/night, ...) open the app. Without xdg-utils, the same line goes
+# straight into mimeapps.list.
 if command -v xdg-mime >/dev/null 2>&1; then
     xdg-mime default thinkvision-control.desktop x-scheme-handler/thinkvision || true
+else
+    apps="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+    handler="x-scheme-handler/thinkvision=thinkvision-control.desktop"
+    if ! grep -qs '^x-scheme-handler/thinkvision=' "$apps"; then
+        if grep -qs '^\[Default Applications\]' "$apps"; then
+            sed -i "/^\[Default Applications\]/a $handler" "$apps"
+        else
+            mkdir -p "$(dirname "$apps")"
+            printf '[Default Applications]\n%s\n' "$handler" >> "$apps"
+        fi
+    fi
+fi
+# KDE reads launchers from its own cache.
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 >/dev/null 2>&1 || true
 fi
 
 echo "Installed. Start \"ThinkVision Control\" from your app launcher, or run: thinkvision-control"
@@ -83,29 +99,48 @@ if cmp -s 60-thinkvision-i2c.rules "$rules" && [ -e /etc/modules-load.d/i2c-dev.
     exit 0
 fi
 if [ -e "$rules" ]; then
-    echo "This version updates the monitor access rule ($rules). That needs sudo."
+    echo "This version updates the monitor access rule ($rules). That needs administrator rights."
 else
-    echo "The app needs access to the monitor's control channel (/dev/i2c-*). This is set up once, with sudo."
+    echo "The app needs access to the monitor's control channel (/dev/i2c-*). This is set up once, with"
+    echo "administrator rights."
 fi
-answer=n   # without a terminal (piped, scripted), print the commands instead of running sudo
+# One root script, run with sudo, else pkexec (the desktop's password dialog, or a prompt in this terminal);
+# the rule file comes in as $1.
+setup='set -e
+modprobe i2c-dev
+echo i2c-dev > /etc/modules-load.d/i2c-dev.conf
+cp "$1" /etc/udev/rules.d/60-thinkvision-i2c.rules
+udevadm control --reload
+udevadm trigger --action=add --subsystem-match=i2c-dev --subsystem-match=backlight'
+later() {
+    echo "  su -c 'modprobe i2c-dev && echo i2c-dev > /etc/modules-load.d/i2c-dev.conf && cp \"$PWD/60-thinkvision-i2c.rules\" /etc/udev/rules.d/ && udevadm control --reload && $trigger'"
+    echo "(or the same with sudo sh -c in place of su -c)"
+}
+answer=n   # without a terminal (piped, scripted), print the commands instead of asking for a password
 if [ -t 0 ]; then
-    printf "Set it up now? [Y/n] "
+    printf "Set it up now? It asks for your password (on openSUSE, and on Debian with a root account, root's). [Y/n] "
     read -r answer || answer=n
 fi
 case "$answer" in
     n|N|no|No)
         echo "Later, run:"
-        echo "  sudo modprobe i2c-dev"
-        echo "  echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf"
-        echo "  sudo cp \"$PWD/60-thinkvision-i2c.rules\" /etc/udev/rules.d/"
-        echo "  sudo udevadm control --reload && sudo $trigger"
+        later
         ;;
     *)
-        sudo modprobe i2c-dev
-        echo i2c-dev | sudo tee /etc/modules-load.d/i2c-dev.conf >/dev/null
-        sudo cp 60-thinkvision-i2c.rules /etc/udev/rules.d/
-        sudo udevadm control --reload && sudo $trigger
-        echo "Done. Log out and back in once, then start ThinkVision Control."
+        ok=no
+        if command -v sudo >/dev/null 2>&1; then
+            sudo sh -c "$setup" sh "$PWD/60-thinkvision-i2c.rules" && ok=yes
+        fi
+        if [ "$ok" = no ] && command -v pkexec >/dev/null 2>&1; then
+            if command -v sudo >/dev/null 2>&1; then echo "sudo didn't work; trying pkexec instead."; fi
+            pkexec /bin/sh -c "$setup" sh "$PWD/60-thinkvision-i2c.rules" && ok=yes
+        fi
+        if [ "$ok" = yes ]; then
+            echo "Done. Start ThinkVision Control."
+        else
+            echo "Couldn't get administrator rights (neither sudo nor pkexec worked). As root, run:"
+            later
+        fi
         ;;
 esac
 INSTALL

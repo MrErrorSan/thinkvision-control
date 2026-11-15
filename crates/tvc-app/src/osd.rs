@@ -27,6 +27,9 @@ thread_local! {
 /// The winit attributes hook for every window. While the OSD is being created, its attributes: never activated on
 /// show, no taskbar button; any other window's are unchanged. The hook runs before Slint applies the component's
 /// title, so the OSD is told apart by when the hook runs, not by its title.
+///
+/// X11 has no "don't activate": the OSD is an override-redirect notification window there, which the window manager
+/// neither focuses nor lists, and which stays where `place` puts it. Wayland ignores these (see `shell` below).
 pub fn attributes(attrs: WindowAttributes) -> WindowAttributes {
     if !CREATING.get() {
         return attrs;
@@ -36,8 +39,19 @@ pub fn attributes(attrs: WindowAttributes) -> WindowAttributes {
         use slint::winit_030::winit::platform::windows::WindowAttributesExtWindows;
         attrs.with_active(false).with_skip_taskbar(true)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        use slint::winit_030::winit::platform::x11::{WindowAttributesExtX11, WindowType};
+        attrs.with_active(false).with_override_redirect(true).with_x11_window_type(vec![WindowType::Notification])
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     attrs.with_active(false)
+}
+
+/// Whether the OSD's window is being created right now (the hook is running for it).
+#[cfg(target_os = "linux")]
+pub fn creating() -> bool {
+    CREATING.get()
 }
 
 pub enum Content<'a> {
@@ -68,6 +82,10 @@ impl OsdHost {
     /// Shows or updates the OSD on the screen with this work area, from `tvc_ddc::screen_rect`; None = the primary
     /// screen. It hides 1.2 s after the last call.
     pub fn show_on(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content, screen: Option<Rect>) {
+        #[cfg(target_os = "linux")]
+        if shell::show(&content) {
+            return;
+        }
         let mut host = this.borrow_mut();
         let created = host.window.is_none();
         if created {
@@ -133,6 +151,10 @@ fn style_when_ready(weak: std::rc::Weak<std::cell::RefCell<OsdHost>>, attempt: u
     let Some(osd) = host.window.as_ref() else { return };
     if osd.window().with_winit_window(|_| ()).is_some() {
         style(osd);
+        // The first `place` ran before the native window existed; an X11 override-redirect window isn't placed by
+        // the window manager, so place it now.
+        #[cfg(target_os = "linux")]
+        place(osd, host.screen, false);
     } else if attempt < 100 {
         slint::Timer::single_shot(Duration::from_millis(2), move || style_when_ready(weak, attempt + 1));
     }
@@ -277,6 +299,139 @@ fn native_show(osd: &Osd, show: bool) {
 #[cfg(not(windows))]
 fn native_show(osd: &Osd, show: bool) {
     let _ = if show { osd.show() } else { osd.hide() };
+}
+
+/// The OSD on Wayland. A client can't place its own window there, nor keep it from taking focus and showing in the
+/// task switcher (GNOME has no layer-shell), so the desktop shows it instead: Plasma's own OSD
+/// (`org.kde.osdService.showText`), else a transient desktop notification that replaces the previous one. Only
+/// when neither is on the session bus, or a call fails, does the OSD window open as on X11.
+#[cfg(target_os = "linux")]
+mod shell {
+    use std::cell::Cell;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::{self, Sender};
+
+    use zbus::blocking::Connection;
+    use zbus::zvariant::Value;
+
+    use super::Content;
+    use crate::platform::dbus;
+
+    #[derive(Clone, Copy)]
+    enum Route {
+        Plasma,
+        Notification,
+    }
+
+    /// What one show sends: the text and, for a level, its percent.
+    struct Request {
+        text: String,
+        percent: Option<i32>,
+    }
+
+    /// Cleared by the worker when a call fails; the window takes over from then on.
+    static WORKING: AtomicBool = AtomicBool::new(true);
+
+    /// The worker making the calls; None = the window shows the OSD.
+    type Worker = Option<Sender<Request>>;
+
+    thread_local! {
+        /// Worked out on the first show.
+        static WORKER: Cell<Option<Worker>> = const { Cell::new(None) };
+    }
+
+    /// Hands the OSD to the desktop; false when the window should show it.
+    pub fn show(content: &Content) -> bool {
+        if !WORKING.load(Ordering::Relaxed) {
+            return false;
+        }
+        let worker = WORKER.take().unwrap_or_else(start);
+        let sent = worker.as_ref().is_some_and(|tx| tx.send(request(content)).is_ok());
+        WORKER.set(Some(worker));
+        sent
+    }
+
+    fn request(content: &Content) -> Request {
+        match *content {
+            Content::Level { label, value, max, display, .. } => {
+                let percent = if max == 0 { 0 } else { (u32::from(value.min(max)) * 100 / u32::from(max)) as i32 };
+                let text = if display.is_empty() { format!("{label} {value}") } else { format!("{label} {value} · {display}") };
+                Request { text, percent: Some(percent) }
+            }
+            Content::Message(text) => Request { text: text.to_owned(), percent: None },
+        }
+    }
+
+    /// On a Wayland session with Plasma or a notification server on the session bus: that route and a worker that
+    /// makes the calls off the UI thread.
+    fn start() -> Worker {
+        let var = |k: &str| std::env::var(k).unwrap_or_default();
+        let wayland = !var("WAYLAND_DISPLAY").is_empty() && !var("SLINT_BACKEND").contains("x11");
+        if !wayland {
+            return None;
+        }
+        let bus = dbus::session()?;
+        let has = |name: &str| dbus::name_has_owner(&bus, name) == Some(true);
+        let route = if has("org.kde.plasmashell") {
+            Route::Plasma
+        } else if has("org.freedesktop.Notifications") {
+            Route::Notification
+        } else {
+            return None;
+        };
+        let (tx, rx) = mpsc::channel::<Request>();
+        std::thread::Builder::new()
+            .name("tvc-osd".into())
+            .spawn(move || {
+                let mut replaces = 0u32;
+                for request in rx {
+                    let ok = match route {
+                        Route::Plasma => plasma(&bus, &request.text),
+                        Route::Notification => notify(&bus, &request, &mut replaces),
+                    };
+                    if !ok {
+                        WORKING.store(false, Ordering::Relaxed);
+                        break;
+                    }
+                }
+            })
+            .ok()?;
+        Some(tx)
+    }
+
+    fn plasma(bus: &Connection, text: &str) -> bool {
+        bus.call_method(Some("org.kde.plasmashell"), "/org/kde/osdService", Some("org.kde.osdService"), "showText", &("video-display", text))
+            .is_ok()
+    }
+
+    /// `Notify`, replacing the previous OSD notification; transient, so it never stays in the notification list.
+    fn notify(bus: &Connection, request: &Request, replaces: &mut u32) -> bool {
+        let mut hints: HashMap<&str, Value> = HashMap::new();
+        hints.insert("transient", Value::from(true));
+        hints.insert("urgency", Value::from(0u8));
+        hints.insert("desktop-entry", Value::from("thinkvision-control"));
+        hints.insert("x-canonical-private-synchronous", Value::from("thinkvision-control"));
+        if let Some(percent) = request.percent {
+            hints.insert("value", Value::from(percent));
+        }
+        let actions: Vec<&str> = Vec::new();
+        let body = ("ThinkVision Control", *replaces, "thinkvision-control", request.text.as_str(), "", actions, hints, 1500i32);
+        let reply = bus.call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "Notify",
+            &body,
+        );
+        match reply.and_then(|r| r.body().deserialize::<u32>()) {
+            Ok(id) => {
+                *replaces = id;
+                true
+            }
+            Err(_) => false,
+        }
+    }
 }
 
 #[cfg(test)]

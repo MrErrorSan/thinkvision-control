@@ -22,6 +22,7 @@ const WRITE_ATTEMPTS: u32 = 4; // ddcutil's write-only default; 1 for `writes_on
 const FRAGMENT_ATTEMPTS: u32 = 8; // ddcutil's multi-part default
 const MAX_CAPABILITIES_LEN: usize = 8192;
 const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const EDID_ADDRESS: u16 = 0x50;
 
 // <linux/i2c-dev.h>
 const I2C_SLAVE: u32 = 0x0703;
@@ -101,11 +102,28 @@ fn connect_bound(binding: &Binding) -> Result<Bus, LinkFailure> {
     if !same {
         return Err(LinkFailure::NotFound);
     }
-    match open_rw(&binding.device) {
+    match open_fresh(&binding.device) {
         Ok(file) => Ok(Bus { file, path: binding.device.clone() }),
         Err(e) if is_permission(errno_of(&e)) => Err(LinkFailure::PermissionDenied),
         Err(_) if device_nodes().is_empty() => Err(LinkFailure::ModuleMissing),
         Err(_) => Err(LinkFailure::NotFound),
+    }
+}
+
+/// Reads the EDID base block at 0x50 on `bus` (`i2c-5`) under the bus lock, for the NVIDIA fallback in discovery.
+/// Err is the errno.
+pub(super) fn read_edid_block(bus: &str) -> Result<Vec<u8>, i32> {
+    let path = format!("/dev/{bus}");
+    let file = open_rw(&path).map_err(|e| errno_of(&e))?;
+    let bus = Bus { file, path };
+    let _lock = lock(&bus).map_err(|_| libc::EBUSY)?;
+    set_slave(&bus.file, EDID_ADDRESS)?;
+    write_all(&bus.file, &[0])?; // offset 0
+    let mut block = vec![0u8; 128];
+    match (&bus.file).read(&mut block) {
+        Ok(128) => Ok(block),
+        Ok(_) => Err(libc::EIO),
+        Err(e) => Err(errno_of(&e)),
     }
 }
 
@@ -338,6 +356,28 @@ fn device_nodes() -> Vec<String> {
         .collect()
 }
 
+/// Opens the node; a permission error on a node created in the last few seconds (a dock just plugged in) is retried
+/// for up to 2 s, since the kernel's hotplug event can arrive before udev has given the session its ACL.
+fn open_fresh(path: &str) -> io::Result<File> {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match open_rw(path) {
+            Err(e) if is_permission(errno_of(&e)) && is_new_node(path) && Instant::now() < deadline => {
+                sleep(Duration::from_millis(250));
+            }
+            other => return other,
+        }
+    }
+}
+
+/// The node's inode changed (created, or its ACL set) less than 10 s ago.
+fn is_new_node(path: &str) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(meta) = fs::metadata(path) else { return false };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    now.saturating_sub(u64::try_from(meta.ctime()).unwrap_or(0)) < 10
+}
+
 // ----- errno helpers -----
 
 fn open_rw(path: &str) -> io::Result<File> {
@@ -356,7 +396,7 @@ fn describe(errno: i32) -> String {
     io::Error::from_raw_os_error(errno).to_string()
 }
 
-fn is_permission(errno: i32) -> bool {
+pub(super) fn is_permission(errno: i32) -> bool {
     errno == libc::EACCES || errno == libc::EPERM
 }
 

@@ -252,13 +252,16 @@ pub struct NotFound {
 
 pub fn not_found(st: &State) -> NotFound {
     let name = monitor_name(st);
+    // Linux with NVIDIA's driver, which offers no control channel for the display: the setup card says what to do.
+    let nvidia = st.setup_hints.iter().any(|h| h.id == "linux-nvidia");
+    const NVIDIA: &str = "NVIDIA's driver isn't offering display controls for it. See Settings → System setup.";
     let Some(displays) = st.displays.as_deref() else {
         // The backend can't list displays: say only what is known.
         return NotFound {
             header: "No supported display",
             status: "Not connected",
             title: if name.is_empty() { "No supported display found".into() } else { format!("{name} isn't connected") },
-            message: "Connect a display that supports DDC/CI and it will be found automatically.".into(),
+            message: if nvidia { NVIDIA } else { "Connect a display that supports DDC/CI and it will be found automatically." }.into(),
         };
     };
     if let Some(found) = displays.iter().find(|d| d.tracked) {
@@ -267,7 +270,7 @@ pub fn not_found(st: &State) -> NotFound {
             header: "Display can't be reached",
             status: "Can't be reached",
             title: format!("{label} can't be reached"),
-            message: "The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu.".into(),
+            message: if nvidia { NVIDIA } else { "The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu." }.into(),
         };
     }
     // Every real display counts (a laptop panel too); only software screens are left out.

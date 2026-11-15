@@ -18,18 +18,25 @@ echo "Removed ThinkVision Control. Your settings are still in $config/ThinkVisio
 rules=/etc/udev/rules.d/60-thinkvision-i2c.rules
 [ -e "$rules" ] || exit 0
 echo
-echo "The monitor access rule ($rules) is still installed. Removing it needs sudo."
+echo "The monitor access rule ($rules) is still installed. Removing it needs administrator rights."
 echo "(/etc/modules-load.d/i2c-dev.conf stays: ddcutil and other tools use the i2c-dev module too.)"
-answer=n   # without a terminal, print the commands instead of running sudo
+answer=n   # without a terminal, print the commands instead of asking for a password
 if [ -t 0 ]; then
     printf "Remove it now? [y/N] "
     read -r answer || answer=n
 fi
 case "$answer" in
     y|Y|yes|Yes)
-        sudo rm -f "$rules"
-        sudo udevadm control --reload
-        echo "Done."
+        # sudo, else pkexec (the desktop's password dialog, or a prompt in this terminal).
+        remove="rm -f $rules && udevadm control --reload"
+        if command -v sudo >/dev/null 2>&1 && sudo sh -c "$remove"; then
+            echo "Done."
+        elif command -v pkexec >/dev/null 2>&1 && pkexec /bin/sh -c "$remove"; then
+            echo "Done."
+        else
+            echo "Couldn't get administrator rights. As root, run:"
+            echo "  su -c '$remove'"
+        fi
         ;;
     *)
         echo "Later, run:"

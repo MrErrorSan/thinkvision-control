@@ -26,3 +26,7 @@ windows-sys = { version = "0.61", features = [
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc = "0.2"
+
+# logind's SetBrightness for the built-in panel; already in the build through Slint's tray (ksni).
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }

@@ -74,6 +74,8 @@ pub fn start(args: &[String]) -> Start {
         imp::Acquire::Owned(listener) => return Start::Primary(Listener { imp: listener }),
         imp::Acquire::Busy(lock) => lock,
     };
+    #[cfg(target_os = "linux")]
+    imp::pass_activation_token();
     let slice = Duration::from_millis(250);
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
@@ -85,6 +87,17 @@ pub fn start(args: &[String]) -> Start {
         }
     }
     Start::Forwarded(None)
+}
+
+/// The XDG activation token for the next window this process opens, so a Wayland compositor lets it take focus:
+/// the one this process was started with, else one a later launch left for it. Each token is handed out once.
+#[cfg(target_os = "linux")]
+pub fn take_activation_token() -> Option<String> {
+    use std::sync::Mutex;
+    static OWN: Mutex<Option<Option<String>>> = Mutex::new(None);
+    let mut own = OWN.lock().unwrap_or_else(|e| e.into_inner());
+    let from_env = || std::env::var("XDG_ACTIVATION_TOKEN").ok().filter(|t| !t.is_empty());
+    own.get_or_insert_with(from_env).take().or_else(imp::take_passed_token)
 }
 
 /// Reads up to the first `\n` (at most 64 KiB) within `timeout`. `read` fills the buffer within the time left and
@@ -492,6 +505,34 @@ mod imp {
             stream.set_read_timeout(Some(left)).ok()?;
             stream.read(buf).ok()
         })
+    }
+
+    /// The file a later launch leaves its activation token in for the running copy. The wire request carries only
+    /// the arguments, which older copies parse strictly, so the token travels beside it.
+    #[cfg(target_os = "linux")]
+    fn token_path() -> Option<PathBuf> {
+        Some(paths()?.0.with_file_name("thinkvision-control.activation"))
+    }
+
+    /// Leaves this launch's `XDG_ACTIVATION_TOKEN` (set by the desktop for an app started from a launcher) for the
+    /// running copy, which opens its window with it.
+    #[cfg(target_os = "linux")]
+    pub fn pass_activation_token() {
+        let Some(token) = std::env::var("XDG_ACTIVATION_TOKEN").ok().filter(|t| !t.is_empty()) else { return };
+        let Some(path) = token_path() else { return };
+        let file = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path);
+        if let Ok(mut file) = file {
+            let _ = file.write_all(token.as_bytes());
+        }
+    }
+
+    /// The token a later launch left, removed as it is read.
+    #[cfg(target_os = "linux")]
+    pub fn take_passed_token() -> Option<String> {
+        let path = token_path()?;
+        let token = std::fs::read_to_string(&path).ok()?;
+        let _ = std::fs::remove_file(&path);
+        Some(token.trim().to_owned()).filter(|t| !t.is_empty())
     }
 
     pub fn send(request: &str, _timeout: Duration) -> Option<Option<Reply>> {

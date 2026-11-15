@@ -4504,6 +4504,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 name = "tvc-app"
 version = "0.0.8"
 dependencies = [
+ "arboard",
  "global-hotkey",
  "libc",
  "slint",
@@ -4512,6 +4513,7 @@ dependencies = [
  "tvc-ddc",
  "windows-sys 0.61.2",
  "winresource",
+ "zbus",
 ]
 
 [[package]]
@@ -4529,6 +4531,7 @@ dependencies = [
  "libc",
  "tvc-core",
  "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]

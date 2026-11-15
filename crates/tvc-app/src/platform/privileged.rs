@@ -99,7 +99,9 @@ pub fn run(fix: &Fix) -> Outcome {
 
     let output = |cmd: &mut Command| cmd.stdin(Stdio::null()).output();
     if let Some(script) = fix.root_script() {
-        let out = match output(Command::new("pkexec").args(["/bin/sh", "-c", &script])) {
+        // The absolute path where it exists, so a PATH entry can't stand in for it.
+        let pkexec = if std::path::Path::new("/usr/bin/pkexec").exists() { "/usr/bin/pkexec" } else { "pkexec" };
+        let out = match output(Command::new(pkexec).args(["/bin/sh", "-c", &script])) {
             Ok(out) => out,
             Err(e) if e.kind() == ErrorKind::NotFound => return Outcome::NoPkexec,
             Err(e) => return Outcome::Failed(e.to_string()),
