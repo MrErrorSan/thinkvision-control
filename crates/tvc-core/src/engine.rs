@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::crash::Marker;
+use crate::crash::{self, Marker};
 use crate::finder::{self, CodeChange};
 use crate::link::{AttachedDisplay, LinkError, LinkFailure, MonitorLink, VcpReading};
 use crate::mccs::{self, MonitorCapabilities};
@@ -24,6 +24,7 @@ use crate::profile::{ControlDefinition, ControlKind, Profile, ProfileStore, Safe
 use crate::result::ResultKind;
 use crate::safety::{self, Verdict};
 use crate::store::{BackupStore, CapabilitiesCache, Preset};
+use crate::support::SupportLevel;
 use crate::{hex, log};
 
 const BRIGHTNESS: u8 = 0x10;
@@ -270,7 +271,8 @@ impl Engine {
             link,
             profiles,
             caps_cache,
-            crash: Marker::new(&dir),
+            crash: Marker::new(&dir, &crash::process_key()),
+            level: SupportLevel::Verified { profile: "p32p20".into() },
             backups: BackupStore::new(dir),
             timing,
             sink,
@@ -361,6 +363,8 @@ struct Worker {
     cached_raw: Option<String>,
     live_caps: bool,
     caps: MonitorCapabilities,
+    /// How far this monitor is trusted; always Verified until multi-display support resolves it.
+    level: SupportLevel,
     controls: BTreeMap<u8, ControlDefinition>,
     cache: BTreeMap<u8, VcpReading>,
     /// When each cached value was last read or written.
@@ -722,7 +726,7 @@ impl Worker {
         let def = self.controls.get(&code).cloned();
         let cached = self.cache.get(&code).copied();
         let max = cached.filter(|_| def.as_ref().is_some_and(|d| d.kind == ControlKind::Range)).map(|c| c.max);
-        let decision = safety::evaluate(def.as_ref(), &self.caps, code, value, max, confirmed);
+        let decision = safety::evaluate(def.as_ref(), &self.caps, code, value, max, &self.level, confirmed);
         let def = match (decision.verdict, def) {
             (Verdict::Allow, Some(def)) => def,
             (Verdict::NeedsConfirmation, _) => {
@@ -858,7 +862,7 @@ impl Worker {
 
     fn evaluate_drag(&self, code: u8, value: u16) -> Option<u16> {
         let max = self.cache.get(&code).map(|c| c.max);
-        let d = safety::evaluate(self.controls.get(&code), &self.caps, code, value, max, false);
+        let d = safety::evaluate(self.controls.get(&code), &self.caps, code, value, max, &self.level, false);
         (d.verdict == Verdict::Allow).then_some(d.value)
     }
 

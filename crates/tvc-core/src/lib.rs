@@ -18,6 +18,7 @@ pub mod safety;
 pub mod schedule;
 pub mod solar;
 pub mod store;
+pub mod support;
 
 #[cfg(test)]
 mod tests;

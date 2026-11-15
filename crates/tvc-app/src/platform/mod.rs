@@ -20,6 +20,11 @@ use std::time::Duration;
 
 /// The 0.0.4 data folder, so settings carry over: `%APPDATA%\ThinkVisionControl` on Windows,
 /// `$XDG_CONFIG_HOME/ThinkVisionControl` or `~/.config/ThinkVisionControl` on Linux and macOS.
+/// Whether a process with this id is running (for stale crash markers). Stub: always true until w1-platform.
+pub fn process_alive(_pid: u32) -> bool {
+    true
+}
+
 pub fn data_dir() -> PathBuf {
     #[cfg(windows)]
     let base = std::env::var_os("APPDATA")

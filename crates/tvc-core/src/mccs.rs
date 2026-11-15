@@ -8,6 +8,10 @@ use std::fmt;
 pub struct MonitorCapabilities {
     pub model: String,
     pub vcp: BTreeMap<u8, Option<Vec<u8>>>,
+    /// `vcpname(...)`: names the monitor gives its own codes.
+    pub names: BTreeMap<u8, String>,
+    /// What the parser skipped, one line each; empty when the string parsed cleanly.
+    pub warnings: Vec<String>,
 }
 
 impl MonitorCapabilities {
@@ -49,7 +53,7 @@ pub fn parse(capabilities: &str) -> Result<MonitorCapabilities, ParseError> {
     let model = find_section(s, b"model")?
         .map(|m| String::from_utf8_lossy(m).trim().to_string())
         .unwrap_or_default();
-    Ok(MonitorCapabilities { model, vcp: parse_vcp(vcp)? })
+    Ok(MonitorCapabilities { model, vcp: parse_vcp(vcp)?, ..Default::default() })
 }
 
 /// Contents of the first `name(...)` at depth 0 or inside the outer wrapper.

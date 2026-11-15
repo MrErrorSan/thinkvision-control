@@ -10,7 +10,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::hotkey::Action;
-use crate::schedule::AutoMode;
+use crate::schedule::{AutoMode, Phase};
 use crate::{hex, parse_hex};
 
 /// A Day/Night preset. Applied colour mode first, then brightness, then contrast.
@@ -40,6 +40,8 @@ pub struct Settings {
     /// The last location typed (latitude, longitude), kept like `auto_times`. Saved from `auto_day_night` when
     /// that is `Sun`.
     pub auto_location: Option<(f64, f64)>,
+    /// The phase the schedule last applied (`"LastAppliedPhase"`); None until it first applies one.
+    pub last_applied_phase: Option<Phase>,
 }
 
 /// Day 07:00, Night 19:00.
@@ -58,6 +60,7 @@ impl Default for Settings {
             auto_day_night: AutoMode::Off,
             auto_times: DEFAULT_AUTO_TIMES,
             auto_location: None,
+            last_applied_phase: None,
         }
     }
 }
@@ -103,6 +106,7 @@ impl SettingsStore {
             auto_day_night: file.auto_day_night.mode,
             auto_times: file.auto_day_night.times,
             auto_location: file.auto_day_night.location,
+            last_applied_phase: None,
         }
     }
 

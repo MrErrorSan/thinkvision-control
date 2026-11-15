@@ -8,12 +8,45 @@
 
 use std::time::{Duration, Instant};
 
+/// What a forwarded launch gets back: its exit code and what it would have printed.
+/// Wire format: the request is one line of JSON (the argument array); the reply is `{"exit": u8, "stdout": String}`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Reply {
+    pub exit: u8,
+    pub stdout: String,
+}
+
+/// Answers one forwarded launch, from any thread. Dropping it without `reply` answers exit 0 with no output.
+pub struct Responder(Option<Box<dyn FnOnce(Reply) + Send>>);
+
+impl Responder {
+    pub fn reply(mut self, reply: Reply) {
+        if let Some(send) = self.0.take() {
+            send(reply);
+        }
+    }
+
+    /// A responder whose reply goes nowhere.
+    pub(crate) fn none() -> Self {
+        Self(None)
+    }
+}
+
+impl Drop for Responder {
+    fn drop(&mut self) {
+        if let Some(send) = self.0.take() {
+            send(Reply::default());
+        }
+    }
+}
+
 /// The outcome of `start`.
 pub enum Start {
     /// This process is the primary; call `Listener::listen` to receive later launches' arguments.
     Primary(Listener),
-    /// The arguments went to the running instance (or it never answered within 5 s); exit now.
-    Forwarded,
+    /// The arguments went to the running instance. `None` when it took them but sent no reply within 15 s
+    /// (exit 8); exit now either way.
+    Forwarded(Option<Reply>),
 }
 
 /// Receives forwarded arguments. The single-instance lock is held until the process exits.
@@ -23,8 +56,9 @@ pub struct Listener {
 
 impl Listener {
     /// Serves forwarded launches on a new thread for the rest of the process. `on_args` runs on that thread with the
-    /// non-empty lines; post to the UI thread from it. After an error the listener retries in 500 ms.
-    pub fn listen(self, on_args: impl Fn(Vec<String>) + Send + 'static) {
+    /// non-empty arguments and the launch's responder; post both to the UI thread from it. After an error the
+    /// listener retries in 500 ms.
+    pub fn listen(self, on_args: impl Fn(Vec<String>, Responder) + Send + 'static) {
         let _ = std::thread::Builder::new()
             .name("tvc-instance".into())
             .spawn(move || self.imp.serve(&on_args));
@@ -44,13 +78,13 @@ pub fn start(args: &[String]) -> Start {
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         if imp::send(&payload, slice) {
-            return Start::Forwarded;
+            return Start::Forwarded(Some(Reply::default()));
         }
         if let Some(listener) = imp::wait(&lock, slice) {
             return Start::Primary(Listener { imp: listener });
         }
     }
-    Start::Forwarded
+    Start::Forwarded(Some(Reply::default()))
 }
 
 fn split_args(text: &str) -> Vec<String> {
@@ -206,12 +240,12 @@ mod imp {
     }
 
     impl Listener {
-        pub fn serve(self, on_args: &dyn Fn(Vec<String>)) {
+        pub fn serve(self, on_args: &dyn Fn(Vec<String>, super::Responder)) {
             let name = pipe_name();
             let sa = current_user_only();
             loop {
                 match receive(&name, sa.as_ref()) {
-                    Some(text) => on_args(super::split_args(&text)),
+                    Some(text) => on_args(super::split_args(&text), super::Responder::none()),
                     None => thread::sleep(Duration::from_millis(500)),
                 }
             }
@@ -343,7 +377,7 @@ mod imp {
     }
 
     impl Listener {
-        pub fn serve(self, on_args: &dyn Fn(Vec<String>)) {
+        pub fn serve(self, on_args: &dyn Fn(Vec<String>, super::Responder)) {
             let Some(path) = self.socket else { return };
             loop {
                 let listener = match UnixListener::bind(&path) {
@@ -358,7 +392,7 @@ mod imp {
                 for stream in listener.incoming() {
                     let mut text = String::new();
                     match stream.and_then(|mut s| s.read_to_string(&mut text)) {
-                        Ok(_) => on_args(super::split_args(&text)),
+                        Ok(_) => on_args(super::split_args(&text), super::Responder::none()),
                         Err(_) => thread::sleep(Duration::from_millis(500)),
                     }
                 }

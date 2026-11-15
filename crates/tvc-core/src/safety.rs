@@ -4,6 +4,7 @@
 use crate::hex;
 use crate::mccs::MonitorCapabilities;
 use crate::profile::{ControlDefinition, ControlKind, SafetyClass};
+use crate::support::SupportLevel;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
@@ -20,9 +21,10 @@ pub struct Decision {
     pub message: String,
 }
 
-/// `max` is the Range maximum the monitor reported, if known (100 otherwise).
+/// `max` is the Range maximum the monitor reported, if known (100 otherwise). `level` is how far the monitor is
+/// trusted; the hard floor below Verified arrives with w1-safety.
 pub fn evaluate(def: Option<&ControlDefinition>, caps: &MonitorCapabilities, code: u8, value: u16, max: Option<u16>,
-    confirmed: bool) -> Decision {
+    _level: &SupportLevel, confirmed: bool) -> Decision {
     let block = |message: String| Decision { verdict: Verdict::Block, value, message };
     let Some(def) = def.filter(|_| caps.supports(code)) else {
         return block(format!("This monitor does not support {}.", hex(code)));

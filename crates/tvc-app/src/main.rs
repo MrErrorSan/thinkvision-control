@@ -27,7 +27,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let demo = cfg!(debug_assertions) && has("--demo");
     let data_dir = if demo { std::env::temp_dir().join("thinkvision-control-demo") } else { platform::data_dir() };
-    let parsed = cli::parse(&args);
+    let parsed = cli::parse(&args).unwrap_or_default(); // w1-app: a CliError exits 2 with usage
     if parsed.command != CliCommand::Show {
         platform::console::attach(); // so command-line output reaches the calling terminal
     }
@@ -46,7 +46,7 @@ fn main() -> Result<(), slint::PlatformError> {
         None
     } else {
         match platform::instance::start(&args) {
-            platform::instance::Start::Forwarded => return Ok(()),
+            platform::instance::Start::Forwarded(_) => return Ok(()),
             platform::instance::Start::Primary(l) => Some(l),
         }
     };
@@ -59,9 +59,13 @@ fn main() -> Result<(), slint::PlatformError> {
         tvc_ddc::open(MonitorMatch { edid_id: profile.edid_id.clone(), description_hint: Some(profile.short_name.clone()) })
     };
     // a marker left by a crash during a risky monitor operation starts this run in safe mode.
-    let marker = Marker::new(&data_dir);
-    let safe_mode = marker.left_over().inspect(|op| log::write(&format!("Safe mode: crashed during {op}"))).is_some();
-    marker.clear();
+    let marker = Marker::new(&data_dir, &tvc_core::crash::process_key());
+    let left_over = Marker::left_over(&data_dir, platform::process_alive);
+    for stale in &left_over {
+        log::write(&format!("Safe mode: crashed during {}", stale.operation));
+        stale.clear();
+    }
+    let safe_mode = !left_over.is_empty();
     let engine = Engine::spawn(
         link,
         profiles,
@@ -76,8 +80,11 @@ fn main() -> Result<(), slint::PlatformError> {
     controller::install(app.clone());
 
     if let Some(listener) = listener {
-        listener.listen(|args| {
-            let _ = slint::invoke_from_event_loop(move || controller::with(|c| c.on_forwarded(args)));
+        listener.listen(|args, responder| {
+            let _ = slint::invoke_from_event_loop(move || {
+                controller::with(|c| c.on_forwarded(args));
+                drop(responder); // w1-app: reply with the verb's exit code and output
+            });
         });
     }
 

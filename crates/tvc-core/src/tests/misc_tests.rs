@@ -7,6 +7,7 @@ use crate::finder::{diff, snapshot_codes, CodeChange};
 use crate::mccs;
 use crate::profile::ProfileStore;
 use crate::safety::{evaluate, Decision, Verdict};
+use crate::support::SupportLevel;
 
 use super::TempDir;
 
@@ -14,7 +15,7 @@ fn eval(code: u8, value: u16, max: Option<u16>, confirmed: bool) -> Decision {
     let caps = mccs::parse(P32P20_CAPABILITIES).unwrap();
     let dir = TempDir::new();
     let controls = ProfileStore::new(dir.path()).resolve(&caps);
-    evaluate(controls.get(&code), &caps, code, value, max, confirmed)
+    evaluate(controls.get(&code), &caps, code, value, max, &SupportLevel::Verified { profile: "p32p20".into() }, confirmed)
 }
 
 #[test]

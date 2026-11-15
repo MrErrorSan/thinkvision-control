@@ -182,7 +182,7 @@ impl ProfileStore {
             };
             (d.code, values)
         }).collect();
-        MonitorCapabilities { model: String::new(), vcp }
+        MonitorCapabilities { vcp, ..Default::default() }
     }
 
     /// Adds or replaces one definition in the user overlay. Codes the embedded profile marks NeverWrite

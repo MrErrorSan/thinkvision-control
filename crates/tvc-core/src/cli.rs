@@ -26,9 +26,10 @@ pub enum GetTarget {
     All,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CliCommand {
     /// Open the window.
+    #[default]
     Show,
     Preset { night: bool },
     /// `None` = this PC's input (`ThisMachineInput`).
@@ -40,16 +41,31 @@ pub enum CliCommand {
     Help,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Parsed {
     pub command: CliCommand,
     /// `--startup`: start in the tray without a window.
     pub startup: bool,
     /// `--json`: print results as JSON.
     pub json: bool,
+    /// `--yes`: confirms an input switch given on the command line.
+    pub yes: bool,
+    /// `--version`: print the version and exit.
+    pub version: bool,
 }
 
-pub fn parse<S: AsRef<str>>(args: &[S]) -> Parsed {
+/// A malformed command line; exit code 2, with `message` and the usage on stderr.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CliError {
+    pub message: String,
+}
+
+/// Exit code for a [`CliError`].
+pub const EXIT_USAGE: i32 = 2;
+/// Exit code when `--input` needs `--yes` and nobody can confirm on screen.
+pub const EXIT_NEEDS_CONFIRMATION: i32 = 3;
+
+pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
     let mut command = None;
     let (mut startup, mut json, mut help) = (false, false, false);
     let mut i = 0;
@@ -92,7 +108,7 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Parsed {
         }
     }
     let command = if help { CliCommand::Help } else { command.unwrap_or(CliCommand::Show) };
-    Parsed { command, startup, json }
+    Ok(Parsed { command, startup, json, ..Parsed::default() })
 }
 
 /// A `thinkvision:` link, case-insensitive, with or without `//` and a trailing `/`:

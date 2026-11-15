@@ -4,7 +4,7 @@ use crate::cli::{exit_code, format, help, parse, parse_url, CliCommand, GetTarge
 use crate::result::ResultKind;
 
 fn command(args: &[&str]) -> CliCommand {
-    parse(args).command
+    parse(args).unwrap().command
 }
 
 #[test]
@@ -17,7 +17,7 @@ fn format_round_trips_through_parse() {
         CliCommand::Get(GetTarget::ColourMode), CliCommand::Get(GetTarget::All), CliCommand::Help,
     ];
     for c in commands {
-        assert_eq!(parse(&format(&c).unwrap()).command, c, "{c:?}");
+        assert_eq!(parse(&format(&c).unwrap()).unwrap().command, c, "{c:?}");
     }
 }
 
@@ -59,9 +59,9 @@ fn first_verb_wins_and_a_malformed_first_verb_shows() {
 
 #[test]
 fn startup_flag_combines_with_a_command() {
-    assert_eq!(parse(&["--startup", "--input", "usb-c"]),
-        Parsed { command: CliCommand::Input(Some(0x31)), startup: true, json: false });
-    assert_eq!(parse(&["--startup"]), Parsed { command: CliCommand::Show, startup: true, json: false });
+    assert_eq!(parse(&["--startup", "--input", "usb-c"]).unwrap(),
+        Parsed { command: CliCommand::Input(Some(0x31)), startup: true, json: false, ..Parsed::default() });
+    assert_eq!(parse(&["--startup"]).unwrap(), Parsed { command: CliCommand::Show, startup: true, json: false, ..Parsed::default() });
 }
 
 #[test]
@@ -86,12 +86,12 @@ fn malformed_get_shows_and_first_verb_still_wins() {
 
 #[test]
 fn json_combines_with_any_verb() {
-    assert_eq!(parse(&["--get", "all", "--json"]),
-        Parsed { command: CliCommand::Get(GetTarget::All), startup: false, json: true });
-    assert_eq!(parse(&["--JSON", "--preset=night"]),
-        Parsed { command: CliCommand::Preset { night: true }, startup: false, json: true });
-    assert_eq!(parse(&["--json"]), Parsed { command: CliCommand::Show, startup: false, json: true });
-    assert!(!parse(&["--input", "dp"]).json);
+    assert_eq!(parse(&["--get", "all", "--json"]).unwrap(),
+        Parsed { command: CliCommand::Get(GetTarget::All), startup: false, json: true, ..Parsed::default() });
+    assert_eq!(parse(&["--JSON", "--preset=night"]).unwrap(),
+        Parsed { command: CliCommand::Preset { night: true }, startup: false, json: true, ..Parsed::default() });
+    assert_eq!(parse(&["--json"]).unwrap(), Parsed { command: CliCommand::Show, startup: false, json: true, ..Parsed::default() });
+    assert!(!parse(&["--input", "dp"]).unwrap().json);
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn help_wins_wherever_it_appears() {
     for args in [&["--help"][..], &["-h"], &["/?"], &["--HELP"], &["--preset", "day", "--help"], &["--preset", "noon", "-h"]] {
         assert_eq!(command(args), CliCommand::Help, "{args:?}");
     }
-    assert!(parse(&["--help", "--json"]).json);
+    assert!(parse(&["--help", "--json"]).unwrap().json);
     let text = help();
     for needle in ["--preset", "--input", "--step", "--get", "--json", "thinkvision://", "Exit codes"] {
         assert!(text.contains(needle), "{needle}");
@@ -146,8 +146,8 @@ fn a_lone_url_argument_is_a_verb() {
     assert_eq!(command(&["thinkvision://preset/night"]), CliCommand::Preset { night: true });
     assert_eq!(command(&["THINKVISION:input/this"]), CliCommand::Input(None));
     assert_eq!(command(&["thinkvision://nonsense"]), CliCommand::Show);
-    assert_eq!(parse(&["--startup", "thinkvision://get/all", "--json"]),
-        Parsed { command: CliCommand::Get(GetTarget::All), startup: true, json: true });
+    assert_eq!(parse(&["--startup", "thinkvision://get/all", "--json"]).unwrap(),
+        Parsed { command: CliCommand::Get(GetTarget::All), startup: true, json: true, ..Parsed::default() });
 }
 
 #[test]

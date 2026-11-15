@@ -361,7 +361,7 @@ impl Controller {
 
     /// Args forwarded by a second launch.
     pub fn on_forwarded(self: &Rc<Self>, args: Vec<String>) {
-        let parsed = tvc_core::cli::parse(&args);
+        let parsed = tvc_core::cli::parse(&args).unwrap_or_default();
         // A forward during a headless run makes this process the resident app. A verb with Run in
         // background off stays headless: resident without a window or tray would linger invisibly.
         if self.headless.get() && (parsed.command == CliCommand::Show || self.background_mode()) {

@@ -1,37 +1,82 @@
-//! a marker file around risky monitor operations (capability read, finder snapshot/compare). The engine writes
-//! it before the operation and removes it after; a file still there at the next start means the app died inside one,
-//! so the app starts in safe mode.
+//! A marker file around risky monitor operations (capability read, finder snapshot/compare). The engine writes
+//! it before the operation and removes it after; a marker still there whose owner is no longer running means that
+//! owner died inside one, so the app starts in safe mode.
+//!
+//! Each owner has its own file, `risky-operation-<key>.txt`, so one process never reads or clears another's.
+//! The key is `pid-<pid>` for now. 0.0.8 wrote a single `risky-operation.txt`; it counts as stale.
 //!
 //! There is deliberately no drop guard: a panic unwinding out of the operation is exactly the crash to remember.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-const FILE: &str = "risky-operation.txt";
+const PREFIX: &str = "risky-operation";
 
-/// `risky-operation.txt` in the data directory, holding the name of the operation in progress.
+/// This owner's marker file.
 #[derive(Clone, Debug)]
 pub struct Marker {
     path: PathBuf,
 }
 
+/// A marker left by an owner that is no longer running.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LeftOver {
+    /// "" for the 0.0.8 file.
+    pub key: String,
+    /// The operation it never finished ("capability read"…); "" when unreadable.
+    pub operation: String,
+    path: PathBuf,
+}
+
+impl LeftOver {
+    pub fn clear(&self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// `pid-<pid>` for this process.
+pub fn process_key() -> String {
+    format!("pid-{}", std::process::id())
+}
+
 impl Marker {
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { path: dir.into().join(FILE) }
+    pub fn new(dir: impl Into<PathBuf>, key: &str) -> Self {
+        Self { path: dir.into().join(format!("{PREFIX}-{key}.txt")) }
     }
 
-    /// The operation the last run never finished ("capability read", "finder snapshot"…), if any. An unreadable
-    /// marker counts as left over, with an empty name.
-    pub fn left_over(&self) -> Option<String> {
-        match fs::read_to_string(&self.path) {
-            Ok(text) => Some(text.trim().to_string()),
-            Err(e) if e.kind() == ErrorKind::NotFound => None,
-            Err(_) => Some(String::new()),
-        }
+    /// Every marker in `dir` whose owner is gone. `is_alive(pid)` answers for `pid-<pid>` keys; other keys and the
+    /// 0.0.8 file are always stale. This process's own marker is never returned.
+    pub fn left_over(dir: &Path, is_alive: impl Fn(u32) -> bool) -> Vec<LeftOver> {
+        let own = process_key();
+        let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
+        let mut found: Vec<LeftOver> = entries.flatten().filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            let key = if name == format!("{PREFIX}.txt") {
+                String::new()
+            } else {
+                name.strip_prefix(&format!("{PREFIX}-"))?.strip_suffix(".txt")?.to_string()
+            };
+            if key == own {
+                return None;
+            }
+            if let Some(pid) = key.strip_prefix("pid-").and_then(|p| p.parse::<u32>().ok()) {
+                if is_alive(pid) {
+                    return None;
+                }
+            }
+            let operation = match fs::read_to_string(entry.path()) {
+                Ok(text) => text.trim().to_string(),
+                Err(e) if e.kind() == ErrorKind::NotFound => return None,
+                Err(_) => String::new(),
+            };
+            Some(LeftOver { key, operation, path: entry.path() })
+        }).collect();
+        found.sort_by(|a, b| a.key.cmp(&b.key));
+        found
     }
 
-    /// Removes the marker.
+    /// Removes this owner's marker.
     pub fn clear(&self) {
         let _ = fs::remove_file(&self.path);
     }
