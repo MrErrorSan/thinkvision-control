@@ -3,6 +3,13 @@ import { Palette } from "std-widgets.slint";
 import { Glyphs, Icon } from "theme.slint";
 
 // Slint's built-in tray (feature `system-tray`). Left click opens the window, right click shows the menu.
+// One display in the tray menu (multi-display): a brightness row each.
+export struct TrayDisplay {
+    id: string,
+    name: string,
+    connected: bool,
+}
+
 export component Tray inherits SystemTrayIcon {
     // Rust picks one by taskbar theme, adds a status badge and sets `image`.
     out property <image> glyph-on-dark: @image-url("glyph-white-32.png");
@@ -16,6 +23,12 @@ export component Tray inherits SystemTrayIcon {
     callback switch-to-me();
     callback step-brightness(int);
     callback quit();
+    // Multi-display (w4-tray-osd builds the menu rows): one row per display, plus All together.
+    in property <[TrayDisplay]> displays;
+    in property <bool> together;              // brightness steps go to every included display
+    in property <bool> together-available;
+    callback step-display(string, int);       // display id, brightness delta
+    callback set-together(bool);
 
     icon: root.image;
     tooltip: root.tip;

@@ -28,7 +28,8 @@ pub fn attributes(attrs: WindowAttributes) -> WindowAttributes {
 }
 
 pub enum Content<'a> {
-    Level { glyph: &'a str, label: &'a str, value: u16, max: u16 },
+    /// `display` names the display when several are attached; "" shows no name.
+    Level { glyph: &'a str, label: &'a str, value: u16, max: u16, display: &'a str },
     Message(&'a str),
 }
 
@@ -40,6 +41,13 @@ pub struct OsdHost {
 }
 
 impl OsdHost {
+    /// Shows the OSD on the screen with this work area (x, y, width, height), from `tvc_ddc::screen_rect`; None =
+    /// the primary screen. Stub until w4-tray-osd: always the primary screen.
+    pub fn show_on(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content, screen: Option<(i32, i32, i32, i32)>) {
+        let _ = screen;
+        Self::show(this, content);
+    }
+
     /// Shows or updates the OSD; it hides 1.2 s after the last call.
     pub fn show(this: &std::rc::Rc<std::cell::RefCell<Self>>, content: Content) {
         let mut host = this.borrow_mut();
@@ -57,10 +65,10 @@ impl OsdHost {
         }
         let osd = host.window.as_ref().unwrap();
         match content {
-            Content::Level { glyph, label, value, max } => {
+            Content::Level { glyph, label, value, max, display } => {
                 osd.set_message("".into());
                 osd.set_glyph(glyph.into());
-                osd.set_label(label.into());
+                osd.set_label(if display.is_empty() { label.into() } else { format!("{display} · {label}").into() });
                 osd.set_value_text(value.to_string().into());
                 osd.set_fraction(if max == 0 { 0.0 } else { value.min(max) as f32 / max as f32 });
             }

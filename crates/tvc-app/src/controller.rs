@@ -125,9 +125,18 @@ pub struct State {
     pub preset_note: String,
     /// A capability read was asked for and its `Controls` event hasn't come yet: the window shows progress.
     pub reading_capabilities: bool,
+    /// The display this state belongs to (multi-display), None before one is attached.
+    pub monitor: Option<tvc_core::hub::Monitor>,
+    /// How far the display is trusted; the window shows "Experimental" below Verified.
+    pub level: tvc_core::support::SupportLevel,
 }
 
 impl State {
+    /// Together mode is shown instead of one display (multi-display). Stub: always false until w4-controller.
+    pub fn selected_together(&self) -> bool {
+        false
+    }
+
     pub fn def(&self, code: u8) -> Option<&ControlDefinition> {
         self.controls.as_ref()?.controls.get(&code)
     }
@@ -267,6 +276,8 @@ impl Controller {
                 retrying: false,
                 preset_note: String::new(),
                 reading_capabilities: false,
+                monitor: None,
+                level: tvc_core::support::SupportLevel::Verified { profile: "p32p20".into() },
             }),
             window: RefCell::new(None),
             osd: Rc::new(RefCell::new(OsdHost::default())),
@@ -670,6 +681,9 @@ impl Controller {
         });
         tray.on_step_brightness(|d| with(|c| c.send(Command::Step { code: BRIGHTNESS, delta: d, origin: Origin::Tray })));
         tray.on_quit(|| with(|c| c.quit()));
+        // Multi-display tray rows; w4-controller implements them.
+        tray.on_step_display(|_id, _delta| {});
+        tray.on_set_together(|_on| {});
         *self.tray.borrow_mut() = Some(tray);
         self.update_tray();
     }
@@ -1077,7 +1091,7 @@ impl Controller {
                 let max = st.values.get(&c).map_or(100, |r| r.max);
                 let (glyph, label) = if c == BRIGHTNESS { (glyph::SUN, "Brightness") } else { (glyph::CONTRAST, "Contrast") };
                 drop(st);
-                OsdHost::show(&self.osd, Content::Level { glyph, label, value: v, max });
+                OsdHost::show_on(&self.osd, Content::Level { glyph, label, value: v, max, display: "" }, None);
             }
             _ => {
                 drop(st);

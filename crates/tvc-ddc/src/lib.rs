@@ -34,6 +34,13 @@ pub fn discovery() -> Box<dyn Discovery> {
     Box::new(Combined { os })
 }
 
+/// The work area (x, y, width, height) of the screen a display from [`discovery`] shows, for placing the OSD on it.
+/// None = unknown (the OSD uses the primary screen). Stub until w4-tray-osd.
+pub fn screen_rect(target: &str) -> Option<(i32, i32, i32, i32)> {
+    let _ = target;
+    None
+}
+
 /// The OS backend plus the built-in panels.
 struct Combined {
     os: Box<dyn Discovery>,

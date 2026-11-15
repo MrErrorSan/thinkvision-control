@@ -16,6 +16,31 @@ use crate::{
     InputItem, PresetRow, RangeRow, Severity, SetupHint,
 };
 
+/// One Together-mode master slider, in percent (multi-display contract). `available` is false when no included
+/// display has the control; `reason` says why it is greyed.
+pub struct TogetherSlider {
+    pub code: u8,
+    pub label: String,
+    pub glyph: String,
+    pub value: f32,
+    pub available: bool,
+    pub reason: String,
+}
+
+/// Together mode: the master sliders replace `main-ranges`. Stub until w4-ui (the reason isn't shown yet).
+pub fn render_together(app: &App, sliders: &[TogetherSlider]) {
+    let rows: Vec<RangeRow> = sliders.iter().map(|s| RangeRow {
+        code: i32::from(s.code),
+        label: if s.available { s.label.clone() } else { format!("{} — {}", s.label, s.reason) }.into(),
+        glyph: s.glyph.clone().into(),
+        value: s.value,
+        maximum: 100.0,
+        enabled: s.available,
+        revision: 0,
+    }).collect();
+    app.set_main_ranges(ModelRc::new(VecModel::from(rows)));
+}
+
 /// The display picker (multi-display contract): `entries` in picker order, `selected_id` "" for All together.
 /// The controller builds the entries; w4-ui may keep the models in place like `sync` does.
 pub fn render_displays(app: &App, entries: Vec<DisplayEntry>, selected_id: &str, together_available: bool,
@@ -275,13 +300,22 @@ pub fn status_line(st: &State) -> (&'static str, String) {
     }
 }
 
+/// How far the app supports a display, in the words the window uses.
+pub fn support_label(level: &tvc_core::support::SupportLevel) -> &'static str {
+    use tvc_core::support::SupportLevel;
+    match level {
+        SupportLevel::Verified { .. } => "Verified",
+        SupportLevel::LenovoFamily | SupportLevel::GenericMccs => "Experimental",
+        SupportLevel::ReadOnly => "Read-only",
+    }
+}
+
 /// About: the display's own name (as it reported it over DDC/CI, else its EDID name) and how far the app supports it.
 fn about_text(st: &State) -> String {
     let edid = st.displays.iter().flatten().find(|d| d.tracked).map(|d| d.name.trim().to_owned());
     let name = Some(monitor_name(st)).into_iter().chain(edid).find(|n| !n.is_empty());
-    // Every display is Verified until support levels are worked out per display.
     name.into_iter()
-        .chain(["Support: Verified".to_owned()])
+        .chain([format!("Support: {}", support_label(&st.level))])
         .chain(st.firmware().map(|f| format!("Firmware {f}")))
         .chain(["Built with Slint".to_owned()])
         .collect::<Vec<_>>()
@@ -461,6 +495,9 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
 pub fn render(app: &App, st: &State) {
     // One display until w4-controller passes the real list.
     render_displays(app, Vec::new(), "", false, false);
+    if st.monitor.is_none() && st.selected_together() {
+        render_together(app, &[]);
+    }
     let (status_glyph, status_text) = status_line(st);
     app.set_model_name(s(header_name(st)));
     app.set_status_glyph(s(status_glyph));
