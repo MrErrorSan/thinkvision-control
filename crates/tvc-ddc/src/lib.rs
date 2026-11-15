@@ -13,8 +13,8 @@ pub mod packet;
 #[cfg(windows)]
 mod dxva2;
 
-use tvc_core::identity::{Discovery, DisplayInfo, ListError};
-use tvc_core::link::{LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
+use tvc_core::identity::{BackendKind, Discovery, DisplayInfo, ListError};
+use tvc_core::link::{DisplayKind, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
 
 /// Every display this OS reports, external monitors through the OS's DDC backend plus built-in panels through
 /// [`backlight`]. Targets starting with [`backlight::TARGET_PREFIX`] belong to the backlight backend.
@@ -40,6 +40,10 @@ impl Discovery for Combined {
         let panels = backlight::displays();
         match self.os.enumerate() {
             Ok(mut list) => {
+                // A panel the backlight backend controls replaces the OS backend's uncontrollable entry for it.
+                if !panels.is_empty() {
+                    list.retain(|d| !(d.kind == DisplayKind::BuiltIn && d.backend == BackendKind::None));
+                }
                 list.extend(panels);
                 Ok(list)
             }
