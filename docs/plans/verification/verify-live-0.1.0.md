@@ -319,3 +319,67 @@ log: 12:11:53.175 CLI --get brightness: brightness: 0          <- no "exit N" an
   - PID 6708 ignored a plain `taskkill` for more than 10 s and was ended with `/F`.
 - **No 0.1.0 process is running.** I started 6 GUI instances (PIDs 18564, 19172, 17564, 17804, 20468 and 11616), each stopped by its own PID. The hung headless hosts in §1.10 were killed by `timeout`. The last `Get-Process thinkvision-control,tvc` lists only 10852 (Program Files).
 - Scratch files kept: `scratchpad\live-appdata\` (the migrated copy and its log), `reg-*.reg`, `live010-input-confirm.png` and `live010-lang-de.png`.
+
+## 4. Re-check after the review fixes (2026-11-15)
+
+- Build: `scratchpad\exe-0.1.0c\thinkvision-control.exe` (10,904,576 bytes) and `tvc.exe` (304,128 bytes), after `5217032`.
+- Read-only: only `--get`, `--help`, `--version` and two bad-argument runs. No `--step`, `--input` or `--preset`.
+- Scratch data: `scratchpad\live-appdata2\ThinkVisionControl`, a fresh copy of `appdata-backup-010`. BackgroundMode is true in that copy. Helper: `scratchpad\r11.sh` (like `r10.sh`, but with a 60 s `timeout` and an optional separate stderr file).
+- The installed 0.0.8 (PID 10852, `--startup`) exited 1 s after a plain `taskkill //PID`; `/F` wasn't needed.
+- The monitor now reads **contrast 80**. The user set it with a hotkey at 13:12 (0.0.8's log: `Hotkey Some(18) None: Ok Contrast 80`). This check wrote nothing.
+
+### 4.1 N1: overlapping one-shot runs
+
+```
+3 × tvc --get all in parallel:   all exit=0 with 4 value lines   1465 / 2978 / 4475 ms
+8 × tvc --get all in parallel:   all exit=0 with 4 value lines   1540 / 2838 / 3978 / 5550 / 6842 / 8010 / 9581 / 11068 ms
+3 × thinkvision-control.exe --get brightness in parallel:   all exit=0, brightness: 0   249 / 491 / 735 ms
+```
+- The runs take turns. Each logs its own `Start:` … `CLI --get all: exit 0, …` … `Exit 0`, about 1.33 s apart for `--get all`. None was forwarded, and none was promoted to a resident.
+- The log has no "busy" or "forward" line for these runs. The waiting isn't logged, only each run's own work.
+- No `thinkvision-control` or `tvc` process was left after any batch.
+- **N1 fixed.**
+
+### 4.2 Mixed run
+
+```
+tvc --get all --json   {"brightness":0,"contrast":80,"input":"DisplayPort","colourMode":"Neutral"}   exit=0 1454 ms
+tvc --get brightness   brightness: 0                                                                   exit=0 1757 ms (waited for the first)
+```
+The JSON parses. **Pass.**
+
+### 4.3 Forward to a running GUI
+
+The resident was started with `--startup` (tray, PID 16832). It logged `Capabilities read (live, 443 bytes, matches the cache)` after 5.7 s.
+```
+tvc --get all           4 value lines            exit=0 492 ms
+tvc --get all --json    {single object}          exit=0 482 ms
+tvc --get colour-mode   colourMode: Neutral      exit=0 165 ms
+tvc --get bogus         message + hint (stderr)  exit=2 107 ms
+log: CLI --get all (forwarded): exit 0, …  /  CLI --get all --json (forwarded): exit 0, …  /  CLI --get colour-mode (forwarded): exit 0, …
+```
+A plain `taskkill //PID 16832` stopped it in 1 s; it logged `Exit 0`. **Pass.**
+
+### 4.4 Spot checks
+
+- `--get colour-mode` / `--get color-mode --json` (headless): `colourMode: Neutral` / `{"colourMode":"Neutral"}`, exit 0, about 0.22–0.25 s, for both exes. **Pass.**
+- `--version` (both exes): `thinkvision-control 0.0.8`, exit 0. **The version is still 0.0.8** (N6 is still open). The log's `Start:` lines say 0.0.8 too.
+- Usage errors (`--get bogus`, `--foo`, both exes):
+  - stdout is empty;
+  - stderr has two lines, for example `'bogus' is not something --get can read (brightness, contrast, input, colour-mode, all)` and then `Run with --help for usage.`;
+  - exit 2, in 88–113 ms.
+  - **N5 fixed.**
+- Logging: the `command line` field now keeps `--json` (`command line --get all --json`), and a successful capability read is logged. These are parts of N4.
+- No "Safe mode" line appears in the scratch log.
+
+### 4.5 Restoration
+
+- **Real data folder:** the hashes match the snapshot taken before this check, both before and after 0.0.8's restart. `capabilities.txt` and `settings.json` also match `appdata-backup-010`. `log.txt` (3,035 bytes) starts with the backup's 2,801 bytes. The extra lines are from 0.0.8 between 12:33 and 13:12, before this check began: DisplayOff, DisplayOn, Awake, and the contrast hotkey. The restarted 0.0.8 added nothing.
+  ```
+  6aa2c79b68bcfdab15d188c4405939c220061db7d4ae140d26df2b1fd1605344 *capabilities.txt
+  4700625213b313544ece4ca45ecde8561ebd432a9b9e0dc91b90c707e9e4eb88 *log.txt
+  a581cfc0e975f4df358e404f7367c78d2faf5977a93828091ad5a151fac4f475 *settings.json
+  ```
+- **Registry:** the resident had re-pointed `HKCU\Software\Classes\thinkvision` at `exe-0.1.0c`, as N7 describes. After `reg import scratchpad\rc2\reg-thinkvision.reg`, both the `thinkvision` and `Run` exports are byte-identical to the ones taken before the check.
+- **0.0.8 restarted** with no arguments, as the user normally starts it: PID 8976, `"C:\Program Files\ThinkVision Control\thinkvision-control.exe"`, started 14:02:20.
+- **No 0.1.0 process is running.** The last process list shows only PID 8976.
