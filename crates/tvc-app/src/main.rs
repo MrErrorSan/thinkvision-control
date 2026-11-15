@@ -12,11 +12,13 @@ mod tray;
 mod view;
 
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use slint::winit_030::winit::window::{Theme, WindowAttributes};
 use tvc_core::cli::{self, CliCommand, GetTarget};
-use tvc_core::engine::{Command, Engine};
-use tvc_core::link::{MonitorLink, MonitorMatch};
+use tvc_core::engine::Command;
+use tvc_core::hub::{HubConfig, MonitorHub};
+use tvc_core::identity::Discovery;
 use tvc_core::profile::ProfileStore;
 use tvc_core::crash::Marker;
 use tvc_core::store::CapabilitiesCache;
@@ -94,35 +96,33 @@ fn main() -> Result<(), slint::PlatformError> {
     };
     log::write(&format!("Start: {}, {mode}{}", cli::version_line(), if demo { ", demo" } else { "" }));
 
-    let profiles = ProfileStore::new(&data_dir);
-    let profile = profiles.profile().clone();
-    let link: Box<dyn MonitorLink> = if demo {
-        Box::new(tvc_core::fake::FakeLink::new())
-    } else {
-        tvc_ddc::open(MonitorMatch { edid_id: profile.edid_id.clone(), description_hint: Some(profile.short_name.clone()) })
-    };
+    let profile = ProfileStore::new(&data_dir).profile().clone();
     // A marker left by a process that died during a risky monitor operation starts this run in safe mode. Only
     // dead owners' markers are read. A resident start clears them; a one-shot run leaves them for the app to show.
-    let marker = Marker::new(&data_dir, &tvc_core::crash::process_key());
-    let left_over = Marker::left_over(&data_dir, platform::process_alive);
+    let safe_mode = state_dirs(&data_dir).iter().any(|d| !Marker::left_over(d, platform::process_alive).is_empty());
+    // No cached capabilities: the connect reads them from the monitor first (not in safe mode).
+    let cold = !safe_mode && state_dirs(&data_dir).iter().all(|d| CapabilitiesCache::new(d).load().is_none());
+    let discovery: Box<dyn Discovery> = if demo {
+        let mut display = tvc_core::fake::FakeDiscovery::display(&profile.edid_id, Some("DEMO"), None);
+        display.name = profile.short_name.clone();
+        Box::new(tvc_core::fake::FakeDiscovery::new(vec![(display, tvc_core::fake::FakeLink::new())]))
+    } else {
+        tvc_ddc::discovery()
+    };
+    let hub = MonitorHub::spawn(
+        HubConfig { discovery, root: data_dir.clone(), safe_mode },
+        Box::new(|event| {
+            let _ = slint::invoke_from_event_loop(move || controller::with(|c| c.on_hub(event)));
+        }),
+    );
+    // After the hub's first rescan, which moves the 0.0.8 markers into their monitor's folder.
+    let left_over: Vec<_> =
+        state_dirs(&data_dir).iter().flat_map(|d| Marker::left_over(d, platform::process_alive)).collect();
     for stale in &left_over {
         let operation = if stale.operation.is_empty() { "a risky monitor operation" } else { &stale.operation };
         log::write(&format!("Safe mode: an earlier run crashed during {operation}"));
     }
-    let safe_mode = !left_over.is_empty();
-    // No cached capabilities: the connect reads them from the monitor first (not in safe mode).
-    let cold = !safe_mode && CapabilitiesCache::new(&data_dir).load().is_none();
-    let engine = Engine::spawn(
-        link,
-        profiles,
-        data_dir.clone(),
-        profile.timing.clone(),
-        safe_mode,
-        Box::new(|event| {
-            let _ = slint::invoke_from_event_loop(move || controller::with(|c| c.on_event(event)));
-        }),
-    );
-    let app = controller::Controller::new(engine, profile, data_dir, scheme, demo, left_over);
+    let app = controller::Controller::new(hub, profile, data_dir.clone(), scheme, demo, left_over);
     controller::install(app.clone());
 
     if let Some(listener) = listener {
@@ -131,7 +131,7 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    app.send(match parsed.command {
+    app.connect_with(match parsed.command {
         // `--get brightness` reads only what it prints.
         CliCommand::Get(target) if headless && target != GetTarget::All => Command::ConnectReading(controller::get_codes(target)),
         _ => Command::Connect,
@@ -153,16 +153,26 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let controller = controller::uninstall();
     let exit_code = controller.as_ref().map_or(0, |c| c.exit_code());
-    if let Some(engine) = controller.as_ref().and_then(|c| c.take_engine()) {
-        engine.shutdown();
+    if let Some(hub) = controller.as_ref().and_then(|c| c.take_hub()) {
+        hub.shutdown();
     }
     // An orderly exit, even one that cut a capability read short, is not a crash.
-    marker.clear();
+    for dir in state_dirs(&data_dir) {
+        Marker::new(dir, &tvc_core::crash::process_key()).clear();
+    }
     log::write(&format!("Exit {exit_code}"));
     if exit_code != 0 {
         std::process::exit(exit_code);
     }
     Ok(())
+}
+
+/// The data directory and every monitor's folder in it: where crash markers and cached capabilities live.
+fn state_dirs(data_dir: &Path) -> Vec<PathBuf> {
+    let monitors = std::fs::read_dir(data_dir.join("monitors")).into_iter().flatten().flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path());
+    std::iter::once(data_dir.to_path_buf()).chain(monitors).collect()
 }
 
 /// One winit hook for every window: the forced theme (developer flag) and the OSD's no-activate attributes.

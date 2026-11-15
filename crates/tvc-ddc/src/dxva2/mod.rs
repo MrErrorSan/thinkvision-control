@@ -1,9 +1,14 @@
-//! DDC/CI over dxva2. Finds the target by EDID id in the display device ID, falling back to the dxva2 description.
+//! DDC/CI over dxva2. One enumeration finds every display: each active QueryDisplayConfig target, its GDI source
+//! (`\\.\DISPLAY1`), the HMONITOR with that device name, and that HMONITOR's physical monitor. A link is bound either
+//! to a monitor device path ([`Dxva2Discovery`]) or, until the app moves to discovery, to a [`MonitorMatch`].
 //! dxva2 has no permission or driver failure modes worth surfacing: the monitor is either there or not.
+
+mod join;
 
 use std::mem::size_of;
 use std::ptr::{null, null_mut};
 
+use tvc_core::identity::{BackendKind, Discovery, DisplayInfo, ListError, MonitorIdentity};
 use tvc_core::link::{
     is_virtual_vendor, AttachedDisplay, DisplayKind, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading,
 };
@@ -12,32 +17,40 @@ use windows_sys::Win32::Devices::Display::{
     CapabilitiesRequestAndCapabilitiesReply, DestroyPhysicalMonitors, DisplayConfigGetDeviceInfo,
     GetCapabilitiesStringLength, GetDisplayConfigBufferSizes, GetNumberOfPhysicalMonitorsFromHMONITOR,
     GetPhysicalMonitorsFromHMONITOR, GetVCPFeatureAndVCPFeatureReply, QueryDisplayConfig, SetVCPFeature,
-    DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
-    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_WIRED,
-    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS,
-    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_MIRACAST, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
-    DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_TARGET_DEVICE_NAME, DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY, PHYSICAL_MONITOR,
-    QDC_ONLY_ACTIVE_PATHS,
+    DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, DISPLAYCONFIG_MODE_INFO,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_WIRED, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_MIRACAST,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED, DISPLAYCONFIG_PATH_INFO,
+    DISPLAYCONFIG_SOURCE_DEVICE_NAME, DISPLAYCONFIG_TARGET_DEVICE_NAME, DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY,
+    PHYSICAL_MONITOR, QDC_ONLY_ACTIVE_PATHS,
 };
 use windows_sys::Win32::Foundation::{
     GetLastError, ERROR_GRAPHICS_DDCCI_VCP_NOT_SUPPORTED, ERROR_GRAPHICS_INVALID_PHYSICAL_MONITOR_HANDLE,
     ERROR_GRAPHICS_MONITOR_NO_LONGER_EXISTS, ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_HANDLE, ERROR_SUCCESS, HANDLE,
     LPARAM, RECT,
 };
-use windows_sys::Win32::Graphics::Gdi::{
-    EnumDisplayDevicesW, EnumDisplayMonitors, GetMonitorInfoW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ACTIVE, HDC, HMONITOR,
-    MONITORINFOEXW,
-};
+use windows_sys::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW};
+use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY};
 
-use crate::{ascii, not_connected};
+use crate::{ascii, edid, not_connected};
+use join::{connector, edid_id_from_ids, edid_id_from_path, instance_key, pick_physical};
 
-/// `EDD_GET_DEVICE_INTERFACE_NAME`: report the monitor's device interface path (which carries the EDID id) as DeviceID.
-const EDD_GET_DEVICE_INTERFACE_NAME: u32 = 1;
+/// `edidIdsValid` in `DISPLAYCONFIG_TARGET_DEVICE_NAME_FLAGS` (after `friendlyNameFromEdid` and `friendlyNameForced`).
+const EDID_IDS_VALID: u32 = 1 << 2;
 
 /// The dxva2 link: one physical-monitor handle while connected.
 pub(crate) struct Dxva2Link {
-    target: MonitorMatch,
+    target: Bind,
     held: Option<Handle>,
+}
+
+/// What a link reopens on `connect`.
+enum Bind {
+    /// The first display with this EDID id, else the one physical monitor whose description holds the hint.
+    Match(MonitorMatch),
+    /// Exactly this monitor device path.
+    Path(String),
 }
 
 /// An owned physical-monitor handle, destroyed on drop.
@@ -54,51 +67,34 @@ impl Drop for Handle {
 
 impl Dxva2Link {
     pub(crate) fn new(target: MonitorMatch) -> Self {
-        Dxva2Link { target, held: None }
+        Dxva2Link { target: Bind::Match(target), held: None }
+    }
+
+    fn bound(path: String) -> Self {
+        Dxva2Link { target: Bind::Path(path), held: None }
     }
 
     fn handle(&self) -> Result<HANDLE, LinkError> {
         self.held.as_ref().map(|h| h.0).ok_or_else(not_connected)
+    }
+
+    fn is_target(&self, display: &Joined) -> bool {
+        match &self.target {
+            Bind::Match(m) => !display.edid_id.is_empty() && display.edid_id.eq_ignore_ascii_case(&m.edid_id),
+            Bind::Path(path) => !path.is_empty() && display.path.eq_ignore_ascii_case(path),
+        }
     }
 }
 
 impl MonitorLink for Dxva2Link {
     fn connect(&mut self) -> Result<(), LinkFailure> {
         self.held = None;
-
-        let edid_id = self.target.edid_id.to_ascii_uppercase();
-        let mut all: Vec<PHYSICAL_MONITOR> = Vec::new();
-        let mut target = None;
-        for monitor in enumerate_monitors() {
-            let physical = physical_monitors(monitor);
-            if target.is_none() && !edid_id.is_empty() {
-                let ids = device_ids(monitor);
-                target = ids
-                    .iter()
-                    .take(physical.len())
-                    .position(|id| edid_id_from_path(id).is_some_and(|id| id == edid_id))
-                    .map(|i| all.len() + i);
-            }
-            all.extend(physical);
-        }
-
-        // The description fallback, only when it names exactly one monitor (an empty hint would name them all).
-        let hint = self.target.description_hint.as_deref().map(str::trim).filter(|h| !h.is_empty());
-        if let (None, Some(hint)) = (target, hint.map(str::to_lowercase)) {
-            let mut matching = all.iter().enumerate().filter(|(_, m)| {
-                let description = { m.szPhysicalMonitorDescription }; // copy out of the packed struct
-                wide_to_string(&description).to_lowercase().contains(&hint)
-            });
-            if let (Some((i, _)), None) = (matching.next(), matching.next()) {
-                target = Some(i);
-            }
-        }
-
-        if let Some(i) = target {
-            self.held = Some(Handle(all.remove(i).hPhysicalMonitor));
-        }
-        destroy(&all);
-
+        let all = joined().unwrap_or_default();
+        let opened = all.iter().filter(|d| self.is_target(d)).find_map(|d| open_physical(d, &all));
+        self.held = match &self.target {
+            Bind::Match(m) => opened.or_else(|| by_description(m.description_hint.as_deref())),
+            Bind::Path(_) => opened,
+        };
         if self.held.is_some() {
             Ok(())
         } else {
@@ -107,14 +103,13 @@ impl MonitorLink for Dxva2Link {
     }
 
     fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
-        active_targets().map(|targets| {
-            targets
-                .iter()
-                .map(|t| {
-                    let edid_id = edid_id_from_path(&wide_to_string(&t.monitorDevicePath)).unwrap_or_default();
-                    let kind = display_kind(t.outputTechnology, &edid_id);
-                    let target = !edid_id.is_empty() && edid_id.eq_ignore_ascii_case(&self.target.edid_id);
-                    AttachedDisplay { name: wide_to_string(&t.monitorFriendlyDeviceName), edid_id, kind, target }
+        joined().map(|all| {
+            all.iter()
+                .map(|d| AttachedDisplay {
+                    name: d.friendly.clone(),
+                    edid_id: d.edid_id.clone(),
+                    kind: display_kind(d.technology, &d.edid_id),
+                    target: self.is_target(d),
                 })
                 .collect()
         })
@@ -230,32 +225,71 @@ fn physical_monitors(monitor: HMONITOR) -> Vec<PHYSICAL_MONITOR> {
     monitors
 }
 
-/// The device interface paths of the active monitors on this HMONITOR's adapter output, e.g.
-/// `\\?\DISPLAY#LEN62A2#5&...#{e6f07b5f-...}`, in the same order as its physical monitors.
-fn device_ids(monitor: HMONITOR) -> Vec<String> {
-    let mut ids = Vec::new();
-    // SAFETY: zeroed POD structs with their size fields set; MONITORINFOEXW starts with MONITORINFO.
-    unsafe {
-        let mut info: MONITORINFOEXW = std::mem::zeroed();
-        info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
-        if GetMonitorInfoW(monitor, &mut info as *mut MONITORINFOEXW as *mut _) == 0 {
-            return ids;
+/// The one physical monitor, on any HMONITOR, whose dxva2 description holds `hint`. None for an empty hint (it would
+/// name them all) or when several match.
+fn by_description(hint: Option<&str>) -> Option<Handle> {
+    let hint = hint.map(str::trim).filter(|h| !h.is_empty())?.to_lowercase();
+    let mut all: Vec<PHYSICAL_MONITOR> = enumerate_monitors().into_iter().flat_map(physical_monitors).collect();
+    let target = {
+        let mut matching = all.iter().enumerate().filter(|(_, m)| description(m).to_lowercase().contains(&hint));
+        match (matching.next(), matching.next()) {
+            (Some((i, _)), None) => Some(i),
+            _ => None,
         }
-        let mut device: DISPLAY_DEVICEW = std::mem::zeroed();
-        device.cb = size_of::<DISPLAY_DEVICEW>() as u32;
-        let mut index = 0;
-        while EnumDisplayDevicesW(info.szDevice.as_ptr(), index, &mut device, EDD_GET_DEVICE_INTERFACE_NAME) != 0 {
-            if device.StateFlags & DISPLAY_DEVICE_ACTIVE != 0 {
-                ids.push(wide_to_string(&device.DeviceID));
-            }
-            index += 1;
-        }
-    }
-    ids
+    };
+    let held = target.map(|i| Handle(all.remove(i).hPhysicalMonitor));
+    destroy(&all);
+    held
 }
 
-/// The target name (EDID name, ids, connector type) of every active display path. None if the query fails.
-fn active_targets() -> Option<Vec<DISPLAYCONFIG_TARGET_DEVICE_NAME>> {
+fn description(monitor: &PHYSICAL_MONITOR) -> String {
+    let description = { monitor.szPhysicalMonitorDescription }; // copy out of the packed struct
+    wide_to_string(&description)
+}
+
+/// One active DisplayConfig target, joined to its HMONITOR through its source's GDI device name.
+struct Joined {
+    /// The monitor device path, e.g. `\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352#{e6f07b5f-...}`.
+    path: String,
+    friendly: String,
+    /// From the device path, else from the target's EDID ids; empty when neither gives one.
+    edid_id: String,
+    technology: DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY,
+    /// None when no HMONITOR carries the source's GDI device name.
+    monitor: Option<HMONITOR>,
+}
+
+/// Every active target, joined. None if QueryDisplayConfig fails.
+fn joined() -> Option<Vec<Joined>> {
+    let paths = active_paths()?;
+    let monitors = gdi_monitors();
+    let joined = paths
+        .iter()
+        .filter_map(|p| {
+            let name = target_name(p)?;
+            let gdi = source_name(p);
+            let monitor = gdi.and_then(|gdi| monitors.iter().find(|(d, _)| d.eq_ignore_ascii_case(&gdi)).map(|m| m.1));
+            let path = wide_to_string(&name.monitorDevicePath);
+            // SAFETY: both union views are a u32 bitfield.
+            let ids_valid = unsafe { name.flags.Anonymous.value } & EDID_IDS_VALID != 0;
+            // The path's PnP id is what Windows derives from the same EDID; the ids fill in when the path has none.
+            let edid_id = edid_id_from_path(&path)
+                .or_else(|| edid_id_from_ids(name.edidManufactureId, name.edidProductCodeId).filter(|_| ids_valid))
+                .unwrap_or_default();
+            Some(Joined {
+                path,
+                friendly: wide_to_string(&name.monitorFriendlyDeviceName),
+                edid_id,
+                technology: name.outputTechnology,
+                monitor,
+            })
+        })
+        .collect();
+    Some(joined)
+}
+
+/// The active display paths. None if the query fails.
+fn active_paths() -> Option<Vec<DISPLAYCONFIG_PATH_INFO>> {
     // The path count can grow between the size query and the query itself (a monitor plugged in): retry then.
     for _ in 0..3 {
         let (mut path_count, mut mode_count) = (0u32, 0u32);
@@ -278,33 +312,95 @@ fn active_targets() -> Option<Vec<DISPLAYCONFIG_TARGET_DEVICE_NAME>> {
             return None;
         }
         paths.truncate(path_count as usize);
-        let targets = paths
-            .iter()
-            .filter_map(|path| {
-                // SAFETY: zeroed POD; the header names the request, its size and the target it is for.
-                let mut name: DISPLAYCONFIG_TARGET_DEVICE_NAME = unsafe { std::mem::zeroed() };
-                name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
-                name.header.size = size_of::<DISPLAYCONFIG_TARGET_DEVICE_NAME>() as u32;
-                name.header.adapterId = path.targetInfo.adapterId;
-                name.header.id = path.targetInfo.id;
-                // SAFETY: the header starts a DISPLAYCONFIG_TARGET_DEVICE_NAME of the size it states.
-                (unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } == ERROR_SUCCESS as i32).then_some(name)
-            })
-            .collect();
-        return Some(targets);
+        return Some(paths);
     }
     None
 }
 
-/// "LEN62A2" from a monitor device path such as `\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352#{e6f07b5f-...}`.
-/// Only three letters and four hex digits count.
-fn edid_id_from_path(path: &str) -> Option<String> {
-    let id = path.split('#').nth(1)?.to_ascii_uppercase();
-    let (pnp, product) = id.split_at_checked(3)?;
-    let valid = pnp.bytes().all(|b| b.is_ascii_uppercase())
-        && product.len() == 4
-        && product.bytes().all(|b| b.is_ascii_hexdigit());
-    valid.then_some(id)
+/// The path's target name: device path, friendly name, EDID ids, connector type.
+fn target_name(path: &DISPLAYCONFIG_PATH_INFO) -> Option<DISPLAYCONFIG_TARGET_DEVICE_NAME> {
+    // SAFETY: zeroed POD; the header names the request, the size of the struct it starts, and the target.
+    let mut name: DISPLAYCONFIG_TARGET_DEVICE_NAME = unsafe { std::mem::zeroed() };
+    name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+    name.header.size = size_of::<DISPLAYCONFIG_TARGET_DEVICE_NAME>() as u32;
+    name.header.adapterId = path.targetInfo.adapterId;
+    name.header.id = path.targetInfo.id;
+    // SAFETY: the header starts a DISPLAYCONFIG_TARGET_DEVICE_NAME of the size it states.
+    (unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } == ERROR_SUCCESS as i32).then_some(name)
+}
+
+/// The GDI device name of the path's source, e.g. `\\.\DISPLAY1`.
+fn source_name(path: &DISPLAYCONFIG_PATH_INFO) -> Option<String> {
+    // SAFETY: zeroed POD; the header names the request, the size of the struct it starts, and the source.
+    let mut name: DISPLAYCONFIG_SOURCE_DEVICE_NAME = unsafe { std::mem::zeroed() };
+    name.header.r#type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+    name.header.size = size_of::<DISPLAYCONFIG_SOURCE_DEVICE_NAME>() as u32;
+    name.header.adapterId = path.sourceInfo.adapterId;
+    name.header.id = path.sourceInfo.id;
+    // SAFETY: the header starts a DISPLAYCONFIG_SOURCE_DEVICE_NAME of the size it states.
+    if unsafe { DisplayConfigGetDeviceInfo(&mut name.header) } != ERROR_SUCCESS as i32 {
+        return None;
+    }
+    Some(wide_to_string(&name.viewGdiDeviceName)).filter(|n| !n.is_empty())
+}
+
+/// Every HMONITOR with its GDI device name (`MONITORINFOEXW::szDevice`).
+fn gdi_monitors() -> Vec<(String, HMONITOR)> {
+    enumerate_monitors()
+        .into_iter()
+        .filter_map(|monitor| {
+            // SAFETY: zeroed POD with its size field set; MONITORINFOEXW starts with MONITORINFO.
+            unsafe {
+                let mut info: MONITORINFOEXW = std::mem::zeroed();
+                info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
+                (GetMonitorInfoW(monitor, &mut info as *mut MONITORINFOEXW as *mut _) != 0)
+                    .then(|| (wide_to_string(&info.szDevice), monitor))
+            }
+        })
+        .collect()
+}
+
+/// The physical monitor of `display`, from its HMONITOR alone; the others that HMONITOR returned are destroyed.
+/// None when it has no HMONITOR or [`pick_physical`] can't tell which one it is.
+fn open_physical(display: &Joined, all: &[Joined]) -> Option<Handle> {
+    let monitor = display.monitor?;
+    let mut physical = physical_monitors(monitor);
+    let descriptions: Vec<String> = physical.iter().map(description).collect();
+    let names: Vec<&str> = all.iter().filter(|d| d.monitor == Some(monitor)).map(|d| d.friendly.as_str()).collect();
+    let picked = pick_physical(&descriptions, &names, &display.friendly);
+    let held = picked.map(|i| Handle(physical.remove(i).hPhysicalMonitor));
+    destroy(&physical);
+    held
+}
+
+/// The EDID Windows stored for the device path, when its base block checks out.
+fn registry_edid(path: &str) -> Option<Vec<u8>> {
+    let key = wide(&format!(r"SYSTEM\CurrentControlSet\Enum\{}\Device Parameters", instance_key(path)?));
+    let value = wide("EDID");
+    let mut length = 0u32;
+    // SAFETY: NUL-terminated key and value names; a null buffer asks for the size only.
+    let status = unsafe {
+        RegGetValueW(HKEY_LOCAL_MACHINE, key.as_ptr(), value.as_ptr(), RRF_RT_REG_BINARY, null_mut(), null_mut(),
+            &mut length)
+    };
+    if status != ERROR_SUCCESS || length == 0 {
+        return None;
+    }
+    let mut data = vec![0u8; length as usize];
+    // SAFETY: the buffer holds `length` bytes, which RegGetValueW is told.
+    let status = unsafe {
+        RegGetValueW(HKEY_LOCAL_MACHINE, key.as_ptr(), value.as_ptr(), RRF_RT_REG_BINARY, null_mut(),
+            data.as_mut_ptr().cast(), &mut length)
+    };
+    if status != ERROR_SUCCESS {
+        return None;
+    }
+    data.truncate(length as usize);
+    edid::checksum_ok(&data).then_some(data)
+}
+
+fn wide(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(Some(0)).collect()
 }
 
 /// Built in for laptop panels (internal, embedded DisplayPort/UDI, LVDS); virtual for indirect targets (virtual,
@@ -330,7 +426,7 @@ fn wide_to_string(wide: &[u16]) -> String {
     String::from_utf16_lossy(&wide[..end])
 }
 
-/// Windows displays: QueryDisplayConfig targets joined to their HMONITOR by device path. Stub until w3-win: lists nothing.
+/// Windows displays: every active QueryDisplayConfig target, its `target` the monitor device path.
 pub(crate) struct Dxva2Discovery;
 
 impl Dxva2Discovery {
@@ -339,13 +435,38 @@ impl Dxva2Discovery {
     }
 }
 
-impl tvc_core::identity::Discovery for Dxva2Discovery {
-    fn enumerate(&mut self) -> Result<Vec<tvc_core::identity::DisplayInfo>, tvc_core::identity::ListError> {
-        Err(tvc_core::identity::ListError::Unsupported)
+impl Discovery for Dxva2Discovery {
+    fn enumerate(&mut self) -> Result<Vec<DisplayInfo>, ListError> {
+        let all = joined().ok_or_else(|| ListError::Failed("QueryDisplayConfig failed".into()))?;
+        Ok(all.iter().map(|d| display_info(d, &all)).collect())
     }
 
-    fn open(&mut self, _target: &str) -> Result<Box<dyn tvc_core::link::MonitorLink>, tvc_core::link::LinkFailure> {
-        Err(tvc_core::link::LinkFailure::NotFound)
+    fn open(&mut self, target: &str) -> Result<Box<dyn MonitorLink>, LinkFailure> {
+        Ok(Box::new(Dxva2Link::bound(target.to_owned())))
+    }
+}
+
+/// Identity from the target and the registry EDID; DDC only for an external monitor whose physical monitor is known.
+/// A clone (several targets on one HMONITOR) whose physical monitor can't be told apart is listed without a backend.
+fn display_info(display: &Joined, all: &[Joined]) -> DisplayInfo {
+    let edid = registry_edid(&display.path);
+    let kind = display_kind(display.technology, &display.edid_id);
+    let cloned = display.monitor.is_some() && all.iter().filter(|d| d.monitor == display.monitor).count() > 1;
+    let ambiguous = kind == DisplayKind::External && cloned && open_physical(display, all).is_none();
+    if ambiguous {
+        let path = &display.path;
+        tvc_core::log::write(&format!("dxva2: {path} is cloned and its physical monitor can't be told apart; no DDC"));
+    }
+    DisplayInfo {
+        target: display.path.clone(),
+        identity: MonitorIdentity {
+            edid_id: display.edid_id.clone(),
+            serial: edid.as_deref().and_then(edid::serial),
+            connector: connector(&display.path),
+        },
+        name: edid.as_deref().and_then(edid::display_name).unwrap_or_else(|| display.friendly.clone()),
+        kind,
+        backend: if kind == DisplayKind::External && !ambiguous { BackendKind::Ddc } else { BackendKind::None },
     }
 }
 
@@ -380,13 +501,6 @@ mod tests {
         assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, ""), DisplayKind::Virtual);
         assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, "MSH062E"), DisplayKind::Virtual);
         assert_eq!(display_kind(DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL, "LEN62A2"), DisplayKind::Virtual);
-    }
-
-    #[test]
-    fn edid_id_is_the_second_path_segment() {
-        let path = r"\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}";
-        assert_eq!(edid_id_from_path(path).as_deref(), Some("LEN62A2"));
-        assert_eq!(edid_id_from_path("garbage"), None);
     }
 
     #[test]

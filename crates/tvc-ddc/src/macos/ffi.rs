@@ -25,6 +25,9 @@ extern "C" {
     fn CFStringGetTypeID() -> usize;
     fn CFNumberGetTypeID() -> usize;
     fn CFDictionaryGetTypeID() -> usize;
+    fn CFDataGetTypeID() -> usize;
+    fn CFDataGetLength(data: CFTypeRef) -> isize;
+    fn CFDataGetBytePtr(data: CFTypeRef) -> *const u8;
     fn CFNumberGetValue(number: CFTypeRef, the_type: isize, value: *mut c_void) -> u8;
     fn CFDictionaryGetValue(dict: CFTypeRef, key: CFTypeRef) -> CFTypeRef;
     fn CFRelease(cf: CFTypeRef);
@@ -36,6 +39,7 @@ extern "C" {
     pub(crate) fn CGDisplayVendorNumber(display: u32) -> u32;
     pub(crate) fn CGDisplayModelNumber(display: u32) -> u32;
     pub(crate) fn CGDisplayIsBuiltin(display: u32) -> i32;
+    pub(crate) fn CGDisplaySerialNumber(display: u32) -> u32;
 }
 
 #[link(name = "IOKit", kind = "framework")]
@@ -103,6 +107,19 @@ pub(crate) fn cf_to_i64(cf: CFTypeRef) -> Option<i64> {
         }
         let mut value: i64 = 0;
         (CFNumberGetValue(cf, CF_NUMBER_SINT64_TYPE, (&mut value as *mut i64).cast()) != 0).then_some(value)
+    }
+}
+
+/// Copies a CFData (borrowed). None if null or not data.
+pub(crate) fn cf_to_bytes(cf: CFTypeRef) -> Option<Vec<u8>> {
+    // SAFETY: type-checked CF calls on a non-null CFData; the byte pointer is valid for its length while `cf` lives.
+    unsafe {
+        if cf.is_null() || CFGetTypeID(cf) != CFDataGetTypeID() {
+            return None;
+        }
+        let len = usize::try_from(CFDataGetLength(cf)).ok()?;
+        let bytes = CFDataGetBytePtr(cf);
+        (!bytes.is_null()).then(|| std::slice::from_raw_parts(bytes, len).to_vec())
     }
 }
 

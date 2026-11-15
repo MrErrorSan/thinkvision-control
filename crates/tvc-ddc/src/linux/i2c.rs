@@ -1,17 +1,20 @@
-//! DDC/CI over the kernel's i2c-dev nodes. Finds the target by EDID (manufacturer + product code) at 0x50, then talks
-//! MCCS at 0x37 with plain write/read. Each write–sleep–read sequence holds an advisory `flock` on the device file (what
-//! ddcutil 2.x locks too), so cooperating DDC clients don't interleave on the bus.
+//! DDC/CI over the kernel's i2c-dev nodes. A link from discovery is bound to one bus and checks on connect that its
+//! connector still shows the same EDID in sysfs; a [`MonitorMatch`] link finds the target by EDID (manufacturer +
+//! product code) at 0x50 on every bus. Either then talks MCCS at 0x37 with plain write/read. Each write–sleep–read
+//! sequence holds an advisory `flock` on the device file (what ddcutil 2.x locks too), so cooperating DDC clients
+//! don't interleave on the bus.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use tvc_core::link::{AttachedDisplay, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
 
-use super::{bus_name, candidate_buses, connector_kind, connector_order, is_ignorable_adapter, writes_once};
+use super::discovery::{connector, connectors};
+use super::{bus_name, candidate_buses, connector_kind, edid_identity, is_ignorable_adapter, writes_once};
 use crate::{ascii, edid, not_connected, packet};
 
 const REPLY_DELAY: Duration = Duration::from_millis(50); // spec minimum is 40 ms between request and reply
@@ -32,8 +35,25 @@ const I2C_SLAVE_FORCE: u32 = 0x0706;
 
 /// The i2c-dev link: one open device node while connected.
 pub(crate) struct I2cLink {
-    target: MonitorMatch,
+    target: Target,
     held: Option<Bus>,
+}
+
+enum Target {
+    /// Any bus whose EDID matches (the pre-discovery path).
+    Match(MonitorMatch),
+    Bound(Binding),
+}
+
+/// One connector's bus as discovery listed it, with the identity it showed then.
+#[derive(Clone)]
+pub(super) struct Binding {
+    /// The sysfs connector name, `card0-DP-2`.
+    pub(super) connector: String,
+    /// `/dev/i2c-5`.
+    pub(super) device: String,
+    pub(super) edid_id: String,
+    pub(super) serial: Option<String>,
 }
 
 struct Bus {
@@ -43,11 +63,14 @@ struct Bus {
 
 impl I2cLink {
     pub(crate) fn new(target: MonitorMatch) -> Self {
-        I2cLink { target, held: None }
+        I2cLink { target: Target::Match(target), held: None }
     }
 
-    /// Runs `op` on the held bus; a `Gone` result drops the fd so the next connect re-scans (bus numbers can change
-    /// after a dock replug).
+    pub(super) fn bound(binding: Binding) -> Self {
+        I2cLink { target: Target::Bound(binding), held: None }
+    }
+
+    /// Runs `op` on the held bus; a `Gone` result drops the fd so the next connect opens it afresh.
     fn with_bus<T>(&mut self, op: impl FnOnce(&Bus) -> Result<T, LinkError>) -> Result<T, LinkError> {
         let result = op(self.held.as_ref().ok_or_else(not_connected)?);
         if matches!(result, Err(LinkError::Gone(_))) {
@@ -60,58 +83,11 @@ impl I2cLink {
 impl MonitorLink for I2cLink {
     fn connect(&mut self) -> Result<(), LinkFailure> {
         self.held = None;
-        let Some((pnp, product)) = self.target.pnp_and_product() else {
-            return Err(LinkFailure::NotFound);
-        };
-
-        let nodes = device_nodes();
-        if nodes.is_empty() {
-            return Err(LinkFailure::ModuleMissing);
-        }
-
-        let linked = drm_ddc_links();
-        let probe: Vec<&String> = nodes
-            .iter()
-            .filter(|d| linked.iter().any(|l| l == bus_name(d)) || !is_ignorable_adapter(&adapter_name(d)))
-            .collect();
-
-        let mut permission_denied = false;
-        let mut matches = Vec::new();
-        for bus in candidate_buses(&probe, &linked) {
-            match read_edid(&bus) {
-                Ok(Some(data)) if edid::matches(&data, pnp, product) => matches.push(bus),
-                Err(e) if is_permission(e) => permission_denied = true,
-                _ => {}
-            }
-        }
-
-        // Behind an MST hub the same EDID can show up on more than one bus while only one carries DDC/CI:
-        // keep the first that answers a brightness read, else the first that opened.
-        let mut opened = Vec::new();
-        let mut chosen = None;
-        for path in &matches {
-            let file = match open_rw(path) {
-                Ok(f) => f,
-                Err(e) => {
-                    permission_denied |= is_permission(errno_of(&e));
-                    continue;
-                }
-            };
-            let bus = Bus { file, path: path.clone() };
-            if matches.len() == 1 || probe_bus(&bus) {
-                chosen = Some(bus);
-                break;
-            }
-            opened.push(bus);
-        }
-        // The rest close on drop.
-        self.held = chosen.or_else(|| (!opened.is_empty()).then(|| opened.swap_remove(0)));
-
-        match self.held {
-            Some(_) => Ok(()),
-            None if permission_denied => Err(LinkFailure::PermissionDenied),
-            None => Err(LinkFailure::NotFound),
-        }
+        self.held = Some(match &self.target {
+            Target::Match(target) => connect_matching(target)?,
+            Target::Bound(binding) => connect_bound(binding)?,
+        });
+        Ok(())
     }
 
     fn disconnect(&mut self) {
@@ -133,32 +109,94 @@ impl MonitorLink for I2cLink {
     /// The connected DRM connectors, named from the EDID the kernel already read (no bus traffic, no permissions).
     /// None when DRM lists no connectors (no KMS driver, e.g. nvidia without `modeset=1`).
     fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
-        let connectors: Vec<(String, PathBuf)> = fs::read_dir("/sys/class/drm")
-            .ok()?
-            .flatten()
-            .filter_map(|e| Some((e.file_name().into_string().ok()?, e.path())))
-            .filter(|(name, _)| name.starts_with("card") && name.contains('-')) // "card0-DP-1", not "card0" or "version"
-            .collect();
-        if connectors.is_empty() {
-            return None;
-        }
-        let mut displays: Vec<(String, AttachedDisplay)> = connectors
+        let wanted = match &self.target {
+            Target::Match(target) => &target.edid_id,
+            Target::Bound(binding) => &binding.edid_id,
+        };
+        let displays = connectors()?
             .into_iter()
-            .filter_map(|(connector, path)| {
-                let status = fs::read_to_string(path.join("status")).ok()?;
-                if status.trim() != "connected" {
-                    return None;
-                }
-                let data = fs::read(path.join("edid")).unwrap_or_default();
-                let edid_id = edid::id(&data).unwrap_or_default();
-                let kind = connector_kind(&connector, &edid_id);
-                let name = edid::display_name(&data).unwrap_or_default();
-                let target = !edid_id.is_empty() && edid_id.eq_ignore_ascii_case(&self.target.edid_id);
-                Some((connector, AttachedDisplay { name, edid_id, kind, target }))
+            .map(|c| {
+                let edid_id = edid::id(&c.edid).unwrap_or_default();
+                let kind = connector_kind(&c.name, &edid_id);
+                let name = edid::display_name(&c.edid).unwrap_or_default();
+                let target = !edid_id.is_empty() && edid_id.eq_ignore_ascii_case(wanted);
+                AttachedDisplay { name, edid_id, kind, target }
             })
             .collect();
-        displays.sort_by(|a, b| connector_order(&a.0, &b.0));
-        Some(displays.into_iter().map(|(_, d)| d).collect())
+        Some(displays)
+    }
+}
+
+// ----- connecting -----
+
+/// Reopens the bound bus, once its connector is still connected through that bus with the same EDID id and serial.
+/// Reads only sysfs and opens only that one device node: no EDID traffic on any bus.
+fn connect_bound(binding: &Binding) -> Result<Bus, LinkFailure> {
+    let now = connector(&binding.connector, &[]).ok_or(LinkFailure::NotFound)?;
+    let (edid_id, serial) = edid_identity(&now.edid);
+    let same = now.bus.as_deref() == Some(bus_name(&binding.device))
+        && edid_id == binding.edid_id
+        && serial == binding.serial;
+    if !same {
+        return Err(LinkFailure::NotFound);
+    }
+    match open_rw(&binding.device) {
+        Ok(file) => Ok(Bus { file, path: binding.device.clone() }),
+        Err(e) if is_permission(errno_of(&e)) => Err(LinkFailure::PermissionDenied),
+        Err(_) if device_nodes().is_empty() => Err(LinkFailure::ModuleMissing),
+        Err(_) => Err(LinkFailure::NotFound),
+    }
+}
+
+/// Probes every candidate bus for `target`'s EDID at 0x50.
+fn connect_matching(target: &MonitorMatch) -> Result<Bus, LinkFailure> {
+    let Some((pnp, product)) = target.pnp_and_product() else {
+        return Err(LinkFailure::NotFound);
+    };
+
+    let nodes = device_nodes();
+    if nodes.is_empty() {
+        return Err(LinkFailure::ModuleMissing);
+    }
+
+    let linked = drm_ddc_links();
+    let probe: Vec<&String> = nodes
+        .iter()
+        .filter(|d| linked.iter().any(|l| l == bus_name(d)) || !is_ignorable_adapter(&adapter_name(d)))
+        .collect();
+
+    let mut permission_denied = false;
+    let mut matches = Vec::new();
+    for bus in candidate_buses(&probe, &linked) {
+        match read_edid(&bus) {
+            Ok(Some(data)) if edid::matches(&data, pnp, product) => matches.push(bus),
+            Err(e) if is_permission(e) => permission_denied = true,
+            _ => {}
+        }
+    }
+
+    // Behind an MST hub the same EDID can show up on more than one bus while only one carries DDC/CI:
+    // keep the first that answers a brightness read, else the first that opened.
+    let mut opened = Vec::new();
+    for path in &matches {
+        let file = match open_rw(path) {
+            Ok(f) => f,
+            Err(e) => {
+                permission_denied |= is_permission(errno_of(&e));
+                continue;
+            }
+        };
+        let bus = Bus { file, path: path.clone() };
+        if matches.len() == 1 || probe_bus(&bus) {
+            return Ok(bus);
+        }
+        opened.push(bus);
+    }
+    // The rest close on drop.
+    match opened.into_iter().next() {
+        Some(bus) => Ok(bus),
+        None if permission_denied => Err(LinkFailure::PermissionDenied),
+        None => Err(LinkFailure::NotFound),
     }
 }
 

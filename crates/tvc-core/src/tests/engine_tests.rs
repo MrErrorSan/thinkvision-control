@@ -1113,11 +1113,11 @@ fn connect_reading_reads_only_the_given_codes() {
 fn dead_engine_reports_not_responding() {
     let dir = TempDir::new();
     let (tx, rx) = std::sync::mpsc::channel();
-    let handle = crate::engine::Engine::spawn(Box::new(FakeLink::new()), crate::profile::ProfileStore::new(dir.path()),
-        dir.path().to_path_buf(), Timing::zero(), false, Box::new(move |e| {
-            assert!(!matches!(e, Event::Result { .. }), "sink panics on a result (deliberate)");
-            let _ = tx.send(e);
-        }));
+    let config = super::engine_config(Box::new(FakeLink::new()), dir.path(), Timing::zero(), false);
+    let handle = crate::engine::Engine::spawn(config, Box::new(move |e| {
+        assert!(!matches!(e, Event::Result { .. }), "sink panics on a result (deliberate)");
+        let _ = tx.send(e);
+    }));
     handle.send(Command::Connect);
     handle.send(Command::Set { code: 0x10, value: 30, confirmed: false, origin: Origin::Window });
 

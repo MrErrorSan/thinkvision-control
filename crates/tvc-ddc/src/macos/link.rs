@@ -9,7 +9,7 @@ use std::time::Duration;
 use tvc_core::link::{LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
 
 use super::ffi::{self, Cf, IoAv};
-use super::locator::locate;
+use super::locator::{locate, locate_by_id};
 use super::{
     fallback_checksum_mode, is_unsupported_port, reply_outcome, transport_order, ExchangeOutcome, Transport, ATTEMPTS,
     CAPABILITIES_FRAGMENT_LEN, CAPABILITIES_MAX_BYTES, RETRY_DELAY_MS, WRITE_CYCLES, WRITE_DELAY_MS,
@@ -21,9 +21,17 @@ const VERIFY_CODE: u8 = 0x10; // brightness: every MCCS monitor has it
 /// The last failing IOAVService call and its IOReturn.
 type CallError = (&'static str, i32);
 
+/// What `connect` looks for.
+enum Bind {
+    /// The first external display with this EDID id (the pre-Discovery path).
+    Monitor(MonitorMatch),
+    /// The DCPAVServiceProxy with this IORegistry entry id, from `MacDiscovery`.
+    Service(u64),
+}
+
 /// The IOAVService link: one owned service while connected.
 pub(crate) struct IoAvLink {
-    target: MonitorMatch,
+    bind: Bind,
     service: Option<Service>,
     transport: Transport,
     /// The checksum form that produced a valid reply (true = 0x51 included, per spec); None until one did.
@@ -41,7 +49,16 @@ unsafe impl Send for Service {}
 
 impl IoAvLink {
     pub(crate) fn new(target: MonitorMatch) -> Self {
-        IoAvLink { target, service: None, transport: Transport::STANDARD, include_source: None }
+        Self::with(Bind::Monitor(target))
+    }
+
+    /// A link bound to the service with this IORegistry entry id.
+    pub(crate) fn bound(registry_id: u64) -> Self {
+        Self::with(Bind::Service(registry_id))
+    }
+
+    fn with(bind: Bind) -> Self {
+        IoAvLink { bind, service: None, transport: Transport::STANDARD, include_source: None }
     }
 
     fn service(&self) -> Result<&Service, LinkError> {
@@ -170,10 +187,16 @@ impl IoAvLink {
 impl MonitorLink for IoAvLink {
     fn connect(&mut self) -> Result<(), LinkFailure> {
         self.service = None;
-        let Some((pnp, product)) = self.target.pnp_and_product() else { return Err(LinkFailure::NotFound) };
-        let Some(vendor) = edid::pack_pnp(pnp) else { return Err(LinkFailure::NotFound) };
         let Some(io_av) = ffi::io_av() else { return Err(LinkFailure::NotFound) };
-        let Ok(lookup) = locate(io_av, vendor, product, pnp) else { return Err(LinkFailure::NotFound) };
+        let found = match &self.bind {
+            Bind::Monitor(target) => {
+                let Some((pnp, product)) = target.pnp_and_product() else { return Err(LinkFailure::NotFound) };
+                let Some(vendor) = edid::pack_pnp(pnp) else { return Err(LinkFailure::NotFound) };
+                locate(io_av, vendor, product, pnp)
+            }
+            Bind::Service(id) => locate_by_id(io_av, *id),
+        };
+        let Ok(lookup) = found else { return Err(LinkFailure::NotFound) };
         self.service = Some(Service { cf: lookup.service, io_av });
 
         // Connect-verify: the first read of 0x10 also settles the checksum form. Try the MCDP29xx (HDMI) variant when

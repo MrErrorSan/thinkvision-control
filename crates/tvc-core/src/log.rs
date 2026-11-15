@@ -8,6 +8,10 @@ const MAX_BYTES: u64 = 1024 * 1024;
 
 static DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
+thread_local! {
+    static PREFIX: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
 /// Logs go to `dir` from now on; before this, [`write`] does nothing.
 pub fn init(dir: impl Into<PathBuf>) {
     let dir = dir.into();
@@ -15,11 +19,19 @@ pub fn init(dir: impl Into<PathBuf>) {
     *DIR.lock().unwrap_or_else(|e| e.into_inner()) = Some(dir);
 }
 
-/// Appends `yyyy-MM-dd HH:mm:ss.fff message`.
+/// Every later [`write`] on this thread starts with `prefix` (an engine's `[id] `).
+pub fn set_prefix(prefix: impl Into<String>) {
+    PREFIX.with(|p| *p.borrow_mut() = prefix.into());
+}
+
+/// Appends `yyyy-MM-dd HH:mm:ss.fff message`, after this thread's prefix.
 pub fn write(message: &str) {
     let guard = DIR.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(dir) = guard.as_deref() {
-        write_to(dir, message);
+        PREFIX.with(|p| match p.borrow().as_str() {
+            "" => write_to(dir, message),
+            prefix => write_to(dir, &format!("{prefix}{message}")),
+        });
     }
 }
 

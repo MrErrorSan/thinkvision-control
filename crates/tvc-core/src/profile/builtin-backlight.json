@@ -1,0 +1,9 @@
+{
+  "edidId": "",
+  "quirks": { "timing": { "gapMs": 0, "settleMs": 0, "retryMs": 150, "attempts": 5 } },
+  "controlOrder": ["0x10"],
+  "controls": [
+    { "code": "0x10", "name": "Brightness", "kind": "Range", "section": "Main", "safety": "Normal", "values": {}, "confirm": null,
+      "icon": "brightness" }
+  ]
+}

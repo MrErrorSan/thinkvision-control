@@ -11,7 +11,10 @@ pub(crate) use i2c::I2cLink;
 
 use std::cmp::Ordering;
 
+use tvc_core::identity::{BackendKind, DisplayInfo, MonitorIdentity};
 use tvc_core::link::{is_virtual_vendor, DisplayKind};
+
+use crate::edid;
 
 /// Adapter-name prefixes (`/sys/bus/i2c/devices/i2c-N/name`) that are never a display's DDC lines, as ddcutil matches
 /// them. Probing these would write an address byte to unrelated chips (SPD EEPROMs sit at 0x50 on SMBus).
@@ -45,14 +48,65 @@ pub fn bus_name(device_or_name: &str) -> &str {
 /// What a DRM connector is, from its sysfs name (`card1-eDP-1`, `card0-HDMI-A-2`, `card0-Virtual-1`) and EDID id:
 /// laptop panels (eDP, LVDS, DSI) are built in; virtio/QXL connectors and hypervisor vendors are virtual.
 pub fn connector_kind(connector: &str, edid_id: &str) -> DisplayKind {
-    // Drop "cardN-" to get the connector type ("eDP-1").
-    let port = connector.split_once('-').map_or(connector, |(_, rest)| rest);
+    let port = connector_port(connector).unwrap_or(connector);
     if ["eDP", "LVDS", "DSI"].iter().any(|p| port.starts_with(p)) {
         DisplayKind::BuiltIn
     } else if port.starts_with("Virtual") || is_virtual_vendor(edid_id) {
         DisplayKind::Virtual
     } else {
         DisplayKind::External
+    }
+}
+
+/// The port of a DRM connector's sysfs name: `card0-DP-2` → `DP-2`. None for the other `/sys/class/drm` entries
+/// (`card0`, `renderD128`, `version`).
+pub fn connector_port(name: &str) -> Option<&str> {
+    let (card, port) = name.strip_prefix("card")?.split_once('-')?;
+    (!card.is_empty() && card.bytes().all(|b| b.is_ascii_digit()) && !port.is_empty()).then_some(port)
+}
+
+/// The connector as identity records it: the port alone (`DP-2`), since card numbers can swap between boots on
+/// hybrid-graphics machines; the full sysfs name when the same port exists on more than one card in `all` (every
+/// connector folder, connected or not), so two GPUs' `DP-1` stay apart.
+pub fn connector_label(name: &str, all: &[&str]) -> String {
+    let port = connector_port(name).unwrap_or(name);
+    let shared = all.iter().any(|other| *other != name && connector_port(other) == Some(port));
+    if shared { name } else { port }.to_owned()
+}
+
+/// The i2c adapter a connector's `ddc` symlink points at: `../../../i2c-5` → `i2c-5`. None unless it is `i2c-<N>`.
+pub fn bus_from_link(target: &str) -> Option<&str> {
+    let name = bus_name(target);
+    bus_number(name).map(|_| name)
+}
+
+/// The connector's own i2c adapter among the entries of its sysfs folder (amdgpu and DP-AUX adapters sit there
+/// instead of behind a `ddc` link): the lowest-numbered `i2c-<N>`.
+pub fn bus_from_children<'a>(entries: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    entries.into_iter().filter_map(|e| Some((bus_number(e)?, e))).min().map(|(_, e)| e)
+}
+
+/// EDID id and serial from a connector's EDID: empty and None without a valid header.
+pub fn edid_identity(data: &[u8]) -> (String, Option<String>) {
+    match edid::id(data) {
+        Some(id) => (id, edid::serial(data)),
+        None => (String::new(), None),
+    }
+}
+
+/// One connected DRM connector as discovery lists it. `connector` is the sysfs name, `label` its
+/// [`connector_label`], `bus` the adapter (`i2c-5`) when it has one. The target is the bus's device node, else the
+/// sysfs name; only an external display with a bus is driven over DDC.
+pub fn display_info(connector: &str, label: String, data: &[u8], bus: Option<&str>) -> DisplayInfo {
+    let (edid_id, serial) = edid_identity(data);
+    let kind = connector_kind(connector, &edid_id);
+    let backend = if bus.is_some() && kind == DisplayKind::External { BackendKind::Ddc } else { BackendKind::None };
+    DisplayInfo {
+        target: bus.map_or_else(|| connector.to_owned(), |b| format!("/dev/{b}")),
+        identity: MonitorIdentity { edid_id, serial, connector: Some(label) },
+        name: edid::display_name(data).unwrap_or_default(),
+        kind,
+        backend,
     }
 }
 

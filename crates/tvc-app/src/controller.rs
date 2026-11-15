@@ -15,8 +15,10 @@ use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget, Parsed};
 use tvc_core::engine::{
-    Command, EngineHandle, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
+    Command, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
 };
+use tvc_core::hub::{HubCommand, HubEvent, HubHandle, Monitor, Target};
+use tvc_core::identity::{BackendKind, ListError, MonitorId};
 use tvc_core::result::ResultKind;
 use tvc_core::schedule::{self, AutoMode, Phase};
 use tvc_core::finder::CodeChange;
@@ -183,8 +185,13 @@ impl Drop for AwaitingConfirm {
 }
 
 pub struct Controller {
-    /// Taken at exit by `take_engine`.
-    engine: RefCell<Option<EngineHandle>>,
+    /// Taken at exit by `take_hub`.
+    hub: RefCell<Option<HubHandle>>,
+    /// The one monitor this app drives until multi-display lands in the controller: the first attached DDC monitor,
+    /// preferring the profile's EDID id. None = none attached.
+    tracked: RefCell<Option<MonitorId>>,
+    /// Sent to the tracked monitor first (`--get brightness` reads only what it prints); later ones get `Connect`.
+    first_command: RefCell<Option<Command>>,
     store: SettingsStore,
     st: RefCell<State>,
     window: RefCell<Option<MainWindow>>,
@@ -226,13 +233,15 @@ pub struct Controller {
 }
 
 impl Controller {
-    pub fn new(engine: EngineHandle, profile: Arc<Profile>, data_dir: PathBuf, scheme: i32, demo: bool,
+    pub fn new(hub: HubHandle, profile: Arc<Profile>, data_dir: PathBuf, scheme: i32, demo: bool,
         left_over: Vec<LeftOver>) -> Rc<Self> {
         let store = SettingsStore::new(&data_dir);
         let settings = store.load();
         let last_phase = settings.last_applied_phase;
         Rc::new(Self {
-            engine: RefCell::new(Some(engine)),
+            hub: RefCell::new(Some(hub)),
+            tracked: RefCell::new(None),
+            first_command: RefCell::new(None),
             store,
             st: RefCell::new(State {
                 settings,
@@ -291,18 +300,34 @@ impl Controller {
         self.st.borrow().settings.background_mode
     }
 
+    /// Sends to the tracked monitor's engine. With none attached, a reconnect request looks for one instead.
     pub fn send(&self, command: Command) {
-        if let Some(engine) = self.engine.borrow().as_ref() {
-            engine.send(command);
+        let hub = self.hub.borrow();
+        let Some(hub) = hub.as_ref() else { return };
+        match self.tracked.borrow().clone() {
+            Some(id) => hub.send(HubCommand::Send { target: Target::One(id), op: hub.next_op(), command: Box::new(command) }),
+            None if matches!(command, Command::RequestReconnect | Command::RecheckAfterEvent) => hub.send(HubCommand::Rescan),
+            None => {}
         }
+    }
+
+    fn send_hub(&self, command: HubCommand) {
+        if let Some(hub) = self.hub.borrow().as_ref() {
+            hub.send(command);
+        }
+    }
+
+    /// The command the tracked monitor gets first, once one is attached.
+    pub fn connect_with(&self, command: Command) {
+        *self.first_command.borrow_mut() = Some(command);
     }
 
     pub fn exit_code(&self) -> i32 {
         self.exit_code.get()
     }
 
-    pub fn take_engine(&self) -> Option<EngineHandle> {
-        self.engine.borrow_mut().take()
+    pub fn take_hub(&self) -> Option<HubHandle> {
+        self.hub.borrow_mut().take()
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -317,18 +342,18 @@ impl Controller {
         if self.watcher.borrow().is_none() {
             // First resident start (also a headless run turned resident): retry burst and display/power events.
             self.send(Command::RequestReconnect);
-            let tx = self.engine.borrow().as_ref().map(EngineHandle::sender);
             let watcher = platform::monitor_events::watch(move |event| {
-                let command = match event {
-                    SystemEvent::DisplayChanged => Command::RecheckAfterEvent,
+                // None = the displays changed.
+                let power = match event {
+                    SystemEvent::DisplayChanged => None,
                     #[cfg(any(windows, target_os = "macos"))]
-                    SystemEvent::DisplayOff => Command::Power(PowerState::DisplayOff),
+                    SystemEvent::DisplayOff => Some(PowerState::DisplayOff),
                     #[cfg(any(windows, target_os = "macos"))]
-                    SystemEvent::DisplayOn => Command::Power(PowerState::DisplayOn),
-                    SystemEvent::Locked => Command::Power(PowerState::Locked),
-                    SystemEvent::Unlocked => Command::Power(PowerState::Unlocked),
-                    SystemEvent::Suspending => Command::Power(PowerState::Suspending),
-                    SystemEvent::Resumed => Command::Power(PowerState::Resumed),
+                    SystemEvent::DisplayOn => Some(PowerState::DisplayOn),
+                    SystemEvent::Locked => Some(PowerState::Locked),
+                    SystemEvent::Unlocked => Some(PowerState::Unlocked),
+                    SystemEvent::Suspending => Some(PowerState::Suspending),
+                    SystemEvent::Resumed => Some(PowerState::Resumed),
                     #[cfg(windows)]
                     SystemEvent::ThemeChanged => {
                         let _ = slint::invoke_from_event_loop(|| with(|c| c.update_tray()));
@@ -341,9 +366,7 @@ impl Controller {
                         return;
                     }
                 };
-                if let Some(tx) = &tx {
-                    let _ = tx.send(command);
-                }
+                let _ = slint::invoke_from_event_loop(move || with(|c| c.on_system(power)));
             });
             *self.watcher.borrow_mut() = Some(watcher);
             if !self.demo {
@@ -730,6 +753,72 @@ impl Controller {
     // ---------------------------------------------------------------------------------------------------------
     // Engine events
 
+    /// A power change goes to every engine; a display change rescans and rechecks the tracked monitor.
+    fn on_system(&self, power: Option<PowerState>) {
+        match power {
+            Some(state) => self.send_hub(HubCommand::Power(state)),
+            None => {
+                self.send_hub(HubCommand::Rescan);
+                if self.tracked.borrow().is_some() {
+                    self.send(Command::RecheckAfterEvent);
+                }
+            }
+        }
+    }
+
+    /// Hub events: the tracked monitor's engine events go to `on_event`; the rest pick or drop the tracked monitor.
+    pub fn on_hub(self: &Rc<Self>, event: HubEvent) {
+        match event {
+            HubEvent::Monitor { id, event } => {
+                if self.tracked.borrow().as_ref() == Some(&id) {
+                    self.on_event(event);
+                }
+            }
+            HubEvent::Monitors(list) => self.on_monitors(list),
+            HubEvent::Detached(id) => {
+                if self.tracked.borrow().as_ref() == Some(&id) {
+                    log::write(&format!("Monitor {id} detached"));
+                    *self.tracked.borrow_mut() = None;
+                    self.on_status(MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+                }
+            }
+            HubEvent::Attached(_) | HubEvent::Batch { .. } => {}
+        }
+    }
+
+    /// Explains what is attached, and tracks the first DDC monitor when none is; none at all is `NotFound`.
+    fn on_monitors(self: &Rc<Self>, list: Result<Vec<Monitor>, ListError>) {
+        let monitors = list.ok();
+        let edid = self.st.borrow().profile.edid_id.clone();
+        self.st.borrow_mut().displays = monitors.as_ref().map(|list| list.iter().map(|m| AttachedDisplay {
+            name: m.info.name.clone(),
+            edid_id: m.info.identity.edid_id.clone(),
+            kind: m.info.kind,
+            target: m.info.identity.edid_id == edid,
+        }).collect());
+        if self.tracked.borrow().is_none() {
+            let ddc: Vec<&Monitor> = monitors.iter().flatten().filter(|m| m.info.backend == BackendKind::Ddc).collect();
+            let pick = ddc.iter().find(|m| m.info.identity.edid_id == edid).or(ddc.first());
+            if let Some(m) = pick {
+                log::write(&format!("Monitor {} attached", m.id));
+                *self.tracked.borrow_mut() = Some(m.id.clone());
+                let first = self.first_command.borrow_mut().take().unwrap_or(Command::Connect);
+                self.send(first);
+                if !self.headless.get() {
+                    self.send(Command::RequestReconnect);
+                }
+            } else {
+                let st = self.st.borrow();
+                let changed = (st.status, st.failure) != (MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+                drop(st);
+                if changed {
+                    self.on_status(MonitorStatus::NotFound, Some(LinkFailure::NotFound));
+                }
+            }
+        }
+        self.render();
+    }
+
     pub fn on_event(self: &Rc<Self>, event: Event) {
         match event {
             Event::Status { status, failure } => self.on_status(status, failure),
@@ -761,10 +850,8 @@ impl Controller {
                 self.update_tray();
                 self.render();
             }
-            Event::Displays(displays) => {
-                self.st.borrow_mut().displays = displays;
-                self.render();
-            }
+            // `HubEvent::Monitors` says what is attached now.
+            Event::Displays(_) => {}
             Event::SafeMode(on) => {
                 self.st.borrow_mut().safe_mode = on;
                 self.render();

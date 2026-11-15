@@ -11,6 +11,8 @@
   "customColourMode": "0x12",
   "brightnessLockNote": " — the current colour mode may lock it",
   "quirks": { "timing": { "gapMs": 50, "settleMs": 400, "retryMs": 150, "attempts": 5 } },
+  "controlOrder": ["0x10", "0x12", "0x14", "0x16", "0x18", "0x1A", "0x60", "0xE0", "0xEA", "0x86", "0xEC", "0xCC",
+    "0x04", "0x05", "0x08", "0xCA", "0xD6"],
   "controls": [
     { "code": "0x10", "name": "Brightness", "kind": "Range", "section": "Main", "safety": "Normal", "values": {}, "confirm": null,
       "icon": "brightness" },

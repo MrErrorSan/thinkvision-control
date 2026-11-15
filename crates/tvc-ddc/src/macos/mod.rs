@@ -1,4 +1,10 @@
-//! macOS IOAVService backend (Apple Silicon). The rules here are pure and compile on every OS; the link is macOS-only.
+//! macOS IOAVService backend (Apple Silicon). The rules here are pure and compile on every OS; the link and discovery
+//! are macOS-only.
+
+use tvc_core::identity::{BackendKind, MonitorIdentity};
+use tvc_core::link::DisplayKind;
+
+use crate::edid;
 
 #[cfg(target_os = "macos")]
 mod discovery;
@@ -27,8 +33,8 @@ pub const CAPABILITIES_FRAGMENT_LEN: usize = 38;
 /// Upper bound on the capability string.
 pub const CAPABILITIES_MAX_BYTES: usize = 8192;
 
-/// How the locator tied the display to its DDC service.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How the locator tied the display to its DDC service, strongest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MatchMethod {
     /// m1ddc: the display's IODisplayLocation names the framebuffer that precedes the service.
     DisplayLocation,
@@ -166,6 +172,133 @@ pub fn choose_service(
     }
 
     (candidates.len() == 1).then_some((0, MatchMethod::SingleExternal))
+}
+
+/// Which service each display gets, from each display's `choose_service` result. A service goes to the display that
+/// chose it by the strongest method; two displays tied at that method both get none (ambiguous).
+pub fn assign_services(choices: &[Option<(usize, MatchMethod)>]) -> Vec<Option<usize>> {
+    choices
+        .iter()
+        .enumerate()
+        .map(|(i, choice)| {
+            let (service, method) = (*choice)?;
+            let contested = choices.iter().enumerate().any(|(j, other)| {
+                j != i && other.is_some_and(|(s, m)| s == service && m <= method)
+            });
+            (!contested).then_some(service)
+        })
+        .collect()
+}
+
+/// DisplayAttributes.ProductAttributes of a display's framebuffer (AppleCLCD2), as far as present.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProductAttributes {
+    pub manufacturer_id: Option<String>,
+    pub product_id: Option<i64>,
+    pub alphanumeric_serial: Option<String>,
+    pub serial_number: Option<i64>,
+    pub name: Option<String>,
+}
+
+/// CoreGraphics' numbers for a display; 0 means unknown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CgNumbers {
+    pub vendor: u32,
+    pub model: u32,
+    pub serial: u32,
+}
+
+/// PNP id and product code of an EDID id ("LEN62A2" → ("LEN", 0x62A2)). None if malformed.
+pub fn split_edid_id(id: &str) -> Option<(&str, u16)> {
+    if id.len() != 7 || !id.is_char_boundary(3) {
+        return None;
+    }
+    let (pnp, product) = id.split_at(3);
+    u16::from_str_radix(product, 16).ok().map(|p| (pnp, p))
+}
+
+/// True when CoreGraphics names the same monitor as `edid_id`, or doesn't know the vendor.
+fn agrees_with_cg(edid_id: &str, cg: CgNumbers) -> bool {
+    cg.vendor == 0
+        || split_edid_id(edid_id)
+            .and_then(|(pnp, product)| Some((edid::pack_pnp(pnp)?, product)))
+            .is_some_and(|(vendor, product)| is_target(cg.vendor, cg.model, vendor, product))
+}
+
+/// Identity (without connector) and name of a display. In order: the EDID, when CoreGraphics agrees it is this
+/// display's; the ProductAttributes, on the same condition; CoreGraphics' vendor, model and serial numbers. The name is
+/// the EDID's, else the ProductAttributes', else empty.
+pub fn identify(raw_edid: Option<&[u8]>, attributes: &ProductAttributes, cg: CgNumbers) -> (MonitorIdentity, String) {
+    let attribute_name = || attributes.name.clone().filter(|n| !n.is_empty()).unwrap_or_default();
+    if let Some((bytes, id)) = raw_edid.and_then(|e| Some((e, edid::id(e)?))).filter(|(_, id)| agrees_with_cg(id, cg)) {
+        let name = edid::display_name(bytes).unwrap_or_else(attribute_name);
+        return (MonitorIdentity { edid_id: id, serial: edid::serial(bytes), connector: None }, name);
+    }
+    let from_attributes = attributes
+        .manufacturer_id
+        .as_deref()
+        .filter(|m| m.len() == 3)
+        .zip(attributes.product_id.and_then(|p| u16::try_from(p).ok()))
+        .map(|(m, p)| format!("{}{p:04X}", m.to_ascii_uppercase()))
+        .filter(|id| agrees_with_cg(id, cg));
+    if let Some(id) = from_attributes {
+        let serial = attributes
+            .alphanumeric_serial
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| attributes.serial_number.filter(|&n| n != 0).map(|n| n.to_string()));
+        return (MonitorIdentity { edid_id: id, serial, connector: None }, attribute_name());
+    }
+    let id = u16::try_from(cg.vendor)
+        .ok()
+        .and_then(edid::pnp_letters)
+        .zip(u16::try_from(cg.model).ok())
+        .map(|(pnp, model)| format!("{pnp}{model:04X}"))
+        .unwrap_or_default();
+    let serial = (cg.serial != 0).then(|| cg.serial.to_string());
+    (MonitorIdentity { edid_id: id, serial, connector: None }, attribute_name())
+}
+
+/// The display-pipe node in an IODisplayLocation path ("…/dispext0@…/…" → "dispext0"), stable per port on Apple
+/// Silicon. None when the path has no `disp<N>` / `dispext<N>` segment (Intel Macs).
+pub fn connector_from_location(path: &str) -> Option<String> {
+    path.rsplit('/').map(|segment| segment.split_once('@').map_or(segment, |(name, _)| name)).find_map(|name| {
+        let digits = name.strip_prefix("dispext").or_else(|| name.strip_prefix("disp"))?;
+        (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then(|| name.to_owned())
+    })
+}
+
+/// Built-in when CoreGraphics says so; Virtual (AirPlay, Sidecar, DisplayLink) when CoreDisplay names no framebuffer
+/// for it; else External.
+pub fn display_kind(builtin: bool, has_location: bool) -> DisplayKind {
+    match (builtin, has_location) {
+        (true, _) => DisplayKind::BuiltIn,
+        (false, false) => DisplayKind::Virtual,
+        (false, true) => DisplayKind::External,
+    }
+}
+
+/// DDC for an external display with a service on a port that carries DDC/CI; nothing else is controllable here.
+pub fn backend(kind: DisplayKind, port: Option<MacPort>) -> BackendKind {
+    match port {
+        Some(port) if kind == DisplayKind::External && !is_unsupported_port(port) => BackendKind::Ddc,
+        _ => BackendKind::None,
+    }
+}
+
+/// The `DisplayInfo::target` of a display with a DDC service: the service's IORegistry entry id.
+pub fn service_target(registry_id: u64) -> String {
+    registry_id.to_string()
+}
+
+/// The target of a display without a service: never opens.
+pub fn display_target(cg_display: u32) -> String {
+    format!("cg:{cg_display}")
+}
+
+/// The registry entry id in a [`service_target`]; None for anything else.
+pub fn parse_service_target(target: &str) -> Option<u64> {
+    target.parse().ok()
 }
 
 #[cfg(test)]

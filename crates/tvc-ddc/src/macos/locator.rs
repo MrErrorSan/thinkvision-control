@@ -17,7 +17,7 @@ pub(crate) struct Lookup {
 
 /// Finds the target's DDC service. Err says why not (for logs).
 pub(crate) fn locate(io_av: ffi::IoAv, vendor: u16, model: u16, pnp: &str) -> Result<Lookup, String> {
-    let displays = online_displays();
+    let displays = online_displays().unwrap_or_default();
     let target = displays
         .iter()
         .copied()
@@ -44,6 +44,20 @@ pub(crate) fn locate(io_av: ffi::IoAv, vendor: u16, model: u16, pnp: &str) -> Re
     };
 
     let (entry, info) = &proxies[index];
+    lookup(io_av, entry, info)
+}
+
+/// Re-finds a service [`walk_external_proxies`] listed, by its IORegistry entry id.
+pub(crate) fn locate_by_id(io_av: ffi::IoAv, registry_id: u64) -> Result<Lookup, String> {
+    let proxies = walk_external_proxies();
+    let (entry, info) = proxies
+        .iter()
+        .find(|(entry, _)| entry.registry_id() == Some(registry_id))
+        .ok_or_else(|| format!("No external DCPAVServiceProxy with registry id {registry_id}."))?;
+    lookup(io_av, entry, info)
+}
+
+fn lookup(io_av: ffi::IoAv, entry: &IoObject, info: &ProxyCandidate) -> Result<Lookup, String> {
     // SAFETY: a live io_service_t; the result follows the Create rule.
     let service = Cf(unsafe { (io_av.create)(std::ptr::null(), entry.0) });
     if service.0.is_null() {
@@ -53,14 +67,16 @@ pub(crate) fn locate(io_av: ffi::IoAv, vendor: u16, model: u16, pnp: &str) -> Re
     Ok(Lookup { service, port: classify_port(mcdp29xx, info.downstream.as_deref()), mcdp29xx })
 }
 
-fn online_displays() -> Vec<u32> {
+/// Every online CoreGraphics display id, or the CGError.
+pub(super) fn online_displays() -> Result<Vec<u32>, i32> {
     let mut ids = [0u32; MAX_DISPLAYS];
     let mut count = 0u32;
     // SAFETY: `ids` holds MAX_DISPLAYS entries and `count` is a valid out-pointer.
-    if unsafe { ffi::CGGetOnlineDisplayList(MAX_DISPLAYS as u32, ids.as_mut_ptr(), &mut count) } != 0 {
-        return Vec::new();
+    let error = unsafe { ffi::CGGetOnlineDisplayList(MAX_DISPLAYS as u32, ids.as_mut_ptr(), &mut count) };
+    if error != 0 {
+        return Err(error);
     }
-    ids[..(count as usize).min(MAX_DISPLAYS)].to_vec()
+    Ok(ids[..(count as usize).min(MAX_DISPLAYS)].to_vec())
 }
 
 /// CoreDisplay's IODisplayLocation for the display: the IOService path of its framebuffer.
@@ -71,7 +87,7 @@ fn io_display_location(display: u32) -> Option<String> {
 
 /// Recursive IOService-plane walk from the root: every external DCPAVServiceProxy, with the facts of the framebuffer
 /// that precedes it.
-fn walk_external_proxies() -> Vec<(IoObject, ProxyCandidate)> {
+pub(super) fn walk_external_proxies() -> Vec<(IoObject, ProxyCandidate)> {
     let mut found = Vec::new();
     let Some(iterator) = IoObject::root().iterate_recursively() else { return found };
     let mut framebuffer = ProxyCandidate::default();
@@ -106,7 +122,7 @@ fn read_framebuffer(entry: &IoObject) -> ProxyCandidate {
 }
 
 /// m1ddc: the proxy's parent has EPICProviderClass = "AppleDCPMCDP29XX" on M1-era built-in HDMI.
-fn is_mcdp29xx(proxy: &IoObject) -> bool {
+pub(super) fn is_mcdp29xx(proxy: &IoObject) -> bool {
     proxy.parent().is_some_and(|parent| {
         cf_to_string(parent.property("EPICProviderClass").0).as_deref() == Some("AppleDCPMCDP29XX")
     })

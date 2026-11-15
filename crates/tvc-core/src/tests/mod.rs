@@ -18,10 +18,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use crate::engine::{Command, Engine, EngineHandle, Event, MonitorStatus, Origin, Timing, WriteResult};
+use crate::engine::{Command, Engine, EngineConfig, EngineHandle, Event, MonitorStatus, Origin, Timing, WriteResult};
 use crate::fake::FakeLink;
+use crate::identity::{MonitorId, MonitorIdentity};
 use crate::link::{MonitorLink, VcpReading};
-use crate::profile::ProfileStore;
+use crate::support::SupportLevel;
 
 /// A real P40w-20: a nested list inside F7 and 0x60 advertised twice.
 pub const P40W20_CAPABILITIES: &str = concat!(
@@ -73,10 +74,9 @@ impl Harness {
     /// The engine on `engine_link` (a `FakeLink` or a wrapper around `fake`), optionally in safe mode.
     pub fn spawn(engine_link: Box<dyn MonitorLink>, fake: &FakeLink, dir: &Path, timing: Timing, safe_mode: bool) -> Self {
         let (tx, events) = mpsc::channel();
-        let handle = Engine::spawn(engine_link, ProfileStore::new(dir), dir.to_path_buf(), timing, safe_mode,
-            Box::new(move |e| {
-                let _ = tx.send(e);
-            }));
+        let handle = Engine::spawn(engine_config(engine_link, dir, timing, safe_mode), Box::new(move |e| {
+            let _ = tx.send(e);
+        }));
         Self { link: fake.clone(), handle: Some(handle), events }
     }
 
@@ -120,6 +120,19 @@ impl Drop for Harness {
         if let Some(handle) = self.handle.take() {
             handle.shutdown();
         }
+    }
+}
+
+/// A P32p-20 engine config with the Verified level forced, in `dir`.
+pub fn engine_config(link: Box<dyn MonitorLink>, dir: &Path, timing: Timing, safe_mode: bool) -> EngineConfig {
+    EngineConfig {
+        id: MonitorId("LEN62A2-STEST".into()),
+        identity: MonitorIdentity { edid_id: "LEN62A2".into(), serial: Some("TEST".into()), connector: None },
+        link,
+        dir: dir.to_path_buf(),
+        timing: Some(timing),
+        safe_mode,
+        level: Some(SupportLevel::Verified { profile: "p32p20".into() }),
     }
 }
 

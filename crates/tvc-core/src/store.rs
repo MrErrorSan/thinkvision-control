@@ -1,5 +1,6 @@
 //! Files in the data directory, in 0.0.4's names and formats: `settings.json`, `capabilities.txt`,
-//! `backup-yyyyMMdd-HHmmss[-n].json`.
+//! `backup-yyyyMMdd-HHmmss[-n].json`. `settings.json` lives in the data directory; the others in each monitor's
+//! folder.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -13,6 +14,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::hotkey::Action;
+use crate::identity::{MonitorId, MonitorIdentity};
 use crate::schedule::{AutoMode, Phase};
 use crate::{hex, parse_hex};
 
@@ -24,6 +26,33 @@ pub struct Preset {
     pub contrast: u32,
     pub colour_mode: Option<u8>,
 }
+
+/// Which display a hotkey acts on (`"HotkeyTarget"`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HotkeyTarget {
+    #[default]
+    All,
+    /// The display under the mouse pointer.
+    UnderPointer,
+}
+
+/// One monitor's own settings, an entry of `"Monitors"`. See [`Settings::monitor`] for an absent entry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MonitorSettings {
+    /// The name the user gave it; None = the display's own.
+    pub name: Option<String>,
+    pub this_machine_input: u8,
+    pub day: Preset,
+    pub night: Preset,
+    /// Takes part in Together mode.
+    pub included: bool,
+    /// Together-mode offset, in percent.
+    pub offset: i32,
+    pub last_applied_phase: Option<Phase>,
+}
+
+/// The EDID id whose monitor 0.0.8's `ThisMachineInput` and preset colour modes were set for.
+const LEGACY_EDID: &str = "LEN62A2";
 
 /// Not `Eq`: [`AutoMode::Sun`] holds floats.
 #[derive(Clone, Debug, PartialEq)]
@@ -45,6 +74,12 @@ pub struct Settings {
     pub auto_location: Option<(f64, f64)>,
     /// The phase the schedule last applied (`"LastAppliedPhase"`); None until it first applies one.
     pub last_applied_phase: Option<Phase>,
+    pub hotkey_target: HotkeyTarget,
+    /// Per-monitor entries (`"Monitors"`). Entries under an unstable `-N` id are never saved.
+    pub monitors: BTreeMap<MonitorId, MonitorSettings>,
+    /// The app-wide `this_machine_input` and preset colour modes have moved to a monitor's entry, or never need
+    /// to (`"LegacyAdopted"`). False only for a file from before 0.1.0; see [`Settings::adopt_legacy`].
+    pub legacy_adopted: bool,
 }
 
 /// Day 07:00, Night 19:00.
@@ -64,7 +99,47 @@ impl Default for Settings {
             auto_times: DEFAULT_AUTO_TIMES,
             auto_location: None,
             last_applied_phase: None,
+            hotkey_target: HotkeyTarget::All,
+            monitors: BTreeMap::new(),
+            legacy_adopted: true,
         }
+    }
+}
+
+impl Settings {
+    /// The settings of monitor `id`: its entry, else the app-wide presets without their colour mode, the app-wide
+    /// `this_machine_input`, included, offset 0 and no phase applied yet.
+    pub fn monitor(&self, id: &MonitorId) -> MonitorSettings {
+        self.monitors.get(id).cloned().unwrap_or_else(|| self.inherited())
+    }
+
+    fn inherited(&self) -> MonitorSettings {
+        let plain = |p: &Preset| Preset { colour_mode: None, ..p.clone() };
+        MonitorSettings {
+            name: None,
+            this_machine_input: self.this_machine_input,
+            day: plain(&self.day),
+            night: plain(&self.night),
+            included: true,
+            offset: 0,
+            last_applied_phase: None,
+        }
+    }
+
+    /// Moves 0.0.8's `this_machine_input` and preset colour modes into the entry of `id`, once: only for the first
+    /// LEN62A2 seen with a stable id. Call it when a monitor attaches and save when it returns true. The app-wide
+    /// fields keep their values.
+    pub fn adopt_legacy(&mut self, id: &MonitorId, identity: &MonitorIdentity) -> bool {
+        if self.legacy_adopted || identity.edid_id != LEGACY_EDID || id.is_unstable() {
+            return false;
+        }
+        let mut entry = self.monitor(id);
+        entry.this_machine_input = self.this_machine_input;
+        entry.day.colour_mode = self.day.colour_mode;
+        entry.night.colour_mode = self.night.colour_mode;
+        self.monitors.insert(id.clone(), entry);
+        self.legacy_adopted = true;
+        true
     }
 }
 
@@ -127,7 +202,7 @@ impl SettingsStore {
             };
             (action, gesture.to_string())
         }).collect();
-        Settings {
+        let mut settings = Settings {
             hotkeys,
             day: file.day.into(),
             night: file.night.into(),
@@ -138,7 +213,24 @@ impl SettingsStore {
             auto_times: file.auto_day_night.times,
             auto_location: file.auto_day_night.location,
             last_applied_phase: file.last_applied_phase,
+            hotkey_target: file.hotkey_target,
+            monitors: BTreeMap::new(),
+            legacy_adopted: file.legacy_adopted,
+        };
+        for (id, m) in file.monitors {
+            let base = settings.inherited();
+            let entry = MonitorSettings {
+                name: m.name.or(base.name),
+                this_machine_input: m.this_machine_input.map_or(base.this_machine_input, |b| b.0),
+                day: m.day.map_or(base.day, Preset::from),
+                night: m.night.map_or(base.night, Preset::from),
+                included: m.included.unwrap_or(base.included),
+                offset: m.offset.unwrap_or(base.offset),
+                last_applied_phase: m.last_applied_phase,
+            };
+            settings.monitors.insert(MonitorId(id), entry);
         }
+        settings
     }
 
     /// Renames a corrupt `settings.json` to `settings.json.bak`, unless the `.bak` there is newer.
@@ -166,10 +258,23 @@ impl SettingsStore {
             start_with_windows: settings.start_with_windows,
             background_mode: settings.background_mode,
             auto_day_night: AutoFileOut::from(settings),
-            last_applied_phase: settings.last_applied_phase.map(|p| match p {
-                Phase::Day => "Day",
-                Phase::Night => "Night",
-            }),
+            last_applied_phase: settings.last_applied_phase.map(phase_name),
+            hotkey_target: match settings.hotkey_target {
+                HotkeyTarget::All => "All",
+                HotkeyTarget::UnderPointer => "UnderPointer",
+            },
+            monitors: settings.monitors.iter().filter(|(id, _)| !id.is_unstable()).map(|(id, m)| {
+                (id.0.as_str(), MonitorFileOut {
+                    name: m.name.as_deref(),
+                    this_machine_input: HexByte(m.this_machine_input),
+                    day: PresetFile::from(&m.day),
+                    night: PresetFile::from(&m.night),
+                    included: m.included,
+                    offset: m.offset,
+                    last_applied_phase: m.last_applied_phase.map(phase_name),
+                })
+            }).collect(),
+            legacy_adopted: settings.legacy_adopted,
         };
         write_atomic(&self.dir.join("settings.json"), &serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
     }
@@ -205,6 +310,47 @@ struct SettingsFile {
     /// New in 0.1.0 (0.0.4 and 0.0.8 ignore it). Missing or malformed → None; never makes the file corrupt.
     #[serde(default, deserialize_with = "phase_lenient")]
     last_applied_phase: Option<Phase>,
+    /// New in 0.1.0, like the two below. Missing or malformed → All.
+    #[serde(default, deserialize_with = "hotkey_target_lenient")]
+    hotkey_target: HotkeyTarget,
+    /// Missing or not an object → none; an entry that doesn't parse is skipped.
+    #[serde(default, deserialize_with = "monitors_lenient")]
+    monitors: BTreeMap<String, MonitorFile>,
+    /// Missing (a file from before 0.1.0) or malformed → false.
+    #[serde(default, deserialize_with = "bool_lenient")]
+    legacy_adopted: bool,
+}
+
+/// A `"Monitors"` entry as loaded; an absent field inherits (see [`Settings::monitor`]).
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct MonitorFile {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    this_machine_input: Option<HexByte>,
+    #[serde(default)]
+    day: Option<PresetFile>,
+    #[serde(default)]
+    night: Option<PresetFile>,
+    #[serde(default)]
+    included: Option<bool>,
+    #[serde(default)]
+    offset: Option<i32>,
+    #[serde(default, deserialize_with = "phase_lenient")]
+    last_applied_phase: Option<Phase>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+struct MonitorFileOut<'a> {
+    name: Option<&'a str>,
+    this_machine_input: HexByte,
+    day: PresetFile,
+    night: PresetFile,
+    included: bool,
+    offset: i32,
+    last_applied_phase: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -218,6 +364,9 @@ struct SettingsFileOut<'a> {
     background_mode: bool,
     auto_day_night: AutoFileOut,
     last_applied_phase: Option<&'static str>,
+    hotkey_target: &'static str,
+    monitors: BTreeMap<&'a str, MonitorFileOut<'a>>,
+    legacy_adopted: bool,
 }
 
 fn default_day() -> PresetFile {
@@ -282,6 +431,37 @@ fn phase_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Phase>, D::Er
         Some("night") => Some(Phase::Night),
         _ => None,
     })
+}
+
+fn phase_name(phase: Phase) -> &'static str {
+    match phase {
+        Phase::Day => "Day",
+        Phase::Night => "Night",
+    }
+}
+
+/// `"UnderPointer"` (any case); anything else → All.
+fn hotkey_target_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<HotkeyTarget, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(match value.as_str().map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("underpointer") => HotkeyTarget::UnderPointer,
+        _ => HotkeyTarget::All,
+    })
+}
+
+fn bool_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(serde_json::Value::deserialize(d)?.as_bool().unwrap_or(false))
+}
+
+fn monitors_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, MonitorFile>, D::Error> {
+    let serde_json::Value::Object(entries) = serde_json::Value::deserialize(d)? else { return Ok(BTreeMap::new()) };
+    Ok(entries.into_iter().filter_map(|(id, value)| {
+        let entry = serde_json::from_value::<MonitorFile>(value).ok().filter(|_| !id.is_empty());
+        if entry.is_none() {
+            crate::log::write(&format!("Skipped settings.json monitor \"{id}\": it doesn't parse."));
+        }
+        Some((id, entry?))
+    }).collect())
 }
 
 fn valid_place(lat: f64, lon: f64) -> bool {
@@ -382,7 +562,8 @@ impl<'de> Deserialize<'de> for HexByte {
     }
 }
 
-/// `capabilities.txt`: the last capability string the monitor reported, so controls render offline.
+/// `capabilities.txt` in a monitor's folder: the last capability string it reported, so controls render offline.
+/// The engine ignores a cached string that doesn't parse and overwrites it when the live string differs.
 #[derive(Clone, Debug)]
 pub struct CapabilitiesCache {
     dir: PathBuf,

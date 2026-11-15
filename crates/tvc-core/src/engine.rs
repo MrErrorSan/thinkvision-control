@@ -29,7 +29,7 @@ use crate::safety::{self, Verdict};
 use crate::store::{BackupStore, CapabilitiesCache, Preset};
 use crate::hub::OpId;
 use crate::identity::{MonitorId, MonitorIdentity};
-use crate::support::SupportLevel;
+use crate::support::{self, SupportLevel};
 use crate::{hex, log};
 
 const BRIGHTNESS: u8 = 0x10;
@@ -48,6 +48,9 @@ const PAUSE_SLICE: Duration = Duration::from_millis(50);
 
 const ASLEEP_MESSAGE: &str = "The monitor is asleep or this PC is locked";
 const NO_CONTROLS_MESSAGE: &str = "The monitor answers but supports none of the controls this app uses";
+const READ_ONLY_MESSAGE: &str = "Changes are off for this monitor after repeated failed writes; reconnect it to try again.";
+/// Consecutive failed writes that make the monitor read-only until the next reconnect.
+const READ_ONLY_AFTER: u32 = 3;
 
 type Sink = Arc<Mutex<Box<dyn Fn(Event) + Send>>>;
 
@@ -273,7 +276,7 @@ pub enum Event {
     Displays(Option<Vec<AttachedDisplay>>),
 }
 
-/// Everything one monitor's engine starts from (multi-display). `Engine::spawn` moves to it in w3-hub.
+/// Everything one monitor's engine starts from.
 pub struct EngineConfig {
     pub id: MonitorId,
     pub identity: MonitorIdentity,
@@ -290,11 +293,12 @@ pub struct EngineConfig {
 pub struct Engine;
 
 impl Engine {
-    /// Starts the worker. `dir` is the data directory (`capabilities.txt`, backups, the crash marker). The first
-    /// events are `Controls` (from the capability cache, else synthesized from the profile), `Status(Connecting)`
-    /// and, with `safe_mode`, `SafeMode(true)`; send `Connect` to start talking to the monitor.
-    pub fn spawn(link: Box<dyn MonitorLink>, profiles: ProfileStore, dir: PathBuf, timing: Timing, safe_mode: bool,
-        sink: Box<dyn Fn(Event) + Send>) -> EngineHandle {
+    /// Starts the worker on a thread named `tvc-engine-<id>`. The first events are `Controls` (from the capability
+    /// cache in `dir`, else synthesized from the profile when the level allows it), `Status(Connecting)` and, with
+    /// `safe_mode`, `SafeMode(true)`; send `Connect` to start talking to the monitor. A thread that can't be
+    /// spawned is logged and reported as `Status(NotResponding)`.
+    pub fn spawn(config: EngineConfig, sink: Box<dyn Fn(Event) + Send>) -> EngineHandle {
+        let EngineConfig { id, identity, link, dir, timing, safe_mode, level } = config;
         let (tx, rx) = mpsc::channel();
         let (done_tx, done) = mpsc::channel::<()>();
         let stop = Arc::new(AtomicBool::new(false));
@@ -304,29 +308,42 @@ impl Engine {
         let cached = cached_raw.as_deref().map(mccs::parse);
         let corrupt_cache = matches!(cached, Some(Err(_)));
         if let Some(Err(e)) = &cached {
-            log::write(&format!("Capabilities cache doesn't parse ({e}); reading them from the monitor."));
+            log::write(&format!("[{id}] Capabilities cache doesn't parse ({e}); reading them from the monitor."));
             cached_raw = None;
         }
+        let cached = cached.and_then(Result::ok);
+        let forced_level = level.is_some();
+        let level = level.unwrap_or_else(|| support::resolve(&identity, cached.as_ref(), false));
+        let profiles = ProfileStore::for_level(&dir, &level, cached.as_ref());
+        let timing = timing.unwrap_or_else(|| profiles.profile().timing.clone());
         let (caps, caps_known) = match cached {
-            Some(Ok(caps)) => {
-                log_warnings("cached", &caps);
+            Some(caps) => {
+                for warning in &caps.warnings {
+                    log::write(&format!("[{id}] Capabilities (cached): {warning}"));
+                }
                 (caps, true)
             }
-            _ => (profiles.synthesize_capabilities(), false),
+            None if support::may_synthesize(&level) => (profiles.synthesize_capabilities(), false),
+            None => (MonitorCapabilities::default(), false),
         };
         let controls = profiles.resolve(&caps);
         let worker = Worker {
+            id: id.clone(),
+            identity,
+            forced_level,
             link,
             profiles,
             caps_cache,
             crash: Marker::new(&dir, &crash::process_key()),
-            level: SupportLevel::Verified { profile: "p32p20".into() },
-            backups: BackupStore::new(dir),
+            level,
+            backups: BackupStore::new(&dir),
+            dir,
             timing,
             sink: sink.clone(),
             rx,
             stop: stop.clone(),
             pending: VecDeque::new(),
+            op: None,
             cached_raw,
             live_caps: false,
             caps_known,
@@ -346,26 +363,40 @@ impl Engine {
             burst: None,
             snapshot: None,
             safe_mode,
+            write_failures: 0,
+            read_only: false,
             display_off: false,
             locked: false,
             suspended: false,
             resumed_at: None,
             wake_at: None,
         };
-        thread::Builder::new()
-            .name("tvc-engine".into())
+        let spawned = thread::Builder::new()
+            .name(format!("tvc-engine-{id}"))
             .spawn(move || {
                 let _done = done_tx;
                 worker.run();
-            })
-            .expect("spawn the engine thread");
-        EngineHandle { tx, stop, done, sink, dead: AtomicBool::new(false) }
+            });
+        let dead = AtomicBool::new(false);
+        if let Err(e) = spawned {
+            log::write(&format!("[{id}] Couldn't start the engine thread ({e}); reporting the monitor as not responding."));
+            dead.store(true, Ordering::SeqCst);
+            call(&sink, Event::Status { status: MonitorStatus::NotResponding, failure: None });
+        }
+        EngineHandle { id, tx, stop, done, sink, dead }
     }
+}
+
+/// A command and the hub's op id for it, if it came through the hub.
+struct Envelope {
+    op: Option<OpId>,
+    command: Command,
 }
 
 /// The app's end of the engine.
 pub struct EngineHandle {
-    tx: Sender<Command>,
+    id: MonitorId,
+    tx: Sender<Envelope>,
     stop: Arc<AtomicBool>,
     done: Receiver<()>,
     sink: Sink,
@@ -376,23 +407,40 @@ pub struct EngineHandle {
 impl EngineHandle {
     /// A worker that has died is logged once and reported through the sink as `Status(NotResponding)`.
     pub fn send(&self, command: Command) {
-        if self.tx.send(command).is_err() && !self.dead.swap(true, Ordering::SeqCst) {
-            log::write("Engine thread stopped unexpectedly; reporting the monitor as not responding.");
-            call(&self.sink, Event::Status { status: MonitorStatus::NotResponding, failure: None });
-        }
+        self.post(None, command);
     }
 
-    /// Another sender for other threads (hotkeys, tray).
-    pub fn sender(&self) -> Sender<Command> {
-        self.tx.clone()
+    /// Sends a command from the hub; its `Result` carries `op`. False when the worker is gone.
+    pub fn send_op(&self, op: OpId, command: Command) -> bool {
+        self.post(Some(op), command)
+    }
+
+    fn post(&self, op: Option<OpId>, command: Command) -> bool {
+        let sent = self.tx.send(Envelope { op, command }).is_ok();
+        if !sent && !self.dead.swap(true, Ordering::SeqCst) {
+            log::write(&format!("[{}] Engine thread stopped unexpectedly; reporting the monitor as not responding.",
+                self.id));
+            call(&self.sink, Event::Status { status: MonitorStatus::NotResponding, failure: None });
+        }
+        sent
     }
 
     /// Stops the worker, waiting at most [`SHUTDOWN_WAIT`] for the operation in flight, so exit never hangs on
     /// a monitor that doesn't answer.
     pub fn shutdown(self) {
+        self.stop();
+        self.join(Instant::now() + SHUTDOWN_WAIT);
+    }
+
+    /// Tells the worker to stop, without waiting.
+    pub(crate) fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
-        let _ = self.tx.send(Command::Shutdown);
-        let _ = self.done.recv_timeout(SHUTDOWN_WAIT);
+        let _ = self.tx.send(Envelope { op: None, command: Command::Shutdown });
+    }
+
+    /// Waits for a stopped worker until `deadline`.
+    pub(crate) fn join(self, deadline: Instant) {
+        let _ = self.done.recv_timeout(deadline.saturating_duration_since(Instant::now()));
     }
 }
 
@@ -408,6 +456,12 @@ enum OpKind {
 }
 
 struct Worker {
+    id: MonitorId,
+    identity: MonitorIdentity,
+    /// `EngineConfig.level` was given: never re-resolved.
+    forced_level: bool,
+    /// This monitor's folder (profile overlay).
+    dir: PathBuf,
     link: Box<dyn MonitorLink>,
     profiles: ProfileStore,
     caps_cache: CapabilitiesCache,
@@ -415,10 +469,12 @@ struct Worker {
     backups: BackupStore,
     timing: Timing,
     sink: Sink,
-    rx: Receiver<Command>,
+    rx: Receiver<Envelope>,
     stop: Arc<AtomicBool>,
     /// Commands taken off the channel while coalescing a drag, handled before the channel.
-    pending: VecDeque<Command>,
+    pending: VecDeque<Envelope>,
+    /// The hub's op id of the command being handled.
+    op: Option<OpId>,
     /// The cached capability string, only when it parses.
     cached_raw: Option<String>,
     live_caps: bool,
@@ -432,7 +488,7 @@ struct Worker {
     no_controls: bool,
     /// For display; trusted for writes only with `caps_known`.
     caps: MonitorCapabilities,
-    /// How far this monitor is trusted; always Verified until multi-display support resolves it.
+    /// How far this monitor is trusted: forced, or `support::resolve` at start and after each capability read.
     level: SupportLevel,
     controls: BTreeMap<u8, ControlDefinition>,
     cache: BTreeMap<u8, VcpReading>,
@@ -449,6 +505,10 @@ struct Worker {
     burst: Option<Burst>,
     snapshot: Option<BTreeMap<u8, u16>>,
     safe_mode: bool,
+    /// Consecutive write commands that failed on the link (not refusals).
+    write_failures: u32,
+    /// After `READ_ONLY_AFTER` failed writes: writes are refused until the next reconnect.
+    read_only: bool,
     display_off: bool,
     locked: bool,
     suspended: bool,
@@ -459,12 +519,14 @@ struct Worker {
 
 impl Worker {
     fn run(mut self) {
+        log::set_prefix(format!("[{}] ", self.id));
         self.emit_controls();
         self.emit(Event::Status { status: self.status, failure: None });
         if self.safe_mode {
             self.emit(Event::SafeMode(true));
         }
-        while let Some(command) = self.next() {
+        while let Some(Envelope { op, command }) = self.next() {
+            self.op = op;
             match command {
                 Command::Shutdown => break,
                 command => self.handle(command),
@@ -474,7 +536,7 @@ impl Worker {
     }
 
     /// The next command, running the wake recheck and retry-burst steps as they fall due.
-    fn next(&mut self) -> Option<Command> {
+    fn next(&mut self) -> Option<Envelope> {
         loop {
             if self.stopping() {
                 return None;
@@ -508,6 +570,9 @@ impl Worker {
     }
 
     fn handle(&mut self, command: Command) {
+        if matches!(command, Command::Connect | Command::ConnectReading(_) | Command::RecheckAfterEvent) {
+            self.clear_read_only();
+        }
         match command {
             Command::Connect => {
                 if !self.asleep() {
@@ -676,6 +741,7 @@ impl Worker {
                 return;
             }
             if failure == LinkFailure::NotFound {
+                self.clear_read_only(); // unplugged: it starts over when it's back
                 self.report_displays();
             }
             self.set_status(MonitorStatus::NotFound, Some(failure));
@@ -686,6 +752,11 @@ impl Worker {
         let may_read = !self.safe_mode || self.corrupt_cache;
         if !self.live_caps && self.cached_raw.is_none() && !self.caps_failed && may_read && !self.read_capabilities() {
             self.caps_failed = true;
+            let level = self.level.clone();
+            self.resolve_level(None);
+            if self.level != level {
+                self.emit_controls();
+            }
         }
         let codes: Vec<u8> = match only {
             Some(codes) => codes.to_vec(),
@@ -735,8 +806,8 @@ impl Worker {
         log_warnings("live", &caps);
         self.caps_cache.save(&raw);
         self.cached_raw = Some(raw);
-        self.controls = self.profiles.resolve(&caps);
         self.caps = caps;
+        self.resolve_level(Some(self.caps.clone()));
         self.emit_controls();
         if self.status == MonitorStatus::Connected {
             let missing: Vec<u8> = self.controls.values()
@@ -748,6 +819,34 @@ impl Worker {
             self.refresh(&missing, true);
         }
         true
+    }
+
+    /// Re-resolves the support level from `caps` (None: the live read failed and nothing is cached), rebuilds the
+    /// profile for it and re-resolves the controls. A forced level keeps its profile.
+    fn resolve_level(&mut self, caps: Option<MonitorCapabilities>) {
+        if !self.forced_level {
+            let level = support::resolve(&self.identity, caps.as_ref(), caps.is_none());
+            if level != self.level {
+                log::write(&format!("Support level: {level:?}"));
+            }
+            self.profiles = ProfileStore::for_level(&self.dir, &level, caps.as_ref());
+            self.level = level;
+        }
+        self.controls = self.profiles.resolve(&self.caps);
+    }
+
+    fn clear_read_only(&mut self) {
+        self.write_failures = 0;
+        self.read_only = false;
+    }
+
+    /// A write command failed on the link; the third in a row makes the monitor read-only.
+    fn note_write_failure(&mut self) {
+        self.write_failures += 1;
+        if self.write_failures >= READ_ONLY_AFTER && !self.read_only {
+            log::write(&format!("{READ_ONLY_AFTER} writes in a row failed; read-only until the next reconnect."));
+            self.read_only = true;
+        }
     }
 
     fn request_reconnect(&mut self) {
@@ -827,6 +926,9 @@ impl Worker {
         }
         if self.status != MonitorStatus::Connected {
             return Some(self.not_connected());
+        }
+        if self.read_only {
+            return Some(WriteResult::blocked(ResultKind::Refused, READ_ONLY_MESSAGE.into()));
         }
         (!self.caps_known).then(|| WriteResult::blocked(ResultKind::Refused,
             "The monitor's capabilities haven't been read yet.".into()))
@@ -971,13 +1073,16 @@ impl Worker {
             }
             Err(e) => {
                 log::write(&format!("Drag write {}={v} failed: {e}", hex(code)));
+                if !matches!(e, LinkError::Unsupported(_)) {
+                    self.note_write_failure();
+                }
                 self.failed(&e);
             }
         }
     }
 
     fn evaluate_drag(&self, code: u8, value: u16) -> Option<u16> {
-        if !self.caps_known {
+        if !self.caps_known || self.read_only {
             return None;
         }
         let max = self.cache.get(&code).map(|c| c.max);
@@ -992,7 +1097,7 @@ impl Worker {
         let mut newest = value;
         let mut i = 0;
         while i < self.pending.len() {
-            match self.pending[i] {
+            match self.pending[i].command {
                 Command::DragTo { code: c, value: v } if c == code => {
                     newest = v;
                     self.pending.remove(i);
@@ -1155,6 +1260,7 @@ impl Worker {
         if let LinkError::Unsupported(_) = e {
             return WriteResult::unsupported(name);
         }
+        self.note_write_failure();
         self.failed(e);
         self.not_connected()
     }
@@ -1223,7 +1329,11 @@ impl Worker {
     }
 
     fn write(&mut self, code: u8, value: u16, attempts: u32) -> Result<(), LinkError> {
-        self.run_op(OpKind::Write, attempts, |l| l.write(code, value))
+        let result = self.run_op(OpKind::Write, attempts, |l| l.write(code, value));
+        if result.is_ok() {
+            self.write_failures = 0;
+        }
+        result
     }
 
     /// One link call, paced; only `Transient` failures are retried. A `Gone` marks the monitor lost. Every wait
@@ -1283,7 +1393,7 @@ impl Worker {
     }
 
     fn emit_result(&self, origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult) {
-        self.emit(Event::Result { origin, code, preset, result, op: None });
+        self.emit(Event::Result { origin, code, preset, result, op: self.op });
     }
 
     fn emit_controls(&self) {

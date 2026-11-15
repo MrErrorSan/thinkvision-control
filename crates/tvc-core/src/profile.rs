@@ -1,7 +1,8 @@
-//! The monitor profile: the embedded P32p-20 definitions (`profile/p32p20.json`, schema v2) merged with the user
-//! overlay `profile.user.json` (0.0.4's camelCase format; the overlay wins per code).
+//! The monitor profile: built-in definitions (`profile/*.json`, schema v2) merged with the user overlay
+//! `profile.user.json` (0.0.4's camelCase format; the overlay wins per code). The built-ins are the P32p-20
+//! (`p32p20`), the laptop panel (`builtin-backlight`) and the generic MCCS monitor (`generic-mccs`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,10 +11,21 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::engine::Timing;
-use crate::mccs::MonitorCapabilities;
+use crate::mccs::{self, MonitorCapabilities};
+use crate::support::SupportLevel;
 use crate::{hex, parse_hex};
 
-const EMBEDDED: &str = include_str!("profile/p32p20.json");
+/// The built-in profiles by key; `SupportLevel::Verified { profile }` names one.
+const BUILTIN: [(&str, &str); 3] = [
+    ("p32p20", include_str!("profile/p32p20.json")),
+    ("builtin-backlight", include_str!("profile/builtin-backlight.json")),
+    ("generic-mccs", include_str!("profile/generic-mccs.json")),
+];
+/// The Lenovo profile a `LenovoFamily` monitor borrows its definitions from.
+const LENOVO: &str = "p32p20";
+const GENERIC: &str = "generic-mccs";
+const COLOUR_MODE: u8 = 0x14;
+const INPUT: u8 = 0x60;
 const OVERLAY_FILE: &str = "profile.user.json";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -102,7 +114,7 @@ impl ControlDefinition {
 pub struct InputOption {
     pub code: u8,
     pub label: String,
-    /// "hdmi", "dp" or "usbc".
+    /// "hdmi", "dp" or "usbc"; "" for any other port.
     pub kind: String,
 }
 
@@ -120,9 +132,11 @@ pub struct Profile {
     /// Appended to "Your monitor kept brightness at {n}".
     pub brightness_lock_note: String,
     pub timing: Timing,
+    /// Monitor-tab order of the codes (`controlOrder`, else the order of `controls`); unlisted codes go last.
+    pub control_order: Vec<u8>,
 }
 
-/// Embedded profile plus the user overlay in `user_dir`. Cheap to clone.
+/// A built-in profile plus the user overlay in `user_dir`. Cheap to clone.
 #[derive(Clone, Debug)]
 pub struct ProfileStore {
     dir: PathBuf,
@@ -131,37 +145,67 @@ pub struct ProfileStore {
 }
 
 impl ProfileStore {
+    /// The P32p-20 profile.
     pub fn new(user_dir: impl Into<PathBuf>) -> Self {
-        let file: ProfileFile = serde_json::from_str(EMBEDDED).expect("embedded profile is valid");
-        let embedded = file.controls.iter().filter_map(to_definition).map(|d| (d.code, d)).collect();
-        let timing = file.quirks.and_then(|q| q.timing).map(|t| Timing {
-            gap: Duration::from_millis(t.gap_ms),
-            settle: Duration::from_millis(t.settle_ms),
-            retry: Duration::from_millis(t.retry_ms),
-            attempts: t.attempts,
-            ..Timing::default()
-        });
-        let profile = Profile {
-            edid_id: file.edid_id,
-            display_name: file.display_name.unwrap_or_default(),
-            short_name: file.short_name.unwrap_or_default(),
-            inputs: file.inputs.unwrap_or_default().into_iter()
-                .filter_map(|i| Some(InputOption { code: parse_hex(&i.code)?, label: i.label, kind: i.kind }))
-                .collect(),
-            colour_mode_order: file.colour_mode_order.unwrap_or_default().iter().filter_map(|c| parse_hex(c)).collect(),
-            custom_colour_mode: file.custom_colour_mode.as_deref().and_then(parse_hex).unwrap_or(0x12),
-            brightness_lock_note: file.brightness_lock_note.unwrap_or_default(),
-            timing: timing.unwrap_or_default(),
-        };
-        Self { dir: user_dir.into(), profile: Arc::new(profile), embedded: Arc::new(embedded) }
+        Self::with(user_dir, builtin(LENOVO).expect("the P32p-20 profile is built in"))
     }
 
-    /// The profile for `level` with the user overlay in `user_dir`: the built-in profile named by `Verified`,
-    /// the Lenovo family profile filtered by `caps`, or the generic MCCS profile. Stub until w3-support: the P32p-20.
-    pub fn for_level(user_dir: impl Into<PathBuf>, level: &crate::support::SupportLevel,
-        caps: Option<&MonitorCapabilities>) -> Self {
-        let _ = (level, caps);
-        Self::new(user_dir)
+    /// The profile for `level` with the user overlay in `user_dir`:
+    /// - `Verified`: the built-in profile it names (an unknown name gets the generic one);
+    /// - `LenovoFamily`: the P32p-20 definitions of the codes [`lenovo_family_codes`] accepts in `caps`, plus the
+    ///   Range codes `caps` advertises and the NeverWrite codes; `vcpname` names win;
+    /// - `GenericMccs` and `ReadOnly`: the generic MCCS profile, with the colour modes and inputs `caps` advertises.
+    ///
+    /// Without `caps` a Lenovo or generic profile enables no value lists, so build it again after the live read.
+    pub fn for_level(user_dir: impl Into<PathBuf>, level: &SupportLevel, caps: Option<&MonitorCapabilities>) -> Self {
+        let key = match level {
+            SupportLevel::Verified { profile } if BUILTIN.iter().any(|(k, _)| k == profile) => profile.as_str(),
+            SupportLevel::Verified { profile } => {
+                crate::log::write(&format!("No built-in profile \"{profile}\"; using the generic MCCS one."));
+                GENERIC
+            }
+            SupportLevel::LenovoFamily => LENOVO,
+            SupportLevel::GenericMccs | SupportLevel::ReadOnly => GENERIC,
+        };
+        let (mut profile, mut defs) = builtin(key).expect("the key is built in");
+        if *level == SupportLevel::LenovoFamily {
+            let qualified = caps.map(|c| qualifying_codes(&defs, c)).unwrap_or_default();
+            defs.retain(|code, d| d.safety == SafetyClass::NeverWrite || qualified.contains(code)
+                || (d.kind == ControlKind::Range && caps.is_some_and(|c| c.supports(*code))));
+            for (code, name) in caps.map(|c| &c.names).into_iter().flatten() {
+                if let Some(d) = defs.get_mut(code) {
+                    d.name = name.clone();
+                }
+            }
+            let inputs = if defs.contains_key(&INPUT) { advertised(caps, INPUT) } else { Vec::new() };
+            profile.inputs.retain(|i| inputs.contains(&i.code));
+            profile.control_order.retain(|c| defs.contains_key(c));
+            profile.edid_id.clear();
+        } else if key == GENERIC {
+            let modes = advertised(caps, COLOUR_MODE);
+            if let Some(d) = defs.get_mut(&COLOUR_MODE) {
+                d.value_labels = modes.iter().map(|&v| {
+                    (v, d.value_labels.get(&v).cloned().unwrap_or_else(|| format!("Mode {}", hex(v))))
+                }).collect();
+            }
+            let inputs = advertised(caps, INPUT);
+            if let Some(d) = defs.get_mut(&INPUT) {
+                d.value_labels = inputs.iter().map(|&v| (v, input_label(v))).collect();
+            }
+            profile.inputs = inputs.iter()
+                .map(|&v| InputOption { code: v, label: input_label(v), kind: input_kind(v).into() })
+                .collect();
+        }
+        if !matches!(level, SupportLevel::Verified { .. }) {
+            let model = caps.map(|c| c.model.trim().to_string()).unwrap_or_default();
+            profile.display_name.clone_from(&model);
+            profile.short_name = model;
+        }
+        Self::with(user_dir, (profile, defs))
+    }
+
+    fn with(user_dir: impl Into<PathBuf>, (profile, embedded): (Profile, BTreeMap<u8, ControlDefinition>)) -> Self {
+        Self { dir: user_dir.into(), profile: Arc::new(profile), embedded: Arc::new(embedded) }
     }
 
     pub fn profile(&self) -> &Arc<Profile> {
@@ -248,6 +292,77 @@ impl ProfileStore {
     }
 }
 
+/// The key of the built-in profile made for exactly this EDID id ("LEN62A2" gives "p32p20").
+pub(crate) fn verified_profile(edid_id: &str) -> Option<&'static str> {
+    if edid_id.is_empty() {
+        return None;
+    }
+    BUILTIN.iter().map(|(key, _)| *key).find(|key| builtin(key).is_some_and(|(p, _)| p.edid_id == edid_id))
+}
+
+/// The codes a Lenovo relative shares with the P32p-20: each one the P32p-20 labels (NeverWrite and confirm-only
+/// codes aside) whose advertised value list is non-empty and inside those labels.
+pub(crate) fn lenovo_family_codes(caps: &MonitorCapabilities) -> BTreeSet<u8> {
+    builtin(LENOVO).map(|(_, defs)| qualifying_codes(&defs, caps)).unwrap_or_default()
+}
+
+fn qualifying_codes(defs: &BTreeMap<u8, ControlDefinition>, caps: &MonitorCapabilities) -> BTreeSet<u8> {
+    defs.values()
+        .filter(|d| d.safety == SafetyClass::Normal && !d.value_labels.is_empty())
+        .filter(|d| matches!(caps.vcp.get(&d.code), Some(Some(values))
+            if !values.is_empty() && values.iter().all(|v| d.value_labels.contains_key(v))))
+        .map(|d| d.code)
+        .collect()
+}
+
+fn advertised(caps: Option<&MonitorCapabilities>, code: u8) -> Vec<u8> {
+    caps.and_then(|c| c.vcp.get(&code)?.clone()).unwrap_or_default()
+}
+
+fn input_label(value: u8) -> String {
+    mccs::input_name(value).map_or_else(|| format!("Input {}", hex(value)), str::to_string)
+}
+
+fn input_kind(value: u8) -> &'static str {
+    match value {
+        0x11 | 0x12 => "hdmi",
+        0x0F | 0x10 => "dp",
+        _ => "",
+    }
+}
+
+/// A built-in profile by key, parsed.
+fn builtin(key: &str) -> Option<(Profile, BTreeMap<u8, ControlDefinition>)> {
+    let (_, json) = BUILTIN.iter().find(|(k, _)| *k == key)?;
+    let file: ProfileFile = serde_json::from_str(json).expect("built-in profiles are valid");
+    let embedded = file.controls.iter().filter_map(to_definition).map(|d| (d.code, d)).collect();
+    let control_order = match &file.control_order {
+        Some(order) => order.iter().filter_map(|c| parse_hex(c)).collect(),
+        None => file.controls.iter().filter_map(|c| parse_hex(&c.code)).collect(),
+    };
+    let timing = file.quirks.and_then(|q| q.timing).map(|t| Timing {
+        gap: Duration::from_millis(t.gap_ms),
+        settle: Duration::from_millis(t.settle_ms),
+        retry: Duration::from_millis(t.retry_ms),
+        attempts: t.attempts,
+        ..Timing::default()
+    });
+    let profile = Profile {
+        edid_id: file.edid_id,
+        display_name: file.display_name.unwrap_or_default(),
+        short_name: file.short_name.unwrap_or_default(),
+        inputs: file.inputs.unwrap_or_default().into_iter()
+            .filter_map(|i| Some(InputOption { code: parse_hex(&i.code)?, label: i.label, kind: i.kind }))
+            .collect(),
+        colour_mode_order: file.colour_mode_order.unwrap_or_default().iter().filter_map(|c| parse_hex(c)).collect(),
+        custom_colour_mode: file.custom_colour_mode.as_deref().and_then(parse_hex).unwrap_or(0x12),
+        brightness_lock_note: file.brightness_lock_note.unwrap_or_default(),
+        timing: timing.unwrap_or_default(),
+        control_order,
+    };
+    Some((profile, embedded))
+}
+
 fn to_definition(e: &ControlEntry) -> Option<ControlDefinition> {
     let mut labels = BTreeMap::new();
     for (k, v) in e.values.iter().flatten() {
@@ -301,6 +416,8 @@ struct ProfileFile {
     brightness_lock_note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     quirks: Option<Quirks>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    control_order: Option<Vec<String>>,
     controls: Vec<ControlEntry>,
 }
 

@@ -1,5 +1,5 @@
 //! How far the app trusts a monitor: a verified profile, a Lenovo relative, a generic MCCS monitor, or read-only.
-//! `safety::evaluate` takes the level; the rules that pick it arrive with multi-display support.
+//! `safety::evaluate` takes the level.
 
 use crate::identity::MonitorIdentity;
 use crate::mccs::MonitorCapabilities;
@@ -14,16 +14,27 @@ pub enum SupportLevel {
 }
 
 /// The level for a display, from its identity and (once read) its capabilities:
-/// - an exact EDID match with a built-in profile gives `Verified`;
-/// - PNP `LEN` whose advertised values for a code are a subset of a known Lenovo profile's labels gives `LenovoFamily`;
+/// - an exact EDID match with a built-in profile gives `Verified`, whatever the capabilities;
+/// - PNP `LEN` where at least one code the P32p-20 labels is advertised with values inside those labels gives
+///   `LenovoFamily` (see `profile::lenovo_family_codes`);
 /// - otherwise `GenericMccs`;
-/// - `caps_failed` (the live read failed and nothing is cached) gives `ReadOnly`.
+/// - `caps_failed` with no `caps` (the live read failed and nothing is cached) gives `ReadOnly`.
 ///
-/// Build the matching profile with `ProfileStore::for_level`. Implemented in w3-support; until then everything is
-/// Verified as the P32p-20.
+/// Before the first read (`caps` None, `caps_failed` false) it is `Verified` for an exact match, else
+/// `GenericMccs`. Call it again once the live capabilities arrive or the read fails: a `LEN` monitor can then
+/// become `LenovoFamily`, and any monitor without an exact match `ReadOnly`. Build the matching profile with
+/// `ProfileStore::for_level`.
 pub fn resolve(identity: &MonitorIdentity, caps: Option<&MonitorCapabilities>, caps_failed: bool) -> SupportLevel {
-    let _ = (identity, caps, caps_failed);
-    SupportLevel::Verified { profile: "p32p20".into() }
+    if let Some(profile) = crate::profile::verified_profile(&identity.edid_id) {
+        return SupportLevel::Verified { profile: profile.into() };
+    }
+    match caps {
+        None if caps_failed => SupportLevel::ReadOnly,
+        Some(caps) if identity.edid_id.starts_with("LEN") && !crate::profile::lenovo_family_codes(caps).is_empty() => {
+            SupportLevel::LenovoFamily
+        }
+        _ => SupportLevel::GenericMccs,
+    }
 }
 
 /// Whether the engine may synthesise capabilities from the profile before the monitor answers (display only).
