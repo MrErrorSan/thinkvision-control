@@ -678,3 +678,17 @@ fn new_install_needs_no_adoption() {
     assert!(!s.adopt_legacy(&id("LEN62A2-SV1"), &len62a2()));
     assert!(s.monitors.is_empty());
 }
+
+#[test]
+fn language_round_trips_and_unknown_follows_the_system() {
+    let dir = TempDir::new();
+    let store = SettingsStore::new(dir.path());
+    assert_eq!(store.load().language, None);
+    let settings = Settings { language: Some("de".into()), ..Settings::default() };
+    store.save(&settings).unwrap();
+    assert_eq!(store.load().language.as_deref(), Some("de"));
+    for (value, expected) in [(r#""System""#, None), (r#""klingon""#, None), ("7", None), (r#""zh_CN""#, Some("zh_CN"))] {
+        let (_dir, s) = load_with_field("Language", value);
+        assert_eq!(s.language.as_deref(), expected, "{value}");
+    }
+}

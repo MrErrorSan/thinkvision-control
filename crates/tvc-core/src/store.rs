@@ -80,6 +80,8 @@ pub struct Settings {
     /// The app-wide `this_machine_input` and preset colour modes have moved to a monitor's entry, or never need
     /// to (`"LegacyAdopted"`). False only for a file from before 0.1.0; see [`Settings::adopt_legacy`].
     pub legacy_adopted: bool,
+    /// The window's language as an `i18n::LANGUAGES` code (`"Language"`); None = follow the system.
+    pub language: Option<String>,
 }
 
 /// Day 07:00, Night 19:00.
@@ -102,6 +104,7 @@ impl Default for Settings {
             hotkey_target: HotkeyTarget::All,
             monitors: BTreeMap::new(),
             legacy_adopted: true,
+            language: None,
         }
     }
 }
@@ -216,6 +219,7 @@ impl SettingsStore {
             hotkey_target: file.hotkey_target,
             monitors: BTreeMap::new(),
             legacy_adopted: file.legacy_adopted,
+            language: file.language.filter(|l| crate::i18n::LANGUAGES.iter().any(|(c, _)| c == l)),
         };
         for (id, m) in file.monitors {
             let base = settings.inherited();
@@ -275,6 +279,7 @@ impl SettingsStore {
                 })
             }).collect(),
             legacy_adopted: settings.legacy_adopted,
+            language: settings.language.as_deref().unwrap_or("System"),
         };
         write_atomic(&self.dir.join("settings.json"), &serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
     }
@@ -319,6 +324,14 @@ struct SettingsFile {
     /// Missing (a file from before 0.1.0) or malformed → false.
     #[serde(default, deserialize_with = "bool_lenient")]
     legacy_adopted: bool,
+    /// "System", a language code, or anything else (→ None: follow the system).
+    #[serde(default, deserialize_with = "language_lenient")]
+    language: Option<String>,
+}
+
+fn language_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(value.as_str().map(str::trim).filter(|s| !s.eq_ignore_ascii_case("system")).map(str::to_string))
 }
 
 /// A `"Monitors"` entry as loaded; an absent field inherits (see [`Settings::monitor`]).
@@ -367,6 +380,7 @@ struct SettingsFileOut<'a> {
     hotkey_target: &'static str,
     monitors: BTreeMap<&'a str, MonitorFileOut<'a>>,
     legacy_adopted: bool,
+    language: &'a str,
 }
 
 fn default_day() -> PresetFile {

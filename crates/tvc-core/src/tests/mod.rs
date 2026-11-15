@@ -4,6 +4,7 @@ mod cli_tests;
 mod crash_tests;
 mod engine_tests;
 mod hub_tests;
+mod i18n_tests;
 mod identity_tests;
 mod misc_tests;
 mod parser_tests;

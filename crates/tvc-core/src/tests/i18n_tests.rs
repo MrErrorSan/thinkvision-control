@@ -1,0 +1,75 @@
+//! Translation catalogs and language matching.
+
+use crate::i18n::{best_match, parse, LANGUAGES};
+
+fn locales(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn best_match_takes_the_first_shipped_language() {
+    assert_eq!(best_match(&locales(&["de-AT", "en-US"])), "de");
+    assert_eq!(best_match(&locales(&["fr_CA.UTF-8"])), "fr");
+    assert_eq!(best_match(&locales(&["pt-BR", "es-MX"])), "es");
+    assert_eq!(best_match(&locales(&["zh-Hans-CN"])), "zh_CN");
+    assert_eq!(best_match(&locales(&["zh_CN.UTF-8"])), "zh_CN");
+    assert_eq!(best_match(&locales(&["zh-TW", "de"])), "de");
+    assert_eq!(best_match(&locales(&["ja", "ko"])), "en");
+    assert_eq!(best_match(&[]), "en");
+}
+
+#[test]
+fn every_shipped_catalog_parses() {
+    for (code, _) in LANGUAGES.iter().filter(|(c, _)| *c != "en") {
+        let path = format!("{}/../../translations/{code}/LC_MESSAGES/tvc.po", env!("CARGO_MANIFEST_DIR"));
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+        let catalog = parse(&text);
+        assert!(!catalog.contains_key(""), "{code}: header kept as an entry");
+    }
+}
+
+#[test]
+fn po_entries_plurals_continuations_and_escapes() {
+    let po = r#"
+msgid ""
+msgstr "Language: de\n"
+
+# a comment
+msgid "Brightness"
+msgstr "Helligkeit"
+
+msgid ""
+"Restored {0} of "
+"{1} settings."
+msgstr "{0} von {1} Einstellungen "
+"wiederhergestellt."
+
+msgid "One display"
+msgid_plural "{0} displays"
+msgstr[0] "Ein Bildschirm"
+msgstr[1] "{0} Bildschirme"
+
+#, fuzzy
+msgid "Contrast"
+msgstr "Kontrast?"
+
+msgctxt "Dialog"
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Quote \"this\"\tand\nthat"
+msgstr "Zitat \"dies\""
+
+msgid "Untranslated"
+msgstr ""
+"#;
+    let c = parse(po);
+    assert_eq!(c["Brightness"], ["Helligkeit"]);
+    assert_eq!(c["Restored {0} of {1} settings."], ["{0} von {1} Einstellungen wiederhergestellt."]);
+    assert_eq!(c["One display"], ["Ein Bildschirm", "{0} Bildschirme"]);
+    assert!(!c.contains_key("Contrast"), "fuzzy entries are skipped");
+    assert!(!c.contains_key("Open"), "entries with a context belong to the Slint catalog");
+    assert_eq!(c["Quote \"this\"\tand\nthat"], ["Zitat \"dies\""]);
+    assert_eq!(c["Untranslated"], [""]);
+    assert!(!c.contains_key(""));
+}
