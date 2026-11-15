@@ -53,6 +53,8 @@ const AUTO_EVERY: Duration = Duration::from_secs(60);
 const HEADLESS_BUDGET: Duration = Duration::from_secs(10);
 const HEADLESS_COLD_BUDGET: Duration = Duration::from_secs(20);
 const RETRY_FOR: Duration = Duration::from_secs(16);
+/// After a setup fix ran: long enough for the facts lookup and a reconnect.
+const SETUP_CHECK_AFTER: Duration = Duration::from_secs(4);
 const TIMED_OUT: &str = "Timed out: the monitor didn't answer in time";
 const NEEDS_YES: &str = "Switching the input needs confirmation: run it again with --yes";
 const NEEDS_SCREEN: &str =
@@ -84,6 +86,15 @@ pub fn uninstall() -> Option<Rc<Controller>> {
     APP.with(|a| a.borrow_mut().take())
 }
 
+/// A setup card's fix: running, checking again after it ran, or its result line.
+#[derive(Clone, Default)]
+pub struct SetupRun {
+    pub running: bool,
+    pub checking: bool,
+    pub result: String,
+    pub error: bool,
+}
+
 #[derive(Default)]
 pub struct FinderState {
     pub busy: bool,
@@ -106,7 +117,7 @@ struct EditorState {
     held: (bool, bool, bool, bool),
 }
 
-/// One display's state, as the window renders it. `settings`, `setup_hints`, `hotkeys_available`,
+/// One display's state, as the window renders it. `settings`, `setup_hints`, `setup_runs`, `hotkeys_available`,
 /// `failed_hotkeys`, `auto_note` and `displays` are app-wide: [`AppState::view_of`] copies them in (with this
 /// display's presets and input) right before a render.
 pub struct State {
@@ -127,6 +138,8 @@ pub struct State {
     pub revisions: BTreeMap<u8, i32>,
     pub restore_text: String,
     pub setup_hints: Vec<platform::setup::Hint>,
+    /// By hint id.
+    pub setup_runs: BTreeMap<&'static str, SetupRun>,
     pub hotkeys_available: bool,
     pub failed_hotkeys: Vec<Action>,
     pub finder: FinderState,
@@ -175,6 +188,7 @@ impl State {
             revisions: BTreeMap::new(),
             restore_text: "Put back the settings saved before the last reset".into(),
             setup_hints: vec![],
+            setup_runs: BTreeMap::new(),
             hotkeys_available: true,
             failed_hotkeys: vec![],
             finder: FinderState::default(),
@@ -261,6 +275,8 @@ impl State {
 struct AppState {
     settings: Settings,
     setup_hints: Vec<platform::setup::Hint>,
+    /// Kept while its card shows (or its fix runs), so it survives refreshes.
+    setup_runs: BTreeMap<&'static str, SetupRun>,
     hotkeys_available: bool,
     failed_hotkeys: Vec<Action>,
     auto_note: String,
@@ -280,8 +296,8 @@ struct AppState {
 impl AppState {
     /// The display's state (`blank` for None) with the app-wide fields copied in, ready for `view`.
     fn view_of(&mut self, id: Option<&MonitorId>) -> &State {
-        let AppState { settings, setup_hints, hotkeys_available, failed_hotkeys, auto_note, monitors, displays,
-            together, blank, .. } = self;
+        let AppState { settings, setup_hints, setup_runs, hotkeys_available, failed_hotkeys, auto_note, monitors,
+            displays, together, blank, .. } = self;
         let (st, id) = match id.and_then(|id| displays.get_mut(id).map(|st| (st, id))) {
             Some((st, id)) => (st, Some(id)),
             None => (blank, None),
@@ -294,6 +310,7 @@ impl AppState {
             st.settings.this_machine_input = own.this_machine_input;
         }
         st.setup_hints.clone_from(setup_hints);
+        st.setup_runs.clone_from(setup_runs);
         st.hotkeys_available = *hotkeys_available;
         st.failed_hotkeys.clone_from(failed_hotkeys);
         st.auto_note.clone_from(auto_note);
@@ -609,6 +626,7 @@ impl Controller {
             app: RefCell::new(AppState {
                 settings,
                 setup_hints: vec![],
+                setup_runs: BTreeMap::new(),
                 hotkeys_available: true,
                 failed_hotkeys: vec![],
                 auto_note: String::new(),
@@ -1875,7 +1893,79 @@ impl Controller {
         let mut app = self.app.borrow_mut();
         let st = app.state(app.selected.as_ref());
         let failure = if st.connected() { None } else { st.failure };
-        app.setup_hints = platform::setup::hints(failure, app.hotkeys_available);
+        let hints = platform::setup::hints(failure, app.hotkeys_available);
+        app.setup_runs.retain(|id, run| run.running || run.checking || hints.iter().any(|h| h.id == *id));
+        app.setup_hints = hints;
+    }
+
+    /// A setup card's button: runs its fix on a worker thread (Linux asks for the password through polkit).
+    fn run_setup_fix(self: &Rc<Self>, id: &str) {
+        let (id, fix) = {
+            let mut app = self.app.borrow_mut();
+            let Some((id, fix)) =
+                app.setup_hints.iter().find(|h| h.id == id).and_then(|h| Some((h.id, h.fix.clone()?)))
+            else {
+                return;
+            };
+            let run = app.setup_runs.entry(id).or_default();
+            if run.running || run.checking {
+                return;
+            }
+            *run = SetupRun { running: true, result: "Working…".into(), ..SetupRun::default() };
+            (id, fix)
+        };
+        self.render();
+        let still = fix.still;
+        let spawned = std::thread::Builder::new().name("tvc-setup-fix".into()).spawn(move || {
+            let outcome = platform::privileged::run(&fix);
+            let _ = slint::invoke_from_event_loop(move || with(|c| c.setup_fix_done(id, still, &outcome)));
+        });
+        if let Err(e) = spawned {
+            self.setup_fix_done(id, still, &platform::privileged::Outcome::Failed(e.to_string()));
+        }
+    }
+
+    /// A fix ended. After a successful one: look again (facts, displays, the link) and say what's left.
+    fn setup_fix_done(self: &Rc<Self>, id: &'static str, still: &str, outcome: &platform::privileged::Outcome) {
+        use platform::privileged::Outcome;
+        let run = match outcome.text(still) {
+            Some((result, error)) => SetupRun { result, error, ..SetupRun::default() },
+            None => SetupRun { checking: true, result: "Checking…".into(), ..SetupRun::default() },
+        };
+        self.app.borrow_mut().setup_runs.insert(id, run);
+        if matches!(outcome, Outcome::Done | Outcome::AfterLogin) {
+            platform::setup::recheck();
+            self.send_hub(HubCommand::Rescan);
+            for display in self.app.borrow().attached() {
+                self.send_to(&display, Command::RequestReconnect);
+            }
+            slint::Timer::single_shot(SETUP_CHECK_AFTER, move || with(|c| c.setup_check_done(id)));
+        }
+        self.render();
+    }
+
+    /// The check after a fix: its card gone means fixed; still there, it says what's left to do.
+    fn setup_check_done(self: &Rc<Self>, id: &'static str) {
+        self.refresh_setup_hints();
+        let fixed = {
+            let mut app = self.app.borrow_mut();
+            let still = app.setup_hints.iter().find(|h| h.id == id).map(|h| h.fix.as_ref().map_or("", |f| f.still));
+            match (still, app.setup_runs.get_mut(id)) {
+                (Some(still), Some(run)) if run.checking => {
+                    *run = SetupRun { result: still.into(), ..SetupRun::default() };
+                    false
+                }
+                (None, Some(run)) if run.checking => {
+                    app.setup_runs.remove(id);
+                    true
+                }
+                _ => false,
+            }
+        };
+        if fixed {
+            self.show_toast("Setup done");
+        }
+        self.render();
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -2938,6 +3028,7 @@ fn wire(ui: &MainWindow) {
             }
         })
     });
+    app.on_run_setup_fix(|id| with(|c| c.run_setup_fix(&id)));
     app.on_copy_text(|text| {
         with(|c| {
             let ok = crate::clipboard::set(&text);

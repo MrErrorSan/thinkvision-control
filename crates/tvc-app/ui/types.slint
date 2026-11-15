@@ -65,9 +65,14 @@ export struct HotkeyRow {
 }
 
 export struct SetupHint {
+    id: string,
     title: string,
     message: string,
     command: string,    // copyable command; empty = none
+    action: string,     // the fix button ("Allow access"); empty = none
+    busy: bool,         // the fix runs, or the app checks again after it
+    result: string,     // how the fix went; empty = not run
+    result-error: bool,
 }
 
 // Finder: one changed code ("0xC6 (Unknown 0xC6): 1 → 2") and one value-label field of the naming form.

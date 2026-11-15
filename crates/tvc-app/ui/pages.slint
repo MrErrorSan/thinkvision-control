@@ -807,13 +807,43 @@ export component SettingsPage inherits VerticalLayout {
     if App.setup-hints.length > 0: SectionHeader { text: "System setup"; first: true; }
     if App.setup-hints.length > 0: VerticalLayout {
         spacing: 4px;
-        for h in App.setup-hints: Card {
-            glyph: Glyphs.setup;
-            title: h.title;
-            description: h.command != "" ? h.message + "\n" + h.command : h.message;
-            if h.command != "": Button {
-                text: "Copy";
-                clicked => { App.copy-text(h.command); }
+        // The message and command, Copy, then the fix button; while it runs (and after) a progress bar and the
+        // result line under them.
+        for h in App.setup-hints: CardFrame {
+            VerticalLayout {
+                Card {
+                    border-width: 0px;
+                    glyph: Glyphs.setup;
+                    title: h.title;
+                    description: h.command != "" ? h.message + "\n" + h.command : h.message;
+                    if h.command != "": Button {
+                        text: "Copy";
+                        accessible-label: "Copy the command";
+                        clicked => { App.copy-text(h.command); }
+                    }
+                    if h.action != "": Button {
+                        text: h.action;
+                        primary: true;
+                        enabled: !h.busy;
+                        clicked => { App.run-setup-fix(h.id); }
+                    }
+                }
+                if h.busy || h.result != "": VerticalLayout {
+                    padding-left: 52px;
+                    padding-right: 16px;
+                    padding-bottom: 12px;
+                    spacing: 6px;
+                    if h.busy: ProgressIndicator { indeterminate: true; }
+                    Text {
+                        text: h.result;
+                        font-size: 12px;
+                        color: h.result-error ? Theme.error-fg : Theme.text-secondary;
+                        wrap: word-wrap;
+                        accessible-role: text;
+                        accessible-label: h.result;
+                        accessible-live-region: h.result-error ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
+                    }
+                }
             }
         }
     }

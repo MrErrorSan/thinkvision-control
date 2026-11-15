@@ -641,7 +641,19 @@ pub fn render(app: &App, st: &State) {
         app.get_setup_hints(),
         st.setup_hints
             .iter()
-            .map(|h| SetupHint { title: s(&h.title), message: s(&h.message), command: s(&h.command) })
+            .map(|h| {
+                let run = st.setup_runs.get(h.id);
+                SetupHint {
+                    id: s(h.id),
+                    title: s(&h.title),
+                    message: s(&h.message),
+                    command: s(&h.command),
+                    action: s(h.fix.as_ref().map_or("", |f| f.label)),
+                    busy: run.is_some_and(|r| r.running || r.checking),
+                    result: s(run.map_or("", |r| r.result.as_str())),
+                    result_error: run.is_some_and(|r| r.error),
+                }
+            })
             .collect(),
         |m| app.set_setup_hints(m),
     );
