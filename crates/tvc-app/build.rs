@@ -8,7 +8,9 @@ fn main() {
     let assets = manifest.join("../../assets/brand");
     let config = slint_build::CompilerConfiguration::new()
         .with_style("fluent".into())
-        .with_include_paths(vec![assets.join("png")]);
+        .with_include_paths(vec![assets.join("png")])
+        // translations/<lang>/LC_MESSAGES/tvc-app.po, shared with the Rust-side tvc.po catalogs.
+        .with_bundled_translations(manifest.join("../../translations"));
     slint_build::compile_with_config("ui/main.slint", config).unwrap();
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {

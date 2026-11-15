@@ -621,6 +621,7 @@ impl Controller {
         left_over: Vec<LeftOver>) -> Rc<Self> {
         let store = SettingsStore::new(&data_dir);
         let settings = store.load();
+        crate::set_language(settings.language.as_deref());
         Rc::new(Self {
             hub: RefCell::new(Some(hub)),
             first_command: RefCell::new(None),
@@ -1240,6 +1241,7 @@ impl Controller {
             log::write("Tray: could not create the icon");
             return;
         };
+        crate::select_ui_language();
         tray.set_brightness_items(cfg!(target_os = "linux"));
         tray.on_open(|| with(|c| c.show_window()));
         tray.on_preset(|i| with(|c| c.apply_preset(i as usize, Origin::Tray)));
@@ -2007,6 +2009,7 @@ impl Controller {
                 return;
             };
             ui.set_forced_scheme(self.scheme);
+            crate::select_ui_language();
             wire(&ui);
             ui.window().on_close_requested(|| {
                 with(|c| c.on_window_closed());

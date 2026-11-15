@@ -96,6 +96,7 @@ impl OsdHost {
             });
             CREATING.set(false);
             let Ok(osd) = osd else { return };
+            crate::select_ui_language();
             // The kept OSD stays "visible" (alpha 0), so Windows may pick it as the process's main window. It can't
             // be clicked or focused, so a close request can only come from outside (installer upgrade, taskkill
             // without /F): exit in order rather than hide it behind Slint's back.

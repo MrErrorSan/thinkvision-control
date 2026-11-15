@@ -180,6 +180,25 @@ fn state_dirs(data_dir: &Path) -> Vec<PathBuf> {
 
 /// One winit hook for every window: the forced theme (developer flag), the OSD's no-activate attributes and, on
 /// Linux, the launcher's activation token for the main window.
+/// Picks the language for text built in Rust: `chosen` (Settings → Language), else the OS's preferred languages.
+/// Slint's own text follows through [`select_ui_language`] once a component exists.
+pub fn set_language(chosen: Option<&str>) {
+    let code = match chosen {
+        Some(code) => code.to_string(),
+        None => tvc_core::i18n::best_match(&sys_locale::get_locales().collect::<Vec<_>>()).to_string(),
+    };
+    tvc_core::i18n::set_language(&code);
+    log::write(&format!("Language: {}", tvc_core::i18n::language()));
+}
+
+/// Applies the current language to the `.slint` text. Slint needs a component to exist first, so this runs after
+/// each one is created; selecting the same language again is harmless.
+pub fn select_ui_language() {
+    if let Err(e) = slint::select_bundled_translation(tvc_core::i18n::language()) {
+        log::write(&format!("Language: the window keeps English ({e:?})"));
+    }
+}
+
 fn select_backend(scheme: i32) -> Result<(), slint::PlatformError> {
     let theme = match scheme {
         1 => Some(Theme::Dark),

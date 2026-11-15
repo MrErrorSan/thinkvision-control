@@ -15,6 +15,7 @@ slint = { workspace = true }
 tvc-core = { path = "../tvc-core", features = ["fake"] }
 tvc-ddc = { path = "../tvc-ddc" }
 global-hotkey = "0.9"
+sys-locale = "0.3"
 
 [build-dependencies]
 slint-build = { workspace = true }

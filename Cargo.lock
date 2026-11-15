@@ -4509,6 +4509,7 @@ dependencies = [
  "libc",
  "slint",
  "slint-build",
+ "sys-locale",
  "tvc-core",
  "tvc-ddc",
  "windows-sys 0.61.2",
