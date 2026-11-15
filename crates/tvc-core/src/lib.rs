@@ -19,6 +19,7 @@ pub mod schedule;
 pub mod solar;
 pub mod store;
 pub mod support;
+pub mod wire;
 
 #[cfg(test)]
 mod tests;

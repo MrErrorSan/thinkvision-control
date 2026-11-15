@@ -8,13 +8,7 @@
 
 use std::time::{Duration, Instant};
 
-/// What a forwarded launch gets back: its exit code and what it would have printed.
-/// Wire format: the request is one line of JSON (the argument array); the reply is `{"exit": u8, "stdout": String}`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Reply {
-    pub exit: u8,
-    pub stdout: String,
-}
+pub use tvc_core::wire::Reply;
 
 /// Answers one forwarded launch, from any thread. Dropping it without `reply` answers exit 0 with no output.
 pub struct Responder(Option<Box<dyn FnOnce(Reply) + Send>>);
