@@ -36,8 +36,3 @@ pub fn resolve(identity: &MonitorIdentity, caps: Option<&MonitorCapabilities>, c
         _ => SupportLevel::GenericMccs,
     }
 }
-
-/// Whether the engine may synthesise capabilities from the profile before the monitor answers (display only).
-pub fn may_synthesize(level: &SupportLevel) -> bool {
-    matches!(level, SupportLevel::Verified { .. })
-}

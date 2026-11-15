@@ -5,7 +5,7 @@
 //! close and rebuilt on open; values are pushed into it only while it is shown; the OSD window is kept.
 //!
 //! **Several displays.** [`AppState`] holds the app-wide settings plus one [`State`] per controllable display, keyed
-//! by its hub id. A command for several displays goes out as one `Target::One` send per display (raw values differ
+//! by its hub id. A command for several displays goes out as one send per display (raw values differ
 //! per model) under a shared op id, and their results are handled together once all are in: one OSD, one
 //! command-line answer. A display that leaves stays in the picker as disconnected for the rest of the session.
 
@@ -23,7 +23,7 @@ use tvc_core::cli::{self as tvc_cli, CliCommand, CliError, GetTarget, InputChoic
 use tvc_core::engine::{
     Command, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
 };
-use tvc_core::hub::{HubCommand, HubEvent, HubHandle, Monitor, OpId, Target};
+use tvc_core::hub::{HubCommand, HubEvent, HubHandle, Monitor, OpId};
 use tvc_core::identity::{BackendKind, DisplayInfo, ListError, MonitorId};
 use tvc_core::result::ResultKind;
 use tvc_core::schedule::{self, AutoMode, Phase};
@@ -67,9 +67,6 @@ const CONFIRM_TIMED_OUT: &str =
     "Switching the input needs --yes or a confirmation on screen, and none came in time: run it again with --yes";
 /// How long a forwarded `--input` waits for the on-screen confirm: under the launch's 15 s, so it gets this answer.
 const CONFIRM_WAIT: Duration = Duration::from_secs(12);
-/// The master sliders of Together mode.
-const TOGETHER_CODES: [(u8, &str, &str); 3] =
-    [(BRIGHTNESS, "Brightness", glyph::SUN), (CONTRAST, "Contrast", glyph::CONTRAST), (VOLUME, "Volume", glyph::SPEAKER)];
 
 /// A screen's work area: x, y, width, height in physical pixels.
 type Rect = (i32, i32, i32, i32);
@@ -433,8 +430,6 @@ impl AppState {
             level: level.into(),
             included: own.included,
             offset: own.offset,
-            has_input: st.def(INPUT).is_some_and(ControlDefinition::is_visible),
-            has_colour: st.def(COLOUR_MODE).is_some(),
             has_volume: st.def(VOLUME).is_some(),
         })
     }
@@ -444,7 +439,7 @@ impl AppState {
         let included: Vec<(MonitorId, &State)> =
             self.included().into_iter().filter_map(|id| self.displays.get(&id).map(|st| (id, st))).collect();
         let live: Vec<&(MonitorId, &State)> = included.iter().filter(|(_, st)| st.connected()).collect();
-        TOGETHER_CODES
+        view::MAIN_RANGES
             .iter()
             .map(|&(code, label, glyph)| {
                 let with: Vec<_> = live.iter().filter(|(_, st)| st.values.contains_key(&code)).collect();
@@ -580,10 +575,8 @@ struct AwaitingConfirm(Option<CliJob>);
 
 impl Drop for AwaitingConfirm {
     fn drop(&mut self) {
-        if let Some(CliJob { command, json, reply: Some(reply), args, .. }) = self.0.take() {
-            log::write(&format!("CLI {args} (forwarded): exit {}, {NOT_CONFIRMED}", tvc_cli::EXIT_NEEDS_CONFIRMATION));
-            let line = failure_line(&command, json, "NeedsConfirmation", NOT_CONFIRMED);
-            reply.reply(Reply { exit: tvc_cli::EXIT_NEEDS_CONFIRMATION as u8, stdout: format!("{line}\n") });
+        if let Some(job) = self.0.take() {
+            answer_needs_confirmation(job, NOT_CONFIRMED);
         }
     }
 }
@@ -611,12 +604,13 @@ fn combine_rows(rows: &[Row], line: impl Fn(&Row) -> String, separator: &str) ->
     }
 }
 
-/// A forwarded `--input`'s confirm wasn't answered in time: exit 3.
-fn confirm_timed_out(job: CliJob) {
+/// A forwarded `--input` that wasn't confirmed on screen (`text` says why): exit 3. This process's own verb has no
+/// one to answer.
+fn answer_needs_confirmation(job: CliJob, text: &str) {
     if let CliJob { command, json, reply: Some(reply), args, .. } = job {
         let exit = tvc_cli::EXIT_NEEDS_CONFIRMATION;
-        log::write(&format!("CLI {args} (forwarded): exit {exit}, {CONFIRM_TIMED_OUT}"));
-        let line = failure_line(&command, json, "NeedsConfirmation", CONFIRM_TIMED_OUT);
+        log::write(&format!("CLI {args} (forwarded): exit {exit}, {text}"));
+        let line = failure_line(&command, json, "NeedsConfirmation", text);
         reply.reply(Reply { exit: exit as u8, stdout: format!("{line}\n") });
     }
 }
@@ -741,7 +735,7 @@ impl Controller {
     /// Sends to one display's engine.
     fn send_to(&self, id: &MonitorId, command: Command) {
         if let Some(hub) = self.hub.borrow().as_ref() {
-            hub.send(HubCommand::Send { target: Target::One(id.clone()), op: hub.next_op(), command: Box::new(command) });
+            hub.send(HubCommand::Send { id: id.clone(), op: hub.next_op(), command: Box::new(command) });
         }
     }
 
@@ -779,7 +773,7 @@ impl Controller {
         let waiting = sends.iter().map(|(id, _)| id.clone()).collect();
         self.batches.borrow_mut().insert(op, Batch { origin, code, waiting, results: done, job });
         for (id, command) in sends {
-            hub.send(HubCommand::Send { target: Target::One(id), op, command: Box::new(command) });
+            hub.send(HubCommand::Send { id, op, command: Box::new(command) });
         }
     }
 
@@ -1186,7 +1180,7 @@ impl Controller {
         // The forwarding launch stops waiting 15 s after it sent the verb: answer it before then.
         let left = CONFIRM_WAIT.saturating_sub(job.arrived.elapsed());
         if forwarded && left.is_zero() {
-            confirm_timed_out(job);
+            answer_needs_confirmation(job, CONFIRM_TIMED_OUT);
             return;
         }
         self.show_window();
@@ -1216,7 +1210,7 @@ impl Controller {
                 let Some(pending) = waiting.upgrade() else { return }; // answered, or the window closed
                 let job = pending.borrow_mut().0.take();
                 if let Some(job) = job {
-                    confirm_timed_out(job);
+                    answer_needs_confirmation(job, CONFIRM_TIMED_OUT);
                 }
                 with(|c| c.withdraw(tag));
             });
@@ -1515,16 +1509,6 @@ impl Controller {
             HubEvent::Monitors(list) => self.on_monitors(list),
             HubEvent::Attached(m) => self.on_attached(&m),
             HubEvent::Detached(id) => self.on_detached(&id),
-            HubEvent::Batch { op, origin, code, results } => {
-                let batch = self.batches.borrow_mut().remove(&op);
-                match batch {
-                    Some(mut b) => {
-                        b.results.extend(results);
-                        self.on_results(b.origin, b.code, None, b.results, b.job);
-                    }
-                    None => self.on_results(origin, code, None, results, None),
-                }
-            }
         }
     }
 
@@ -1959,19 +1943,16 @@ impl Controller {
             let max = code.and_then(|c| st.values.get(&c)).map_or(100, |r| r.max);
             (st.connected(), max, app.osd_name(id), st.screen)
         };
-        if result.outcome == WriteOutcome::NotResponding && !connected {
-            let text = self.with_view(Some(id), view::unreachable_text);
-            OsdHost::show_on(&self.osd, Content::Message(&text), screen);
-            return;
-        }
         match (code, result.outcome, result.value) {
             (Some(BRIGHTNESS | CONTRAST), WriteOutcome::Ok, Some(v)) => {
                 let (glyph, label) = level_glyph(code);
                 OsdHost::show_on(&self.osd, Content::Level { glyph, label: &label, value: v, max, display: &name }, screen);
             }
             _ => {
-                let text = self.result_text(id, code, result);
-                let text = if name.is_empty() { text } else { trf("{0}: {1}", &[&name, &text]) };
+                let text = self.osd_text(id, code, result);
+                // The unreachable line already names the display.
+                let unreachable = result.outcome == WriteOutcome::NotResponding && !connected;
+                let text = if name.is_empty() || unreachable { text } else { trf("{0}: {1}", &[&name, &text]) };
                 OsdHost::show_on(&self.osd, Content::Message(&text), screen);
             }
         }
@@ -2186,7 +2167,7 @@ impl Controller {
         let selected = app.selected.clone();
         view::render(&g, app.view_of(selected.as_ref()));
         let entries: Vec<DisplayEntry> = app.ordered().iter().filter_map(|id| app.entry(id)).collect();
-        let experimental = matches!(app.state(selected.as_ref()).level, SupportLevel::LenovoFamily | SupportLevel::GenericMccs);
+        let experimental = view::experimental(app.state(selected.as_ref()));
         let selected_id = match &selected {
             Some(id) if !app.together => id.0.as_str(),
             _ => "",
@@ -2291,22 +2272,16 @@ impl Controller {
         if let [(id, code)] = sends {
             let st = app.state(Some(id));
             let label = view::display_label(&st.input_label(*code));
-            let def = st.def(INPUT);
+            let mut dialog = confirm_dialog(st.def(INPUT), tr("Switch to {label}?"), tr("Switch"));
             // The profile's `{label}` template, translated as written.
-            let title = def
-                .and_then(|d| d.confirm_title.as_deref().map(tr))
-                .unwrap_or_else(|| tr("Switch to {label}?"))
-                .replace("{label}", &label);
+            dialog.title = dialog.title.replace("{label}", &label).into();
             // The profile's body warns that this PC loses the monitor. Settings can't tell whether the user ever set
             // This PC's input (it defaults to 0x11), so the warning stays unless the monitor already shows the
             // target input (its last read 0x60): then nothing switches.
-            let body = if st.value(INPUT) == Some(*code) {
-                tr("The monitor already shows this input, so nothing changes.")
-            } else {
-                def.and_then(|d| d.confirm_body.as_deref().map(tr)).unwrap_or_default()
-            };
-            let button = def.and_then(|d| d.confirm_button.as_deref().map(tr)).unwrap_or_else(|| tr("Switch"));
-            return Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: tr("Cancel").into(), visible: true };
+            if st.value(INPUT) == Some(*code) {
+                dialog.message = tr("The monitor already shows this input, so nothing changes.").into();
+            }
+            return dialog;
         }
         let lines: Vec<String> = sends.iter()
             .map(|(id, code)| format!("{} → {}", app.name(id), view::display_label(&app.state(Some(id)).input_label(*code))))
@@ -2400,15 +2375,7 @@ impl Controller {
             let app = self.app.borrow();
             let Some(def) = app.state(Some(&id)).def(code) else { return };
             (def.safety == SafetyClass::ConfirmRequired).then(|| {
-                let title = def
-                    .confirm_title
-                    .as_deref()
-                    .or(def.confirm_message.as_deref())
-                    .map(tr)
-                    .unwrap_or_else(|| trf("Change {0}?", &[&view::display_label(&def.name)]));
-                let body = def.confirm_body.as_deref().map(tr).unwrap_or_default();
-                let button = def.confirm_button.as_deref().map(tr).unwrap_or_else(|| tr("Continue"));
-                Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: tr("Cancel").into(), visible: true }
+                confirm_dialog(Some(def), trf("Change {0}?", &[&view::display_label(&def.name)]), tr("Continue"))
             })
         };
         let send = move |c: &Rc<Controller>| c.send_to(&id, Command::Set { code, value: 1, confirmed: true, origin: Origin::Window });
@@ -2914,6 +2881,19 @@ impl Controller {
     }
 
     /// 0 = off, 1 = at set times, 2 = at sunrise and sunset (uses the remembered times or place).
+    /// A Day and Night setting that can't be saved: says why under it.
+    fn show_auto_note(&self, text: String) {
+        self.app.borrow_mut().auto_note = text;
+        self.render();
+    }
+
+    /// After a Day and Night change: saves it and applies the phase now.
+    fn auto_mode_changed(self: &Rc<Self>) {
+        self.forget_phases();
+        self.save_settings();
+        self.auto_tick();
+    }
+
     fn set_auto_mode(self: &Rc<Self>, index: i32) {
         {
             let mut app = self.app.borrow_mut();
@@ -2931,21 +2911,15 @@ impl Controller {
                 _ => AutoMode::Off,
             };
         }
-        self.forget_phases();
-        self.save_settings();
-        self.auto_tick();
+        self.auto_mode_changed();
     }
 
     fn save_auto_times(self: &Rc<Self>, day: &str, night: &str) {
         let (Some(day), Some(night)) = (parse_hhmm(day), parse_hhmm(night)) else {
-            self.app.borrow_mut().auto_note = tr("Use 24-hour times like 07:00 and 19:30.");
-            self.render();
-            return;
+            return self.show_auto_note(tr("Use 24-hour times like 07:00 and 19:30."));
         };
         if day == night {
-            self.app.borrow_mut().auto_note = tr("Day and Night need different times.");
-            self.render();
-            return;
+            return self.show_auto_note(tr("Day and Night need different times."));
         }
         {
             let mut app = self.app.borrow_mut();
@@ -2953,18 +2927,15 @@ impl Controller {
             app.settings.auto_times = (day, night);
             app.settings.auto_day_night = AutoMode::Times { day, night };
         }
-        self.forget_phases();
-        self.save_settings();
-        self.auto_tick();
+        self.auto_mode_changed();
     }
 
     fn save_auto_location(self: &Rc<Self>, lat: &str, lon: &str) {
         let parse = |t: &str, limit: f64| t.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.abs() <= limit);
         let (Some(lat), Some(lon)) = (parse(lat, 90.0), parse(lon, 180.0)) else {
-            self.app.borrow_mut().auto_note =
-                tr("Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive).");
-            self.render();
-            return;
+            return self.show_auto_note(tr(
+                "Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive).",
+            ));
         };
         {
             let mut app = self.app.borrow_mut();
@@ -2972,10 +2943,17 @@ impl Controller {
             app.settings.auto_location = Some((lat, lon));
             app.settings.auto_day_night = AutoMode::Sun { lat, lon };
         }
-        self.forget_phases();
-        self.save_settings();
-        self.auto_tick();
+        self.auto_mode_changed();
     }
+}
+
+/// A control's confirm from its definition: the profile's title (or 0.0.4 `confirm` text), body and button,
+/// translated as written, else `default_title` and `default_button`.
+fn confirm_dialog(def: Option<&ControlDefinition>, default_title: String, default_button: String) -> Dialog {
+    let title = def.and_then(|d| d.confirm_title.as_deref().or(d.confirm_message.as_deref())).map_or(default_title, tr);
+    let body = def.and_then(|d| d.confirm_body.as_deref()).map(tr).unwrap_or_default();
+    let button = def.and_then(|d| d.confirm_button.as_deref()).map_or(default_button, tr);
+    Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: tr("Cancel").into(), visible: true }
 }
 
 /// "7:05" / "07:05" → minutes after midnight.

@@ -240,6 +240,17 @@ pub enum Command {
     Shutdown,
 }
 
+impl Command {
+    /// Who sent a command that answers with a `Result`.
+    pub fn origin(&self) -> Option<Origin> {
+        match self {
+            Command::Set { origin, .. } | Command::Step { origin, .. } | Command::EndDrag { origin, .. }
+            | Command::ApplyPreset { origin, .. } | Command::RestoreBackup { origin } => Some(*origin),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FinderEvent {
     /// "Snapshot taken ({count} codes)".
@@ -316,15 +327,11 @@ impl Engine {
         let level = level.unwrap_or_else(|| support::resolve(&identity, cached.as_ref(), false));
         let profiles = ProfileStore::for_level(&dir, &level, cached.as_ref());
         let timing = timing.unwrap_or_else(|| profiles.profile().timing.clone());
-        let (caps, caps_known) = match cached {
-            Some(caps) => {
-                for warning in &caps.warnings {
-                    log::write(&format!("[{id}] Capabilities (cached): {warning}"));
-                }
-                (caps, true)
-            }
-            None if support::may_synthesize(&level) => (profiles.synthesize_capabilities(), false),
-            None => (MonitorCapabilities::default(), false),
+        let caps = match cached {
+            Some(caps) => caps,
+            // A verified profile may stand in for the capabilities until the monitor answers (display only).
+            None if matches!(level, SupportLevel::Verified { .. }) => profiles.synthesize_capabilities(),
+            None => MonitorCapabilities::default(),
         };
         let controls = profiles.resolve(&caps);
         let worker = Worker {
@@ -346,7 +353,6 @@ impl Engine {
             op: None,
             cached_raw,
             live_caps: false,
-            caps_known,
             corrupt_cache,
             caps_failed: false,
             no_controls: false,
@@ -474,18 +480,17 @@ struct Worker {
     pending: VecDeque<Envelope>,
     /// The hub's op id of the command being handled.
     op: Option<OpId>,
-    /// The cached capability string, only when it parses.
+    /// The capability string (cached or read live), only when it parses. Set means `caps` came from the monitor,
+    /// not from the profile; writes need this.
     cached_raw: Option<String>,
     live_caps: bool,
-    /// `caps` came from the monitor (live or cached), not from the profile; writes need this.
-    caps_known: bool,
     /// The cache didn't parse: connecting reads the capabilities live, even in safe mode.
     corrupt_cache: bool,
     /// A connect's capability read failed: later connects don't repeat it (`ReadCapabilities` still does).
     caps_failed: bool,
     /// The last connect got only "unsupported" answers.
     no_controls: bool,
-    /// For display; trusted for writes only with `caps_known`.
+    /// For display; trusted for writes only with `cached_raw`.
     caps: MonitorCapabilities,
     /// How far this monitor is trusted: forced, or `support::resolve` at start and after each capability read.
     level: SupportLevel,
@@ -517,6 +522,9 @@ struct Worker {
 impl Worker {
     fn run(mut self) {
         log::set_prefix(format!("[{}] ", self.id));
+        if self.cached_raw.is_some() {
+            log_warnings("cached", &self.caps);
+        }
         self.emit_controls();
         self.emit(Event::Status { status: self.status, failure: None });
         if self.safe_mode {
@@ -569,11 +577,7 @@ impl Worker {
     /// A command from the command line answers in English (its result goes to stdout and JSON); the OSD that run
     /// shows the same English text.
     fn handle(&mut self, command: Command) {
-        let cli = matches!(command,
-            Command::Set { origin: Origin::Cli, .. } | Command::Step { origin: Origin::Cli, .. }
-            | Command::EndDrag { origin: Origin::Cli, .. } | Command::ApplyPreset { origin: Origin::Cli, .. }
-            | Command::RestoreBackup { origin: Origin::Cli });
-        if cli {
+        if command.origin() == Some(Origin::Cli) {
             crate::i18n::english(|| self.handle_command(command));
         } else {
             self.handle_command(command);
@@ -760,7 +764,7 @@ impl Worker {
         // With a cached capability string, connect on values alone; `ReadCapabilities` refreshes it later. A failed
         // read isn't repeated by later connects, and the value reads decide whether the monitor answers.
         let may_read = !self.safe_mode || self.corrupt_cache;
-        if !self.live_caps && self.cached_raw.is_none() && !self.caps_failed && may_read && !self.read_capabilities() {
+        if self.cached_raw.is_none() && !self.caps_failed && may_read && !self.read_capabilities() {
             self.caps_failed = true;
             let level = self.level.clone();
             self.resolve_level(None);
@@ -836,7 +840,6 @@ impl Worker {
             }
         };
         self.live_caps = true;
-        self.caps_known = true;
         self.corrupt_cache = false;
         let cached = self.cached_raw.as_deref() == Some(raw.as_str());
         let same = if cached { ", matches the cache" } else { "" };
@@ -971,7 +974,7 @@ impl Worker {
         if self.read_only {
             return Some(WriteResult::blocked(ResultKind::Refused, tr("Changes are off for this monitor after repeated failed writes; reconnect it to try again.")));
         }
-        (!self.caps_known).then(|| WriteResult::blocked(ResultKind::Refused,
+        self.cached_raw.is_none().then(|| WriteResult::blocked(ResultKind::Refused,
             tr("The monitor's capabilities haven't been read yet.")))
     }
 
@@ -1121,7 +1124,7 @@ impl Worker {
     }
 
     fn evaluate_drag(&self, code: u8, value: u16) -> Option<u16> {
-        if !self.caps_known || self.read_only {
+        if self.cached_raw.is_none() || self.read_only {
             return None;
         }
         let max = self.cache.get(&code).map(|c| c.max);

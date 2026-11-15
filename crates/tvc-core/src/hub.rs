@@ -1,6 +1,5 @@
 //! One engine per attached monitor, behind one handle. The hub enumerates displays through [`Discovery`], spawns
-//! and stops engines as monitors come and go, keeps each monitor's id stable while it stays attached, and fans
-//! `Target::All` commands out as one batch.
+//! and stops engines as monitors come and go, and keeps each monitor's id stable while it stays attached.
 //!
 //! **Ids stay stable while a monitor is attached.** A monitor is known by its EDID id, serial and connector (else
 //! its target); it keeps the id it got when it was attached for as long as it stays in the list. Fresh ids come
@@ -17,7 +16,7 @@
 //! **Engines start unconnected:** send `Connect` (or `ConnectReading`) through `Send` once a monitor is listed.
 //! Each engine runs on its own thread; the hub thread never waits on a monitor, except at shutdown.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -47,12 +46,6 @@ const LEGACY_EDID: &str = "LEN62A2";
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OpId(pub u64);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Target {
-    One(MonitorId),
-    All,
-}
-
 /// An attached monitor as the hub reports it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Monitor {
@@ -61,9 +54,9 @@ pub struct Monitor {
 }
 
 pub enum HubCommand {
-    /// `Target::All` is accepted only for Set, Step, DragTo, EndDrag and ApplyPreset; anything else with `All` is
-    /// refused (a `Batch` with no results). Power, Flush and Shutdown never go through `Send` with `All`.
-    Send { target: Target, op: OpId, command: Box<Command> },
+    /// A command for one monitor; one with an origin answers with a `Result` carrying `op`, also when the monitor
+    /// has no engine.
+    Send { id: MonitorId, op: OpId, command: Box<Command> },
     /// Enumerate again: spawn engines for new monitors, stop the ones that left.
     Rescan,
     /// Broadcast to every engine.
@@ -78,11 +71,8 @@ pub enum HubEvent {
     Monitors(Result<Vec<Monitor>, ListError>),
     Attached(Monitor),
     Detached(MonitorId),
-    /// An engine's own event, tagged with its monitor. The results of a `Target::All` command come only in its
-    /// `Batch`.
+    /// An engine's own event, tagged with its monitor.
     Monitor { id: MonitorId, event: Event },
-    /// Every result of one `Target::All` command, by monitor id, once all engines answered.
-    Batch { op: OpId, origin: Origin, code: Option<u8>, results: Vec<(MonitorId, WriteResult)> },
 }
 
 /// How the hub starts.
@@ -108,7 +98,6 @@ impl MonitorHub {
             session: session_dir(),
             safe_mode: config.safe_mode,
             sink: sink.clone(),
-            batches: Arc::new(Mutex::new(BTreeMap::new())),
             running: Vec::new(),
             migrated: false,
             display_off: false,
@@ -152,15 +141,6 @@ impl HubHandle {
 }
 
 type HubSink = Arc<Mutex<Box<dyn Fn(HubEvent) + Send>>>;
-type Batches = Arc<Mutex<BTreeMap<OpId, Pending>>>;
-
-/// A `Target::All` command waiting for its engines.
-struct Pending {
-    origin: Origin,
-    code: Option<u8>,
-    waiting: BTreeSet<MonitorId>,
-    results: Vec<(MonitorId, WriteResult)>,
-}
 
 struct Running {
     /// EDID id, serial and connector (else target): the same monitor on the same port.
@@ -190,7 +170,6 @@ struct Hub {
     /// For engines spawned from now on; follows `SetSafeMode`.
     safe_mode: bool,
     sink: HubSink,
-    batches: Batches,
     /// In attach order.
     running: Vec<Running>,
     /// The 0.0.8 root files were considered for a LEN62A2.
@@ -207,7 +186,7 @@ impl Hub {
         drop(ready);
         while let Ok(command) = rx.recv() {
             match command {
-                HubCommand::Send { target, op, command } => self.send(target, op, *command),
+                HubCommand::Send { id, op, command } => self.send(id, op, *command),
                 HubCommand::Rescan => self.rescan(),
                 HubCommand::Power(state) => self.power(state),
                 HubCommand::Shutdown => break,
@@ -235,7 +214,6 @@ impl Hub {
             if let Some(engine) = &r.engine {
                 engine.stop(); // not joined: a monitor that left must not hold up the others
             }
-            self.forget(&r.id);
             emit(&self.sink, HubEvent::Detached(r.id));
         }
 
@@ -304,16 +282,11 @@ impl Hub {
             level: backlight.then(|| SupportLevel::Verified { profile: "builtin-backlight".into() }),
             crash,
         };
-        let (sink, batches) = (self.sink.clone(), self.batches.clone());
+        let sink = self.sink.clone();
         let tag = id.clone();
         let engine = Engine::spawn(config, Box::new(move |event| {
             if !alive.load(Ordering::SeqCst) {
                 return;
-            }
-            if let Event::Result { op: Some(op), result, .. } = &event {
-                if answer(&batches, &sink, *op, &tag, Some(result.clone())) {
-                    return;
-                }
             }
             emit(&sink, HubEvent::Monitor { id: tag.clone(), event });
         }));
@@ -380,46 +353,16 @@ impl Hub {
         }
     }
 
-    fn send(&mut self, target: Target, op: OpId, command: Command) {
+    fn send(&mut self, id: MonitorId, op: OpId, command: Command) {
         if let Command::SetSafeMode(on) = command {
             self.safe_mode = on;
         }
-        match target {
-            Target::One(id) => {
-                let engine = self.running.iter().find(|r| r.id == id).and_then(|r| r.engine.as_ref());
-                let answers = answers(&command);
-                if !engine.is_some_and(|e| e.send_op(op, command)) {
-                    if let Some((origin, code, preset)) = answers {
-                        let event = Event::Result { origin, code, preset, result: not_responding(origin), op: Some(op) };
-                        emit(&self.sink, HubEvent::Monitor { id, event });
-                    }
-                }
-            }
-            Target::All => self.fan_out(op, command),
-        }
-    }
-
-    fn fan_out(&mut self, op: OpId, command: Command) {
+        let engine = self.running.iter().find(|r| r.id == id).and_then(|r| r.engine.as_ref());
         let answers = answers(&command);
-        let (origin, code) = answers.as_ref().map_or((Origin::Window, None), |(o, c, _)| (*o, *c));
-        let fans = matches!(command, Command::Set { .. } | Command::Step { .. } | Command::DragTo { .. }
-            | Command::EndDrag { .. } | Command::ApplyPreset { .. });
-        let engines: Vec<(&MonitorId, &EngineHandle)> =
-            self.running.iter().filter_map(|r| r.engine.as_ref().map(|e| (&r.id, e))).collect();
-        if !fans || (answers.is_some() && engines.is_empty()) {
-            if !fans {
-                log::write(&format!("Hub: {command:?} can't go to every monitor"));
-            }
-            emit(&self.sink, HubEvent::Batch { op, origin, code, results: Vec::new() });
-            return;
-        }
-        if answers.is_some() {
-            let waiting = engines.iter().map(|(id, _)| (*id).clone()).collect();
-            lock(&self.batches).insert(op, Pending { origin, code, waiting, results: Vec::new() });
-        }
-        for (id, engine) in engines {
-            if !engine.send_op(op, command.clone()) && answers.is_some() {
-                answer(&self.batches, &self.sink, op, id, Some(not_responding(origin)));
+        if !engine.is_some_and(|e| e.send_op(op, command)) {
+            if let Some((origin, code, preset)) = answers {
+                let event = Event::Result { origin, code, preset, result: not_responding(origin), op: Some(op) };
+                emit(&self.sink, HubEvent::Monitor { id, event });
             }
         }
     }
@@ -438,14 +381,6 @@ impl Hub {
         }
     }
 
-    /// A monitor left: no batch waits for it any more.
-    fn forget(&self, id: &MonitorId) {
-        let ops: Vec<OpId> = lock(&self.batches).keys().copied().collect();
-        for op in ops {
-            answer(&self.batches, &self.sink, op, id, None);
-        }
-    }
-
     fn shutdown(&mut self) {
         let running = std::mem::take(&mut self.running);
         for engine in running.iter().filter_map(|r| r.engine.as_ref()) {
@@ -459,39 +394,16 @@ impl Hub {
     }
 }
 
-/// Records `id`'s answer (None: it left) to batch `op` and sends the batch once no engine is left to answer.
-/// False when `op` isn't a batch.
-fn answer(batches: &Batches, sink: &HubSink, op: OpId, id: &MonitorId, result: Option<WriteResult>) -> bool {
-    let done = {
-        let mut map = lock(batches);
-        let Some(pending) = map.get_mut(&op) else { return false };
-        if pending.waiting.remove(id) {
-            if let Some(result) = result {
-                pending.results.push((id.clone(), result));
-            }
-        }
-        if !pending.waiting.is_empty() {
-            return true;
-        }
-        map.remove(&op)
-    };
-    if let Some(mut pending) = done {
-        pending.results.sort_by(|a, b| a.0.cmp(&b.0));
-        emit(sink, HubEvent::Batch { op, origin: pending.origin, code: pending.code, results: pending.results });
-    }
-    true
-}
-
 /// The origin, code and preset name of a command that answers with a `Result`.
 fn answers(command: &Command) -> Option<(Origin, Option<u8>, Option<String>)> {
-    match command {
-        Command::Set { code, origin, .. } | Command::EndDrag { code, origin, .. } | Command::Step { code, origin, .. } => {
-            Some((*origin, Some(*code), None))
+    let origin = command.origin()?;
+    Some(match command {
+        Command::Set { code, .. } | Command::EndDrag { code, .. } | Command::Step { code, .. } => {
+            (origin, Some(*code), None)
         }
-        Command::ApplyPreset { preset, origin } => Some((*origin, None, Some(preset.name.clone()))),
-        Command::RestoreBackup { origin } => Some((*origin, None, None)),
-        _ => None,
-    }
+        Command::ApplyPreset { preset, .. } => (origin, None, Some(preset.name.clone())),
+        _ => (origin, None, None),
+    })
 }
 
 /// The answer for a monitor whose engine is gone: in English for the command line (as the engine answers it), else
@@ -543,11 +455,10 @@ fn saved_identities(monitors: &Path) -> Vec<(MonitorId, MonitorIdentity)> {
     }).collect()
 }
 
-/// This process's folder for monitors with unstable ids.
-/// A fresh temporary folder name per hub: process id plus a per-process counter.
+/// This process's folder for monitors with unstable ids, fresh per hub: process id plus a per-process counter.
 fn session_dir() -> PathBuf {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("thinkvision-control-{}-{n}", std::process::id()))
 }
 

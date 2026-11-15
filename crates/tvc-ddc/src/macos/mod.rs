@@ -28,8 +28,6 @@ pub const WRITE_CYCLES: u32 = 2;
 pub const WRITE_DELAY_MS: u64 = 10;
 /// Bytes read for one capabilities fragment.
 pub const CAPABILITIES_FRAGMENT_LEN: usize = 38;
-/// Upper bound on the capability string.
-pub const CAPABILITIES_MAX_BYTES: usize = 8192;
 
 /// How `choose_service` tied the display to its DDC service, strongest first.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -95,11 +93,6 @@ pub enum ExchangeOutcome {
     AllNull,
     /// A valid reply said the monitor doesn't implement the code. Final: no retry, no checksum fallback.
     Unsupported,
-}
-
-/// True when CoreGraphics' vendor and model numbers are the wanted ones.
-pub fn is_target(vendor: u32, model: u32, want_vendor: u16, want_model: u16) -> bool {
-    vendor == u32::from(want_vendor) && model == u32::from(want_model)
 }
 
 /// Checksum form for the retry after `tried` gave `outcome`, or None to stop. Only while no form is known yet, only
@@ -215,12 +208,18 @@ pub fn split_edid_id(id: &str) -> Option<(&str, u16)> {
     u16::from_str_radix(product, 16).ok().map(|p| (pnp, p))
 }
 
+/// The EDID id CoreGraphics' vendor and model numbers spell ("LEN62A2"). None when either is out of range or the vendor
+/// isn't three PNP letters.
+fn cg_edid_id(cg: CgNumbers) -> Option<String> {
+    // EDID's vendor word keeps bit 15 at 0.
+    let pnp = edid::pnp_letters(u16::try_from(cg.vendor).ok().filter(|v| v & 0x8000 == 0)?)?;
+    let model = u16::try_from(cg.model).ok()?;
+    Some(format!("{pnp}{model:04X}"))
+}
+
 /// True when CoreGraphics names the same monitor as `edid_id`, or doesn't know the vendor.
 fn agrees_with_cg(edid_id: &str, cg: CgNumbers) -> bool {
-    cg.vendor == 0
-        || split_edid_id(edid_id)
-            .and_then(|(pnp, product)| Some((edid::pack_pnp(pnp)?, product)))
-            .is_some_and(|(vendor, product)| is_target(cg.vendor, cg.model, vendor, product))
+    cg.vendor == 0 || cg_edid_id(cg).is_some_and(|c| c.eq_ignore_ascii_case(edid_id))
 }
 
 /// Identity (without connector) and name of a display. In order: the EDID, when CoreGraphics agrees it is this
@@ -247,12 +246,7 @@ pub fn identify(raw_edid: Option<&[u8]>, attributes: &ProductAttributes, cg: CgN
             .or_else(|| attributes.serial_number.filter(|&n| n != 0).map(|n| n.to_string()));
         return (MonitorIdentity { edid_id: id, serial, connector: None }, attribute_name());
     }
-    let id = u16::try_from(cg.vendor)
-        .ok()
-        .and_then(edid::pnp_letters)
-        .zip(u16::try_from(cg.model).ok())
-        .map(|(pnp, model)| format!("{pnp}{model:04X}"))
-        .unwrap_or_default();
+    let id = cg_edid_id(cg).unwrap_or_default();
     let serial = (cg.serial != 0).then(|| cg.serial.to_string());
     (MonitorIdentity { edid_id: id, serial, connector: None }, attribute_name())
 }
@@ -306,10 +300,17 @@ mod tests {
     use crate::edid::testing::p32p20;
 
     #[test]
-    fn lenovo_vendor_and_model_identify_the_target() {
-        assert_eq!(edid::pnp_letters(0x30AE).as_deref(), Some("LEN"));
-        assert!(is_target(0x30AE, 0x62A2, 0x30AE, 0x62A2));
-        assert!(!is_target(0x30AE, 0x62A3, 0x30AE, 0x62A2));
+    fn core_graphics_agrees_only_with_its_own_vendor_and_model() {
+        let lenovo = CgNumbers { vendor: 0x30AE, model: 0x62A2, serial: 0 };
+        assert!(agrees_with_cg("LEN62A2", lenovo));
+        assert!(agrees_with_cg("len62a2", lenovo));
+        assert!(!agrees_with_cg("LEN62A3", lenovo));
+        assert!(!agrees_with_cg("DEL62A2", lenovo));
+        assert!(!agrees_with_cg("LEN62A", lenovo));
+        // A vendor number that isn't three PNP letters matches nothing; a vendor of 0 matches anything.
+        assert!(!agrees_with_cg("@@@62A2", CgNumbers { vendor: 0x0001, ..lenovo }));
+        assert!(!agrees_with_cg("LEN62A2", CgNumbers { vendor: 0x1_30AE, ..lenovo }));
+        assert!(agrees_with_cg("anything", CgNumbers { vendor: 0, ..lenovo }));
     }
 
     #[test]

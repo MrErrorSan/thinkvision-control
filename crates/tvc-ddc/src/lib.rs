@@ -24,11 +24,11 @@ use tvc_core::link::{DisplayKind, LinkError, LinkFailure, MonitorLink};
 /// [`backlight`]. Targets starting with [`backlight::TARGET_PREFIX`] belong to the backlight backend.
 pub fn discovery() -> Box<dyn Discovery> {
     #[cfg(windows)]
-    let os: Box<dyn Discovery> = Box::new(dxva2::Dxva2Discovery::new());
+    let os: Box<dyn Discovery> = Box::new(dxva2::Dxva2Discovery);
     #[cfg(target_os = "linux")]
     let os: Box<dyn Discovery> = Box::new(linux::LinuxDiscovery::new());
     #[cfg(target_os = "macos")]
-    let os: Box<dyn Discovery> = Box::new(macos::MacDiscovery::new());
+    let os: Box<dyn Discovery> = Box::new(macos::MacDiscovery);
     #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     let os: Box<dyn Discovery> = Box::new(NoDiscovery);
     Box::new(Combined { os })

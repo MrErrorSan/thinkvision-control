@@ -61,6 +61,12 @@ pub fn data_dir() -> PathBuf {
     base.join("ThinkVisionControl")
 }
 
+/// `XDG_CURRENT_DESKTOP` is a colon-separated list; GNOME matches case-insensitively.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn is_gnome(desktop: Option<&str>) -> bool {
+    desktop.is_some_and(|d| d.split(':').any(|p| p.eq_ignore_ascii_case("GNOME")))
+}
+
 fn home() -> PathBuf {
     std::env::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }

@@ -145,14 +145,11 @@ pub struct FakeDiscovery {
 #[derive(Default)]
 pub struct FakeDiscoveryState {
     pub displays: Vec<(DisplayInfo, FakeLink)>,
-    /// `enumerate` fails with this when set.
-    pub error: Option<ListError>,
-    pub enumerations: usize,
 }
 
 impl FakeDiscovery {
     pub fn new(displays: Vec<(DisplayInfo, FakeLink)>) -> Self {
-        Self { state: Arc::new(Mutex::new(FakeDiscoveryState { displays, ..Default::default() })) }
+        Self { state: Arc::new(Mutex::new(FakeDiscoveryState { displays })) }
     }
 
     pub fn state(&self) -> MutexGuard<'_, FakeDiscoveryState> {
@@ -178,12 +175,7 @@ impl FakeDiscovery {
 
 impl Discovery for FakeDiscovery {
     fn enumerate(&mut self) -> Result<Vec<DisplayInfo>, ListError> {
-        let mut s = self.state();
-        s.enumerations += 1;
-        if let Some(e) = s.error.clone() {
-            return Err(e);
-        }
-        Ok(s.displays.iter().map(|(d, _)| d.clone()).collect())
+        Ok(self.state().displays.iter().map(|(d, _)| d.clone()).collect())
     }
 
     fn open(&mut self, target: &str) -> Result<Box<dyn MonitorLink>, LinkFailure> {

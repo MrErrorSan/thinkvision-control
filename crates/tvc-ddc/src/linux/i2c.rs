@@ -20,7 +20,6 @@ const RETRY_GAP: Duration = Duration::from_millis(50);
 const READ_ATTEMPTS: u32 = 10; // ddcutil's write-read default
 const WRITE_ATTEMPTS: u32 = 4; // ddcutil's write-only default; 1 for `writes_once` codes
 const FRAGMENT_ATTEMPTS: u32 = 8; // ddcutil's multi-part default
-const MAX_CAPABILITIES_LEN: usize = 8192;
 const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const EDID_ADDRESS: u16 = 0x50;
 
@@ -207,9 +206,10 @@ fn read_capabilities(bus: &Bus) -> Result<String, LinkError> {
     let mut text = Vec::new();
     let mut reply = [0u8; packet::FRAGMENT_REPLY_LEN];
     loop {
-        if text.len() >= MAX_CAPABILITIES_LEN {
+        if text.len() >= packet::MAX_CAPABILITIES_LEN {
             return Err(LinkError::Transient(format!(
-                "capabilities too long (over {MAX_CAPABILITIES_LEN} bytes on {})",
+                "capabilities too long (over {} bytes on {})",
+                packet::MAX_CAPABILITIES_LEN,
                 bus.path
             )));
         }

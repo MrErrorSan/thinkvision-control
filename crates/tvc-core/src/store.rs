@@ -478,13 +478,9 @@ fn hotkey_target_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<HotkeyTarget
     })
 }
 
-fn bool_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
-    Ok(serde_json::Value::deserialize(d)?.as_bool().unwrap_or(false))
-}
-
 /// A field that is present: its bool, false when malformed. A missing one stays None (`#[serde(default)]`).
 fn present_bool_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<bool>, D::Error> {
-    bool_lenient(d).map(Some)
+    Ok(Some(serde_json::Value::deserialize(d)?.as_bool().unwrap_or(false)))
 }
 
 fn monitors_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, MonitorFile>, D::Error> {

@@ -77,14 +77,11 @@ fn main() -> Result<(), slint::PlatformError> {
                 let _ = std::io::stdout().flush();
                 std::process::exit(reply.exit.into());
             }
-            platform::instance::Start::Forwarded(None) => {
-                let text = "Timed out: the running copy didn't answer";
-                log::write(&format!("Forwarding to the running copy: {text}"));
-                println!("{}", controller::failure_line(&parsed.command, parsed.json, "TimedOut", text));
-                std::process::exit(cli::exit_code(None, true));
-            }
-            platform::instance::Start::Busy => {
-                let text = "Timed out: another command was still running; try again";
+            start @ (platform::instance::Start::Forwarded(None) | platform::instance::Start::Busy) => {
+                let text = match start {
+                    platform::instance::Start::Busy => "Timed out: another command was still running; try again",
+                    _ => "Timed out: the running copy didn't answer",
+                };
                 log::write(&format!("Forwarding to the running copy: {text}"));
                 println!("{}", controller::failure_line(&parsed.command, parsed.json, "TimedOut", text));
                 std::process::exit(cli::exit_code(None, true));

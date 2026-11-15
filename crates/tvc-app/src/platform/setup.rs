@@ -1,7 +1,12 @@
 //! "System setup" cards. Windows has none.
 
+// Most of this module runs on Linux only.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 use tvc_core::i18n::{tr, trf};
 use tvc_core::link::LinkFailure;
+
+use super::is_gnome;
 
 /// One setup card. `command` is the copyable text (lines separated by `\n`); empty when there is nothing to copy.
 /// With a `fix`, `command` is [`Fix::command`]: what the button runs, to type by hand.
@@ -36,7 +41,6 @@ pub enum Step {
     UserAfterLogin(String),
 }
 
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 impl Fix {
     /// Every root step in one script for `sh -c`; None without root steps.
     pub fn root_script(&self) -> Option<String> {
@@ -69,13 +73,11 @@ impl Fix {
 }
 
 /// `set -e`, then the lines.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn script(lines: &str) -> String {
     format!("set -e\n{lines}")
 }
 
 /// Single-quoted for sh.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
@@ -107,19 +109,16 @@ pub fn hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool) ->
     }
 }
 
-#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 fn hint(id: &'static str, title: &str, message: &str, command: &str) -> Hint {
     Hint { id, title: title.into(), message: message.into(), command: command.into(), fix: None }
 }
 
 /// A card with a button; its copy text is the fix's.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn fix_hint(id: &'static str, title: &str, message: &str, fix: Fix) -> Hint {
     Hint { command: fix.command(), fix: Some(fix), ..hint(id, title, message, "") }
 }
 
 /// The packaged udev rule file's rules, without its comments.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn udev_rules() -> String {
     include_str!("../../../../packaging/linux/60-thinkvision-i2c.rules")
         .lines()
@@ -129,7 +128,6 @@ fn udev_rules() -> String {
 }
 
 /// The root lines that install the packaged udev rule and apply it to the present devices.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn install_rules() -> String {
     format!(
         "cat > /etc/udev/rules.d/60-thinkvision-i2c.rules <<'TVC_RULES'\n{}\nTVC_RULES\n\
@@ -140,7 +138,6 @@ fn install_rules() -> String {
 }
 
 /// A package manager the AppIndicator card installs with, found on PATH.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PackageManager {
     Apt,
@@ -152,7 +149,6 @@ enum PackageManager {
 }
 
 /// Each manager's executable, in the order they're looked for.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 const MANAGERS: [(&str, PackageManager); 6] = [
     ("apt-get", PackageManager::Apt),
     ("dnf", PackageManager::Dnf),
@@ -163,14 +159,12 @@ const MANAGERS: [(&str, PackageManager); 6] = [
 ];
 
 /// The first manager whose executable `has` reports.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn pick_manager(has: impl Fn(&str) -> bool) -> Option<PackageManager> {
     MANAGERS.iter().find(|(exe, _)| has(exe)).map(|(_, pm)| *pm)
 }
 
 /// The distribution's own manager by `/etc/os-release` `ID` and `ID_LIKE` (space-separated) when `has` finds its
 /// executable, else the first one on PATH.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn pick_manager_for(ids: Option<&str>, has: impl Fn(&str) -> bool) -> Option<PackageManager> {
     let by_os = ids.unwrap_or_default().split_whitespace().find_map(|id| match id.to_ascii_lowercase().as_str() {
         "debian" | "ubuntu" => Some(PackageManager::Apt),
@@ -188,20 +182,9 @@ fn pick_manager_for(ids: Option<&str>, has: impl Fn(&str) -> bool) -> Option<Pac
 
 /// The AppIndicator extension's package. Debian, Fedora and Arch use this name; openSUSE, Void and Alpine are
 /// assumed to.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn appindicator_package(pm: PackageManager) -> &'static str {
-    match pm {
-        PackageManager::Apt
-        | PackageManager::Dnf
-        | PackageManager::Zypper
-        | PackageManager::Pacman
-        | PackageManager::Xbps
-        | PackageManager::Apk => "gnome-shell-extension-appindicator",
-    }
-}
+const APPINDICATOR_PACKAGE: &str = "gnome-shell-extension-appindicator";
 
 /// A non-interactive install of `package`, run as root.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn install_command(pm: PackageManager, package: &str) -> String {
     match pm {
         PackageManager::Apt => format!("apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y {package}"),
@@ -216,7 +199,6 @@ fn install_command(pm: PackageManager, package: &str) -> String {
 /// Turns the extension on. Just after an install GNOME Shell doesn't know it until the next login, so
 /// `gnome-extensions enable` fails; then the uuid goes into `enabled-extensions` directly, which the next login
 /// reads, and the step still fails so the card says to log in again.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn enable_extension(uuid: &str) -> String {
     format!(
         "if ! gnome-extensions enable {uuid} 2>/dev/null; then\n\
@@ -230,9 +212,7 @@ fn enable_extension(uuid: &str) -> String {
     )
 }
 
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 const APPINDICATOR_UUID: &str = "appindicatorsupport@rgcjonas.gmail.com";
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 const UBUNTU_APPINDICATOR_UUID: &str = "ubuntu-appindicators@ubuntu.com";
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -250,7 +230,6 @@ fn mac_hints(failure: Option<LinkFailure>) -> Vec<Hint> {
 }
 
 /// What the Linux cards depend on besides the failure, gathered by `live::cached_facts`.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 #[derive(Clone)]
 struct LinuxFacts {
     /// `XDG_CURRENT_DESKTOP`.
@@ -276,7 +255,6 @@ struct LinuxFacts {
     command: String,
 }
 
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, facts: &LinuxFacts) -> Vec<Hint> {
     let mut hints = Vec::new();
     // On NVIDIA's driver a bus the user may not open is never bound, so no link reports the denial itself.
@@ -415,7 +393,6 @@ fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, 
 
 /// Ubuntu ships the extension, so only turning it on (installing it first when it was removed); elsewhere installing
 /// it with the package manager found, or (none known) saying what to install.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn appindicator_hint(facts: &LinuxFacts) -> Hint {
     const ID: &str = "linux-gnome-appindicator";
     let title = tr("Install the AppIndicator extension to see the tray icon");
@@ -449,14 +426,13 @@ fn appindicator_hint(facts: &LinuxFacts) -> Hint {
         &tr("GNOME shows tray icons only through the AppIndicator extension. Install it and turn it on."),
         Fix {
             label: tr("Install and turn on"),
-            steps: vec![Step::Root(install_command(pm, appindicator_package(pm))), Step::UserAfterLogin(enable_extension(uuid))],
+            steps: vec![Step::Root(install_command(pm, APPINDICATOR_PACKAGE)), Step::UserAfterLogin(enable_extension(uuid))],
             still: tr("The extension is installed and turned on; log out and back in to see the tray icon."),
         },
     )
 }
 
 /// The card for a desktop other than GNOME with no tray host on the session bus.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn tray_host_hint(desktop: Option<&str>) -> Hint {
     let has = |name: &str| desktop.is_some_and(|d| d.split(':').any(|p| p.to_ascii_lowercase().contains(name)));
     let how = if has("cinnamon") {
@@ -482,7 +458,6 @@ fn tray_host_hint(desktop: Option<&str>) -> Hint {
     )
 }
 
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn shortcut_commands(cmd: &str) -> String {
     [
         "--step brightness=+5    # Brightness up",
@@ -503,14 +478,7 @@ fn shortcut_commands(cmd: &str) -> String {
     .join("\n")
 }
 
-/// `XDG_CURRENT_DESKTOP` is a colon-separated list; GNOME matches case-insensitively.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn is_gnome(desktop: Option<&str>) -> bool {
-    desktop.is_some_and(|d| d.split(':').any(|p| p.eq_ignore_ascii_case("GNOME")))
-}
-
 /// The command to bind: the app's full path, single-quoted if it contains a space.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn command_name(exe: Option<&str>) -> String {
     match exe {
         None | Some("") => "thinkvision-control".into(),
@@ -520,14 +488,12 @@ fn command_name(exe: Option<&str>) -> String {
 }
 
 /// PowerDevil's comm is cut to 15 characters by the kernel ("org_kde_powerde"), so the cmdline confirms it.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn is_powerdevil_process(comm: &str, cmdline: &str) -> bool {
     let comm = comm.trim();
     comm == "org_kde_powerdevil" || (comm == "org_kde_powerde" && cmdline.contains("org_kde_powerdevil"))
 }
 
 /// Whether a NUL-separated environ sets `POWERDEVIL_NO_DDCUTIL` to a non-zero value.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn has_ddc_disabled(environ: &str) -> bool {
     environ
         .split('\0')
@@ -536,13 +502,11 @@ fn has_ddc_disabled(environ: &str) -> bool {
 }
 
 /// Whether a process's `/proc/<pid>/maps` has libddcutil loaded (PowerDevil built with DDC support).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn maps_use_ddcutil(maps: &str) -> bool {
     maps.lines().any(|l| l.rsplit('/').next().is_some_and(|f| f.starts_with("libddcutil.so")))
 }
 
 /// A polkit authentication agent, by the file name of its executable (`/proc/<pid>/cmdline`'s first word).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn is_polkit_agent(exe_name: &str) -> bool {
     const AGENTS: [&str; 15] = [
         "gnome-shell",
@@ -565,7 +529,6 @@ fn is_polkit_agent(exe_name: &str) -> bool {
 }
 
 /// Another program that drives DDC/CI, by its process name (comm, at most 15 characters).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn other_ddc_program(comm: &str) -> Option<&'static str> {
     match comm.trim() {
         "vdu_controls" => Some("VDU Controls"),
@@ -1002,9 +965,6 @@ mod tests {
         assert_eq!(install_command(PackageManager::Pacman, p), "pacman -S --needed --noconfirm pkg");
         assert_eq!(install_command(PackageManager::Xbps, p), "xbps-install -Sy pkg");
         assert_eq!(install_command(PackageManager::Apk, p), "apk add pkg");
-        for (_, pm) in MANAGERS {
-            assert_eq!(appindicator_package(pm), "gnome-shell-extension-appindicator");
-        }
     }
 
     #[test]

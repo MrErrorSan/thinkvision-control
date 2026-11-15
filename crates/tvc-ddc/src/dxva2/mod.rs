@@ -57,10 +57,6 @@ impl Drop for Handle {
 }
 
 impl Dxva2Link {
-    fn bound(path: String) -> Self {
-        Dxva2Link { path, held: None }
-    }
-
     fn handle(&self) -> Result<HANDLE, LinkError> {
         self.held.as_ref().map(|h| h.0).ok_or_else(not_connected)
     }
@@ -398,12 +394,6 @@ fn wide_to_string(wide: &[u16]) -> String {
 /// Windows displays: every active QueryDisplayConfig target, its `target` the monitor device path.
 pub(crate) struct Dxva2Discovery;
 
-impl Dxva2Discovery {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-}
-
 impl Discovery for Dxva2Discovery {
     fn enumerate(&mut self) -> Result<Vec<DisplayInfo>, ListError> {
         let all = joined().ok_or_else(|| ListError::Failed("QueryDisplayConfig failed".into()))?;
@@ -411,7 +401,7 @@ impl Discovery for Dxva2Discovery {
     }
 
     fn open(&mut self, target: &str) -> Result<Box<dyn MonitorLink>, LinkFailure> {
-        Ok(Box::new(Dxva2Link::bound(target.to_owned())))
+        Ok(Box::new(Dxva2Link { path: target.to_owned(), held: None }))
     }
 }
 

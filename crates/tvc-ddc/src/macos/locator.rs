@@ -23,10 +23,6 @@ pub(crate) fn locate_by_id(io_av: ffi::IoAv, registry_id: u64) -> Result<Lookup,
         .iter()
         .find(|(entry, _)| entry.registry_id() == Some(registry_id))
         .ok_or_else(|| format!("No external DCPAVServiceProxy with registry id {registry_id}."))?;
-    lookup(io_av, entry, info)
-}
-
-fn lookup(io_av: ffi::IoAv, entry: &IoObject, info: &ProxyCandidate) -> Result<Lookup, String> {
     // SAFETY: a live io_service_t; the result follows the Create rule.
     let service = Cf(unsafe { (io_av.create)(std::ptr::null(), entry.0) });
     if service.0.is_null() {

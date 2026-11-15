@@ -16,7 +16,7 @@ export global App {
     callback copy-capability-report();          // the selected display's raw capabilities, identity, level, warnings
 
     // Header
-    in property <string> model-name: @tr("Monitor");
+    in property <string> model-name;
     in property <string> status-glyph;
     in property <string> status-text;
     in property <bool> connected;
@@ -52,7 +52,7 @@ export global App {
     in-out property <bool> finder-open;
     in property <Banner> finder-status;
     in property <bool> finder-busy;
-    in property <string> finder-snapshot-text: @tr("Reads the current value of every code the monitor reports");
+    in property <string> finder-snapshot-text;
     in property <bool> finder-can-compare;
     in property <[FinderChange]> finder-changes;
     in property <int> finder-selected: -1;
@@ -70,7 +70,7 @@ export global App {
     callback set-language(int);                 // index into languages
     in property <bool> background-mode;
     in property <string> background-description;
-    in property <string> start-label: @tr("Start with Windows");
+    in property <string> start-label;
     in property <string> start-description;
     in property <bool> start-with-os;
     in property <[string]> input-labels;

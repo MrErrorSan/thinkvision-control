@@ -1,4 +1,4 @@
-//! MonitorHub: one engine per monitor, ids, batches, migration (w3-hub).
+//! MonitorHub: one engine per monitor, ids, migration (w3-hub).
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,11 +9,10 @@ use std::time::{Duration, Instant};
 use super::*;
 use crate::engine::{PowerState, ResolvedControls, WriteOutcome};
 use crate::fake::{FakeDiscovery, P32P20_CAPABILITIES};
-use crate::hub::{HubCommand, HubConfig, HubEvent, HubHandle, Monitor, MonitorHub, OpId, Target};
+use crate::hub::{HubCommand, HubConfig, HubEvent, HubHandle, Monitor, MonitorHub, OpId};
 use crate::identity::{BackendKind, DisplayInfo};
 use crate::link::{LinkError, LinkFailure};
 use crate::result::ResultKind;
-use crate::store::Preset;
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -41,15 +40,11 @@ impl Hub {
         self.handle.as_ref().unwrap()
     }
 
-    /// Sends `command` to `target` with a fresh op id.
-    fn send(&self, target: Target, command: Command) -> OpId {
-        let op = self.handle().next_op();
-        self.handle().send(HubCommand::Send { target, op, command: Box::new(command) });
-        op
-    }
-
+    /// Sends `command` to monitor `id` with a fresh op id.
     fn to(&self, id: &str, command: Command) -> OpId {
-        self.send(Target::One(MonitorId(id.into())), command)
+        let op = self.handle().next_op();
+        self.handle().send(HubCommand::Send { id: MonitorId(id.into()), op, command: Box::new(command) });
+        op
     }
 
     fn rescan(&self) {
@@ -99,13 +94,6 @@ impl Hub {
         })
     }
 
-    fn wait_batch(&mut self, op: OpId) -> Vec<(MonitorId, WriteResult)> {
-        self.wait(|e| match e {
-            HubEvent::Batch { op: o, results, .. } if *o == op => Some(results.clone()),
-            _ => None,
-        })
-    }
-
     fn wait_monitors(&mut self) -> Vec<String> {
         self.wait(|e| match e {
             HubEvent::Monitors(Ok(list)) => Some(list.iter().map(|m| m.id.0.clone()).collect()),
@@ -121,8 +109,8 @@ impl Hub {
         }).expect("a Controls event")
     }
 
-    fn set(&self, target: Target, value: u16) -> OpId {
-        self.send(target, Command::Set { code: 0x10, value, confirmed: false, origin: Origin::Window })
+    fn set(&self, id: &str, value: u16) -> OpId {
+        self.to(id, Command::Set { code: 0x10, value, confirmed: false, origin: Origin::Window })
     }
 }
 
@@ -159,67 +147,12 @@ fn slow_monitor_does_not_delay_another() {
     hub.connect("LEN62A2-SF");
 
     let started = Instant::now();
-    let op = hub.set(Target::One(id("LEN62A2-SF")), 40);
+    let op = hub.set("LEN62A2-SF", 40);
     let (from, result) = hub.wait_result(op);
 
     assert!(started.elapsed() < Duration::from_millis(2000), "{:?}", started.elapsed());
     assert_eq!((from, result.outcome), (id("LEN62A2-SF"), WriteOutcome::Ok));
     assert_eq!(fast.state().writes, [(0x10, 40)]);
-}
-
-#[test]
-fn all_target_yields_one_batch() {
-    let root = TempDir::new();
-    let mut hub = Hub::new(root.path(), two());
-    hub.connect("LEN62A2-SB");
-    hub.connect("LEN62A2-SA");
-
-    let op = hub.set(Target::All, 30);
-    let results = hub.wait_batch(op);
-
-    let ids: Vec<_> = results.iter().map(|(id, r)| (id.0.as_str(), r.outcome)).collect();
-    assert_eq!(ids, [("LEN62A2-SA", WriteOutcome::Ok), ("LEN62A2-SB", WriteOutcome::Ok)]);
-    let stray = hub.seen.iter().any(|e| matches!(e, HubEvent::Monitor { event: Event::Result { op: Some(o), .. }, .. }
-        if *o == op));
-    assert!(!stray);
-    let batches = hub.seen.iter().filter(|e| matches!(e, HubEvent::Batch { op: o, .. } if *o == op)).count();
-    assert_eq!(batches, 1);
-}
-
-#[test]
-fn all_target_batch_carries_origin_and_code() {
-    let root = TempDir::new();
-    let mut hub = Hub::new(root.path(), two());
-    let preset = Preset { name: "Day".into(), brightness: 50, contrast: 60, colour_mode: None };
-
-    let op = hub.send(Target::All, Command::ApplyPreset { preset, origin: Origin::Hotkey });
-    let (origin, code, results) = hub.wait(|e| match e {
-        HubEvent::Batch { op: o, origin, code, results } if *o == op => Some((*origin, *code, results.clone())),
-        _ => None,
-    });
-
-    // Not connected yet: both answer, as one batch.
-    assert_eq!((origin, code, results.len()), (Origin::Hotkey, None, 2));
-    assert!(results.iter().all(|(_, r)| r.outcome == WriteOutcome::NotResponding));
-}
-
-#[test]
-fn all_target_refuses_other_commands() {
-    let root = TempDir::new();
-    let mut hub = Hub::new(root.path(), two());
-    hub.connect("LEN62A2-SA");
-    hub.connect("LEN62A2-SB");
-
-    let restore = hub.send(Target::All, Command::RestoreBackup { origin: Origin::Tray });
-    assert!(hub.wait_batch(restore).is_empty());
-
-    let drag = hub.send(Target::All, Command::DragTo { code: 0x10, value: 20 });
-    let after = hub.set(Target::All, 25);
-    hub.wait_batch(after);
-    assert!(!hub.seen.iter().any(|e| matches!(e, HubEvent::Batch { op, .. } if *op == drag)));
-    let restored = hub.seen.iter().any(|e| matches!(e, HubEvent::Monitor { event: Event::Result { op: Some(o), .. }, .. }
-        if *o == restore));
-    assert!(!restored);
 }
 
 #[test]
@@ -230,21 +163,17 @@ fn detach_leaves_the_other_connected() {
     let mut hub = Hub::new(root.path(), displays);
     hub.connect("LEN62A2-SA");
     hub.connect("LEN62A2-SB");
-    a.state().delay = Duration::from_secs(2); // A won't answer the batch before it leaves
-
-    let op = hub.set(Target::All, 35);
+    a.state().delay = Duration::from_secs(2); // A is still busy when it leaves
+    hub.set("LEN62A2-SA", 35);
     hub.discovery.state().displays.remove(0);
     hub.rescan();
-    // B's answer and A's leaving race: the batch waits for both.
-    let results = hub.wait_batch(op);
     let gone = hub.seen_or_wait(|e| match e {
         HubEvent::Detached(id) => Some(id.clone()),
         _ => None,
     });
 
     assert_eq!(gone, id("LEN62A2-SA"));
-    assert_eq!(results.iter().map(|(id, _)| id.0.as_str()).collect::<Vec<_>>(), ["LEN62A2-SB"]);
-    let op = hub.set(Target::One(id("LEN62A2-SB")), 45);
+    let op = hub.set("LEN62A2-SB", 45);
     assert_eq!(hub.wait_result(op).1.outcome, WriteOutcome::Ok);
     let late = hub.seen.iter().skip_while(|e| !matches!(e, HubEvent::Detached(_)))
         .any(|e| matches!(e, HubEvent::Monitor { id, .. } if id.0 == "LEN62A2-SA"));
@@ -367,7 +296,7 @@ fn op_id_echoed_for_one_target() {
     let mut hub = Hub::new(root.path(), two());
     hub.connect("LEN62A2-SA");
 
-    let op = hub.set(Target::One(id("LEN62A2-SA")), 50);
+    let op = hub.set("LEN62A2-SA", 50);
 
     assert_eq!(hub.wait_result(op).0, id("LEN62A2-SA"));
 }
@@ -410,7 +339,7 @@ fn power_broadcast_and_replayed() {
     hub.rescan();
 
     hub.wait(asleep("LEN62A2-SB"));
-    let op = hub.set(Target::One(id("LEN62A2-SB")), 10);
+    let op = hub.set("LEN62A2-SB", 10);
     assert_eq!(hub.wait_result(op).1.kind, ResultKind::Asleep);
 }
 
@@ -447,7 +376,7 @@ fn backlight_forced_verified_zero_pacing() {
     assert!(controls.controls.values().filter(|d| d.code != 0x10).all(|d| !d.is_visible()));
 
     let started = Instant::now();
-    let op = hub.set(Target::One(id("BOE0A1B-SP")), 70);
+    let op = hub.set("BOE0A1B-SP", 70);
     assert_eq!(hub.wait_result(op).1.outcome, WriteOutcome::Ok);
     // The P32p-20 pacing would wait 400 ms to verify.
     assert!(started.elapsed() < Duration::from_millis(300), "{:?}", started.elapsed());

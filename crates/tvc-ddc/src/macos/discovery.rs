@@ -23,12 +23,6 @@ const EDID_KEYS: [&str; 2] = ["EDID", "IODisplayEDID"];
 /// One entry per online display; external ones with an IOAVService get the DDC backend.
 pub(crate) struct MacDiscovery;
 
-impl MacDiscovery {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-}
-
 /// What enumeration learned about one CoreGraphics display.
 struct Seen {
     cg_id: u32,

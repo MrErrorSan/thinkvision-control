@@ -75,6 +75,10 @@ pub const INPUT: u8 = 0x60;
 pub const VOLUME: u8 = 0x62;
 /// The codes the Display tab shows; refreshed on show and polled while visible.
 pub const DISPLAY_CODES: [u8; 8] = [BRIGHTNESS, CONTRAST, COLOUR_MODE, 0x16, 0x18, 0x1A, INPUT, VOLUME];
+/// The Display tab's sliders, and Together mode's master sliders: code, English label (translated where shown) and
+/// glyph.
+pub const MAIN_RANGES: [(u8, &str, &str); 3] =
+    [(BRIGHTNESS, "Brightness", glyph::SUN), (CONTRAST, "Contrast", glyph::CONTRAST), (VOLUME, "Volume", glyph::SPEAKER)];
 
 pub mod glyph {
     pub const SUN: &str = "\u{e1f8}";
@@ -365,7 +369,7 @@ pub fn support_label(level: &SupportLevel) -> String {
 }
 
 /// Below Verified, but trusted to write: standard (or same-family) controls that may not behave as labelled.
-fn experimental(st: &State) -> bool {
+pub(crate) fn experimental(st: &State) -> bool {
     matches!(st.level, SupportLevel::LenovoFamily | SupportLevel::GenericMccs)
 }
 
@@ -619,10 +623,10 @@ pub fn render(app: &App, st: &State) {
     app.set_active_input(st.value(INPUT).map_or(-1, |v| v as i32));
     app.set_input_note(s(st.notes.get(&INPUT).map_or("", String::as_str)));
     if !together {
-        let ranges = [(BRIGHTNESS, tr("Brightness"), glyph::SUN), (CONTRAST, tr("Contrast"), glyph::CONTRAST), (VOLUME, tr("Volume"), glyph::SPEAKER)]
+        let ranges = MAIN_RANGES
             .into_iter()
             .filter(|(code, ..)| st.def(*code).is_some())
-            .map(|(code, label, glyph)| range_row(st, code, &label, glyph))
+            .map(|(code, label, glyph)| range_row(st, code, &tr(label), glyph))
             .collect();
         sync(app.get_main_ranges(), ranges, |m| app.set_main_ranges(m));
         app.set_range_note(s(&st.range_note));

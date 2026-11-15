@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: ThinkVision Control 0.1.0\n"
-"POT-Creation-Date: 2026-11-15 05:59+0000\n"
+"POT-Creation-Date: 2026-11-15 12:56+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -10,22 +10,6 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Language: \n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-
-#. Header
-#: crates/tvc-app/ui/app.slint:19
-msgctxt "App"
-msgid "Monitor"
-msgstr ""
-
-#: crates/tvc-app/ui/app.slint:55
-msgctxt "App"
-msgid "Reads the current value of every code the monitor reports"
-msgstr ""
-
-#: crates/tvc-app/ui/app.slint:73
-msgctxt "App"
-msgid "Start with Windows"
-msgstr ""
 
 #: crates/tvc-app/ui/background.slint:26
 msgctxt "Tray"
@@ -617,84 +601,79 @@ msgctxt "SettingsPage"
 msgid "Copy the command"
 msgstr ""
 
-#. the fallback keeps the card usable before it does.
-#: crates/tvc-app/ui/pages.slint:853
+#. The language names are each in their own language, so only "System" is translated (Rust fills `languages`).
+#: crates/tvc-app/ui/pages.slint:852
 msgctxt "SettingsPage"
 msgid "Language"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:856 crates/tvc-app/ui/pages.slint:861
+#: crates/tvc-app/ui/pages.slint:855 crates/tvc-app/ui/pages.slint:860
 msgctxt "SettingsPage"
 msgid "App language"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:857
+#: crates/tvc-app/ui/pages.slint:856
 msgctxt "SettingsPage"
 msgid "System follows your computer's language"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:859
-msgctxt "SettingsPage"
-msgid "System"
-msgstr ""
-
-#: crates/tvc-app/ui/pages.slint:866
+#: crates/tvc-app/ui/pages.slint:865
 msgctxt "SettingsPage"
 msgid "Startup"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:872
+#: crates/tvc-app/ui/pages.slint:871
 msgctxt "SettingsPage"
 msgid "Run in background"
 msgstr ""
 
 #. Not for a display without inputs (the built-in panel).
-#: crates/tvc-app/ui/pages.slint:895
+#: crates/tvc-app/ui/pages.slint:894
 msgctxt "SettingsPage"
 msgid "This PC"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:898
+#: crates/tvc-app/ui/pages.slint:897
 msgctxt "SettingsPage"
 msgid "This PC's input"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:899
+#: crates/tvc-app/ui/pages.slint:898
 msgctxt "SettingsPage"
 msgid "We ask before you switch the monitor away from it"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:907
+#: crates/tvc-app/ui/pages.slint:906
 msgctxt "SettingsPage"
 msgid "Presets"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:917
+#: crates/tvc-app/ui/pages.slint:916
 msgctxt "SettingsPage"
 msgid "Save current"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:924
+#: crates/tvc-app/ui/pages.slint:923
 msgctxt "SettingsPage"
 msgid "Automatic Day/Night"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:927
+#: crates/tvc-app/ui/pages.slint:926
 msgctxt "SettingsPage"
 msgid "Keyboard shortcuts"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:957
+#: crates/tvc-app/ui/pages.slint:956
 msgctxt "SettingsPage"
 msgid "Not set"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:966
+#: crates/tvc-app/ui/pages.slint:965
 msgctxt "SettingsPage"
 msgid "Edit shortcut: {0}"
 msgstr ""
 
-#: crates/tvc-app/ui/pages.slint:975
+#: crates/tvc-app/ui/pages.slint:974
 msgctxt "SettingsPage"
 msgid "About"
 msgstr ""

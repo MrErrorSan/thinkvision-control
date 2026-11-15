@@ -19,9 +19,7 @@ fn p40w20_parses() {
 
     assert_eq!(caps.model, "P40w-20");
     assert_eq!(caps.vcp[&0xF7], Some(vec![0x04, 0x07, 0x08, 0x12, 0x14, 0x15, 0x17]));
-    assert!(caps.flags[&0xF7].nested);
     assert_eq!(caps.mccs_ver, "2.2");
-    assert_eq!(caps.cmds, [0x01, 0x02, 0x03, 0x07, 0x0C, 0xE3, 0xF3]);
     assert!(caps.warnings.is_empty(), "{:?}", caps.warnings);
 }
 
@@ -33,7 +31,6 @@ fn duplicate_60_union_and_intersection() {
     assert!(!caps.allows_value(0x60, 0x11));
     assert!(caps.allows_value(0x60, 0x0F));
     assert!(!caps.allows_value(0x60, 0xFF));
-    assert!(caps.flags[&0x60].duplicate);
 }
 
 #[test]
@@ -105,7 +102,7 @@ fn input_name_table() {
 #[test]
 fn bare_code_has_no_list() {
     let caps = parse("(vcp(60))");
-    assert!(!caps.has_value_list(0x60));
+    assert_eq!(caps.vcp[&0x60], None);
     assert!(caps.allows_value(0x60, 5));
 }
 
@@ -114,7 +111,6 @@ fn p32p20_unchanged() {
     let caps = parse(P32P20_CAPABILITIES);
 
     assert!(caps.warnings.is_empty(), "{:?}", caps.warnings);
-    assert!(caps.flags.is_empty());
     assert!(caps.writable.is_empty());
     assert_eq!(caps.vcp.len(), 32);
     assert_eq!(caps.vcp[&0x60], Some(vec![0x11, 0x0F, 0x31]));
@@ -122,7 +118,9 @@ fn p32p20_unchanged() {
     assert_eq!(caps.vcp[&0x10], None);
     assert_eq!(caps.vcp[&0xFA], Some(vec![0x10, 0x12, 0xEA, 0x14]));
     assert_eq!(caps.firmware().as_deref(), Some("LB1.2"));
-    assert_eq!((caps.mccs_ver.as_str(), caps.cmds.len()), ("2.2", 7));
+    assert_eq!(caps.mccs_ver, "2.2");
+    // The cmds(...) section is skipped: without it the string parses the same.
+    assert_eq!(parse(&P32P20_CAPABILITIES.replace("cmds(01 02 03 07 0C E3 F3)", "")), caps);
 }
 
 #[test]

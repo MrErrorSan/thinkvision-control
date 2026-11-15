@@ -188,7 +188,7 @@ impl ProfileStore {
             }
             let known = std::mem::take(&mut profile.inputs);
             profile.inputs = inputs.iter().map(|&v| known.iter().find(|i| i.code == v).cloned()
-                .unwrap_or_else(|| InputOption { code: v, label: input_label(v), kind: input_kind(v).into() }))
+                .unwrap_or_else(|| mccs_input(v)))
                 .collect();
             profile.control_order.retain(|c| defs.contains_key(c));
             profile.edid_id.clear();
@@ -203,9 +203,7 @@ impl ProfileStore {
             if let Some(d) = defs.get_mut(&INPUT) {
                 d.value_labels = inputs.iter().map(|&v| (v, input_label(v))).collect();
             }
-            profile.inputs = inputs.iter()
-                .map(|&v| InputOption { code: v, label: input_label(v), kind: input_kind(v).into() })
-                .collect();
+            profile.inputs = inputs.iter().copied().map(mccs_input).collect();
         }
         if !matches!(level, SupportLevel::Verified { .. }) {
             let model = caps.map(|c| c.model.trim().to_string()).unwrap_or_default();
@@ -328,6 +326,11 @@ fn qualifying_codes(defs: &BTreeMap<u8, ControlDefinition>, caps: &MonitorCapabi
 
 fn advertised(caps: Option<&MonitorCapabilities>, code: u8) -> Vec<u8> {
     caps.and_then(|c| c.vcp.get(&code)?.clone()).unwrap_or_default()
+}
+
+/// An input the profile doesn't know, named and typed from the MCCS table.
+fn mccs_input(code: u8) -> InputOption {
+    InputOption { code, label: input_label(code), kind: input_kind(code).into() }
 }
 
 fn input_label(value: u8) -> String {

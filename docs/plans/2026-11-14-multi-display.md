@@ -495,7 +495,7 @@ pub enum HubEvent {
 - **Wave 1 decision:** a `vcpname` name labels a vendor code but never makes it writable. Writes still need a profile definition. This is stricter than the plan's floor wording.
 - **Wave 4 decisions:**
   - **The app's own confirmation policy counts as confirmation for 0x60.** Hotkey, tray and window input switches on a Verified display go out with `confirmed: true` without a dialog, as in 0.0.8. An Experimental display always asks first, from every source and even with `--yes`. Without this, the Wave 1 floor would refuse every hotkey input switch.
-  - **Together mode doesn't use `Target::All`.** It sends one `Target::One` per included, connected display under a shared OpId, because raw values differ per model and `All` would also reach excluded displays. `HubEvent::Batch` still feeds the same handler.
+  - **Together mode doesn't use `Target::All`.** It sends one `Target::One` per included, connected display under a shared OpId, because raw values differ per model and `All` would also reach excluded displays. With nothing else using it, the hub's `Target::All` fan-out and `HubEvent::Batch` were removed in the over-engineering pass: `Send` takes one monitor id.
   - **A detached display stays in the picker as Disconnected for the session.**
   - **The OSD's window attributes come from a flag set while it is created.** The title match in 0.0.8 never fired (APP-16), so the OSD gets `with_active(false)` and skip-taskbar for the first time in 0.1.0. This needs a live check.
   - **Laptop panel on Windows:** `\\.\LCD` brightness IOCTLs instead of WMI; the capability string is `(prot(monitor)type(LCD)vcp(10))`.

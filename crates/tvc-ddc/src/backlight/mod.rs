@@ -2,7 +2,8 @@
 //! IOCTLs on Windows, `/sys/class/backlight` on Linux, nothing elsewhere.
 //!
 //! A display is this backend's when its target starts with [`TARGET_PREFIX`]; the hub (or controller) then gives its
-//! engine `EngineConfig.level = Some(Verified { profile: PROFILE })` instead of resolving one from the capabilities.
+//! engine `EngineConfig.level = Some(Verified { profile: "builtin-backlight" })` (tvc-core's built-in panel profile)
+//! instead of resolving one from the capabilities.
 //! The link reads and writes brightness in percent (`max` is always 100) and answers every other code `Unsupported`.
 //!
 //! The level-mapping, scaling and sysfs-selection rules here are pure and compile on every OS.
@@ -24,9 +25,6 @@ use crate::linux::{connector_kind, connector_order};
 
 /// Every backlight target starts with this, so `discovery()` can route `open` here.
 pub const TARGET_PREFIX: &str = "backlight:";
-
-/// The profile the engine runs a built-in panel at (`SupportLevel::Verified`).
-pub const PROFILE: &str = "builtin-backlight";
 
 /// The capability string a backlight link reports: brightness only.
 pub const CAPABILITIES: &str = "(prot(monitor)type(LCD)vcp(10))";
@@ -147,11 +145,6 @@ pub fn panel_connector<'a, N: AsRef<str>>(device: Option<&str>, connectors: &'a 
     }
     builtin.sort_by(|(a, ca), (b, cb)| cb.cmp(ca).then_with(|| connector_order(a, b)));
     builtin.first().map(|(name, _)| *name)
-}
-
-/// `card0-eDP-1` → `eDP-1`; a name without the `cardN-` prefix (`eDP-1`) is returned as it is.
-pub fn connector_port(connector: &str) -> &str {
-    crate::linux::connector_port(connector).unwrap_or(connector)
 }
 
 #[cfg(test)]
@@ -289,14 +282,6 @@ mod tests {
         assert_eq!(panel_connector(None, &[("card0-DSI-1", false)]), Some("card0-DSI-1"));
         assert_eq!(panel_connector(None, &[("card0-DP-1", true), ("card0-HDMI-A-1", true)]), None);
         assert_eq!(panel_connector::<&str>(None, &[]), None);
-    }
-
-    #[test]
-    fn connector_port_drops_only_the_card_prefix() {
-        assert_eq!(connector_port("card0-eDP-1"), "eDP-1");
-        assert_eq!(connector_port("card1-HDMI-A-2"), "HDMI-A-2");
-        assert_eq!(connector_port("eDP-1"), "eDP-1");
-        assert_eq!(connector_port("internal"), "internal");
     }
 
     #[test]

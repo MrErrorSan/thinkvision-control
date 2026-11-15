@@ -13,7 +13,7 @@ use tvc_core::link::{LinkError, LinkFailure, MonitorLink};
 use zbus::blocking::Connection;
 
 use super::link::{BacklightLink, Panel};
-use super::{connector_port, display_info, from_percent, is_ddcci_backlight, panel_connector, pick_backlight, to_percent};
+use super::{display_info, from_percent, is_ddcci_backlight, panel_connector, pick_backlight, to_percent};
 
 const BACKLIGHT: &str = "/sys/class/backlight";
 const DRM: &str = "/sys/class/drm";
@@ -51,7 +51,10 @@ pub(super) fn displays() -> Vec<DisplayInfo> {
         .ok()
         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
     let info = match panel_connector(own.as_deref(), &connectors) {
-        Some(conn) => display_info(name, &fs::read(format!("{DRM}/{conn}/edid")).unwrap_or_default(), connector_port(conn)),
+        Some(conn) => {
+            let port = crate::linux::connector_port(conn).unwrap_or(conn);
+            display_info(name, &fs::read(format!("{DRM}/{conn}/edid")).unwrap_or_default(), port)
+        }
         None => display_info(name, &[], "internal"),
     };
     vec![info]

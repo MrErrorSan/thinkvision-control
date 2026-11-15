@@ -17,6 +17,8 @@ pub const VCP_REPLY_LEN: usize = 11;
 pub const NULL_REPLY_LIMIT: u32 = 3;
 /// Bytes read back for one capabilities fragment (header 3 + up to 32 data + offset 2 + checksum 1).
 pub const FRAGMENT_REPLY_LEN: usize = 3 + 32 + 3;
+/// Upper bound on a capability string read fragment by fragment.
+pub const MAX_CAPABILITIES_LEN: usize = 8192;
 
 const DESTINATION_WRITE: u8 = 0x6E;
 const DESTINATION_READ: u8 = 0x50;

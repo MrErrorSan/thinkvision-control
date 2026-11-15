@@ -14,24 +14,12 @@ pub struct MonitorCapabilities {
     pub vcp: BTreeMap<u8, Option<Vec<u8>>>,
     /// Values a code advertised more than once may be written with: those present in every occurrence.
     pub writable: BTreeMap<u8, Vec<u8>>,
-    /// Codes the parser noted something about; codes with nothing to note are absent.
-    pub flags: BTreeMap<u8, CodeFlags>,
     /// `vcpname(...)`: names the monitor gives its own codes.
     pub names: BTreeMap<u8, String>,
     /// `mccs_ver(...)`, e.g. "2.2"; empty when absent.
     pub mccs_ver: String,
-    /// `cmds(...)`: the DDC/CI commands the monitor accepts.
-    pub cmds: Vec<u8>,
     /// What the parser skipped, one line each; empty when the string parsed cleanly.
     pub warnings: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CodeFlags {
-    /// A value carried its own sub-list (P40w-20: `F7(... 14(00 02 03) ...)`); only the top-level values are kept.
-    pub nested: bool,
-    /// The code appeared more than once.
-    pub duplicate: bool,
 }
 
 impl MonitorCapabilities {
@@ -40,7 +28,7 @@ impl MonitorCapabilities {
     }
 
     /// Whether the capability string permits writing `value` to `code`. A code advertised without a value list
-    /// permits any value (see [`Self::has_value_list`]); whether that is safe for an Enum code is the safety
+    /// permits any value; whether that is safe for an Enum code is the safety
     /// layer's decision.
     pub fn allows_value(&self, code: u8, value: u16) -> bool {
         let Ok(v) = u8::try_from(value) else { return self.vcp.get(&code) == Some(&None) };
@@ -50,11 +38,6 @@ impl MonitorCapabilities {
             (None, Some(None)) => true,
             (None, Some(Some(values))) => values.contains(&v),
         }
-    }
-
-    /// True when `code` is advertised with a value list; false when it is absent or advertised bare.
-    pub fn has_value_list(&self, code: u8) -> bool {
-        matches!(self.vcp.get(&code), Some(Some(_)))
     }
 
     /// The value list of 0x04 read as ASCII ("LB1.2" on the P32p-20), when it has ≥2 bytes, all printable.
@@ -121,43 +104,32 @@ pub fn parse(capabilities: &str) -> Result<MonitorCapabilities, ParseError> {
     merge(&mut caps, entries);
     caps.model = text_section(s, b"model", &mut caps.warnings);
     caps.mccs_ver = text_section(s, b"mccs_ver", &mut caps.warnings);
-    if let Some(contents) = section(s, b"cmds", &mut caps.warnings) {
-        let mut i = contents.start;
-        match parse_list(s, &mut i, contents.end) {
-            Ok(values) => caps.cmds = values.iter().map(|v| v.value).collect(),
-            Err(e) => caps.warnings.push(format!("Skipped cmds(...): {e}")),
-        }
-    }
     if let Some(contents) = section(s, b"vcpname", &mut caps.warnings) {
         caps.names = parse_names(s, contents, &mut caps.warnings);
     }
     Ok(caps)
 }
 
-/// One `vcp` entry as written: its code, top-level values, and whether any value carried a sub-list.
+/// One `vcp` entry as written: its code and top-level values (a value's sub-list, as in the P40w-20's
+/// `F7(... 14(00 02 03) ...)`, is dropped).
 struct Entry {
     code: u8,
     values: Option<Vec<u8>>,
-    nested: bool,
 }
 
-/// A value in a list, with the sub-list some monitors nest after it.
+/// A value in a list; `nested` once a sub-list followed it (a second one is an error).
 struct Value {
     value: u8,
     nested: bool,
 }
 
-/// Folds the entries into `vcp`, `writable` and `flags`.
+/// Folds the entries into `vcp` and `writable`.
 fn merge(caps: &mut MonitorCapabilities, entries: Vec<Entry>) {
     let mut by_code: BTreeMap<u8, Vec<Entry>> = BTreeMap::new();
     for e in entries {
         by_code.entry(e.code).or_default().push(e);
     }
     for (code, mut list) in by_code {
-        let flags = CodeFlags { nested: list.iter().any(|e| e.nested), duplicate: list.len() > 1 };
-        if flags != CodeFlags::default() {
-            caps.flags.insert(code, flags);
-        }
         let strip_ff = |v: &mut Vec<u8>| if code == INPUT { v.retain(|&b| b != 0xFF) };
         if list.len() == 1 {
             let mut values = list.pop().and_then(|e| e.values);
@@ -278,7 +250,6 @@ fn parse_vcp(s: &[u8], start: usize, end: usize, entries: &mut Vec<Entry>, warni
         let codes = if s[i] == b'(' { Err(format!("a value list without a code at position {at}")) } else { read_token(s, &mut i, end) };
         skip_separators(s, &mut i, end);
         let mut values = None;
-        let mut nested = false;
         if i < end && s[i] == b'(' {
             let close = matching_close(s, i).filter(|&c| c < end);
             let mut j = i + 1;
@@ -297,18 +268,15 @@ fn parse_vcp(s: &[u8], start: usize, end: usize, entries: &mut Vec<Entry>, warni
             }
         };
         let (&code, bare) = codes.split_last().expect("a token has at least one byte");
-        entries.extend(bare.iter().map(|&code| Entry { code, values: None, nested: false }));
+        entries.extend(bare.iter().map(|&code| Entry { code, values: None }));
         let values = match values.transpose() {
-            Ok(values) => values.map(|list| {
-                nested = list.iter().any(|v| v.nested);
-                list.into_iter().map(|v| v.value).collect()
-            }),
+            Ok(values) => values.map(|list| list.into_iter().map(|v| v.value).collect()),
             Err(e) => {
                 warnings.push(format!("Skipped vcp entry {code:02X}: {e}."));
                 continue;
             }
         };
-        entries.push(Entry { code, values, nested });
+        entries.push(Entry { code, values });
     }
 }
 

@@ -30,13 +30,9 @@ pub fn id(edid: &[u8]) -> Option<String> {
 /// The monitor's own name: the first display product name descriptor (tag 0xFC) in the base block or a CTA-861
 /// extension, up to 13 characters ended by a line feed. None when there is none.
 pub fn display_name(edid: &[u8]) -> Option<String> {
-    descriptors(edid)
-        // A display descriptor starts 00 00 00 <tag> 00; a detailed timing starts with a non-zero pixel clock.
-        .find(|d| d[..3] == [0, 0, 0] && d[3] == 0xFC && d[4] == 0)
-        .map(|d| {
-            let text = &d[5..];
-            let end = text.iter().position(|&b| b == 0x0A).unwrap_or(text.len());
-            text[..end].iter().map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '?' }).collect::<String>()
+    descriptor_text(edid, 0xFC)
+        .map(|text| {
+            text.iter().map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '?' }).collect::<String>()
         })
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty())
@@ -45,18 +41,24 @@ pub fn display_name(edid: &[u8]) -> Option<String> {
 /// The monitor's serial: the serial-number text descriptor (tag 0xFF) when there is one, else the 32-bit serial
 /// number in bytes 12-15 when it isn't zero. None when the EDID gives neither.
 pub fn serial(edid: &[u8]) -> Option<String> {
-    let text = descriptors(edid)
-        .find(|d| d[..3] == [0, 0, 0] && d[3] == 0xFF && d[4] == 0)
-        .map(|d| {
-            let text = &d[5..];
-            let end = text.iter().position(|&b| b == 0x0A).unwrap_or(text.len());
-            text[..end].iter().filter(|b| b.is_ascii_graphic()).map(|&b| b as char).collect::<String>()
-        })
+    let text = descriptor_text(edid, 0xFF)
+        .map(|text| text.iter().filter(|b| b.is_ascii_graphic()).map(|&b| b as char).collect::<String>())
         .filter(|s| !s.is_empty());
     text.or_else(|| {
         let n = u32::from_le_bytes(edid.get(12..16)?.try_into().ok()?);
         (n != 0).then(|| n.to_string())
     })
+}
+
+/// The text of the first display descriptor with `tag`, up to the line feed that ends it.
+fn descriptor_text(edid: &[u8], tag: u8) -> Option<&[u8]> {
+    descriptors(edid)
+        // A display descriptor starts 00 00 00 <tag> 00; a detailed timing starts with a non-zero pixel clock.
+        .find(|d| d[..3] == [0, 0, 0] && d[3] == tag && d[4] == 0)
+        .map(|d| {
+            let text = &d[5..];
+            &text[..text.iter().position(|&b| b == 0x0A).unwrap_or(text.len())]
+        })
 }
 
 /// True when the 128-byte base block sums to zero, as byte 127 makes it.
@@ -76,15 +78,6 @@ fn descriptors(edid: &[u8]) -> impl Iterator<Item = &[u8]> + '_ {
         .filter(|block| block[0] == 0x02 && (4..127).contains(&block[2]))
         .flat_map(|block| block[usize::from(block[2])..127].as_chunks::<18>().0.iter().map(|d| d.as_slice()));
     base.chain(cta)
-}
-
-/// Packs three PNP letters into the vendor number CoreGraphics reports: "LEN" → 0x30AE. None unless three ASCII letters.
-pub fn pack_pnp(pnp: &str) -> Option<u16> {
-    let bytes = pnp.as_bytes();
-    if bytes.len() != 3 || !bytes.iter().all(u8::is_ascii_alphabetic) {
-        return None;
-    }
-    Some(bytes.iter().fold(0u16, |acc, b| acc << 5 | u16::from(b.to_ascii_uppercase() - b'A' + 1)))
 }
 
 /// EDIDs for other modules' tests.
@@ -163,12 +156,8 @@ mod tests {
     }
 
     #[test]
-    fn pnp_packs_and_unpacks() {
+    fn pnp_unpacks() {
         assert_eq!(pnp_letters(0x30AE).as_deref(), Some("LEN"));
-        assert_eq!(pack_pnp("LEN"), Some(0x30AE));
-        assert_eq!(pack_pnp("len"), Some(0x30AE));
         assert_eq!(pnp_letters(0), None);
-        assert_eq!(pack_pnp("LE"), None);
-        assert_eq!(pack_pnp("L3N"), None);
     }
 }

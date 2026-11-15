@@ -14,6 +14,7 @@ from fontTools import subset
 EXTRA = """
 e1f8 f87e f2be f831 f33c e685 edd0 f4f4 f1a0 f2f6 e99a f35a f60a f3f2 f295 f191
 f299 f86a f4a4 f8c1 f124 f690 f32c f36a f3de f2b1 f2a4 f2b7 f588 f6aa f4b9 f15c
+eb43
 """
 
 root = pathlib.Path(__file__).resolve().parent.parent

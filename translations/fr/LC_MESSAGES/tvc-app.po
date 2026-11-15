@@ -5,22 +5,6 @@ msgstr ""
 "Language: fr\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#. Header
-#: crates/tvc-app/ui/app.slint:19
-msgctxt "App"
-msgid "Monitor"
-msgstr "Moniteur"
-
-#: crates/tvc-app/ui/app.slint:55
-msgctxt "App"
-msgid "Reads the current value of every code the monitor reports"
-msgstr "Lit la valeur actuelle de chaque code signalé par le moniteur"
-
-#: crates/tvc-app/ui/app.slint:73
-msgctxt "App"
-msgid "Start with Windows"
-msgstr "Démarrer avec Windows"
-
 #: crates/tvc-app/ui/background.slint:26
 msgctxt "Tray"
 msgid "Open ThinkVision Control"
@@ -626,11 +610,6 @@ msgstr "Langue de l'application"
 msgctxt "SettingsPage"
 msgid "System follows your computer's language"
 msgstr "Système suit la langue de votre ordinateur"
-
-#: crates/tvc-app/ui/pages.slint:859
-msgctxt "SettingsPage"
-msgid "System"
-msgstr "Système"
 
 #: crates/tvc-app/ui/pages.slint:866
 msgctxt "SettingsPage"

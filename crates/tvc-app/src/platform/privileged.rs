@@ -1,6 +1,8 @@
 //! Runs a setup card's fix on a worker thread (Linux): the root steps through `pkexec /bin/sh -c`, so the desktop's
 //! polkit password dialog appears once, then the user steps through `/bin/sh -c`. Other systems have no fixes.
 
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 use tvc_core::i18n::{tr, trf};
 
 use super::setup::Fix;
@@ -50,7 +52,6 @@ impl Outcome {
 
 /// pkexec's exit: 126 the prompt was dismissed, 127 not authorized (or no agent); anything else is the script's.
 /// The script's own 127 (a command not found) is told apart by pkexec's wording.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn pkexec_outcome(code: Option<i32>, stdout: &str, stderr: &str) -> Outcome {
     match code {
         Some(0) => Outcome::Done,
@@ -68,7 +69,6 @@ fn pkexec_outcome(code: Option<i32>, stdout: &str, stderr: &str) -> Outcome {
 }
 
 /// A user step's exit; with `after_login`, failing means it works after the next login.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn user_outcome(code: Option<i32>, stdout: &str, stderr: &str, after_login: bool) -> Outcome {
     match code {
         Some(0) => Outcome::Done,
@@ -78,7 +78,6 @@ fn user_outcome(code: Option<i32>, stdout: &str, stderr: &str, after_login: bool
 }
 
 /// The last three non-empty lines of stderr (stdout when stderr is empty), else the exit code.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn tail(code: Option<i32>, stdout: &str, stderr: &str) -> String {
     let text = if stderr.trim().is_empty() { stdout } else { stderr };
     let lines: Vec<&str> = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).collect();

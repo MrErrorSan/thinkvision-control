@@ -36,10 +36,9 @@ foreach ($path in $app, "$root\target\release\tvc.exe") {
     $bytes = [IO.File]::ReadAllBytes($path)
     if ([Text.Encoding]::ASCII.GetString($bytes) -match 'VCRUNTIME140') { throw "$path needs VCRUNTIME140.dll; the static C runtime setting did not apply" }
 }
-# Size target, not a limit (Cargo.toml [profile.release]): report it, and warn above 10 MB.
+# Size target, not a limit (Cargo.toml [profile.release]): warn above 10 MB; the table at the end reports it.
 $mb = (Get-Item $app).Length / 1MB
 if ($mb -ge 10) { Write-Warning ('thinkvision-control.exe is {0:N2} MB, above the 10 MB target' -f $mb) }
-else { Write-Host ('thinkvision-control.exe is {0:N2} MB' -f $mb) }
 
 & $iscc /Q "/DAppVersion=$version" "$root\packaging\windows\ThinkVisionControl.iss"
 if ($LASTEXITCODE) { throw 'Inno Setup failed' }

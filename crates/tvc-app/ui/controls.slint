@@ -1102,7 +1102,6 @@ export component DisplayPicker inherits VerticalLayout {
 export component OffsetStepper inherits Rectangle {
     in property <int> value;
     in property <string> label;
-    in property <bool> enabled: true;
     callback changed(int);
 
     property <int> step: 5;
@@ -1110,7 +1109,7 @@ export component OffsetStepper inherits Rectangle {
         v > 0 ? "+" + v : v < 0 ? "−" + (-v) : "±0"
     }
     function bump(by: int) {
-        if root.enabled { root.changed(Math.max(-100, Math.min(100, root.value + by))); }
+        root.changed(Math.max(-100, Math.min(100, root.value + by)));
     }
 
     forward-focus: fs;
@@ -1120,10 +1119,8 @@ export component OffsetStepper inherits Rectangle {
     border-width: 1px;
     border-color: Theme.control-stroke;
     background: Theme.card-bg;
-    opacity: root.enabled ? 1 : 0.45;
     accessible-role: spinbox;
     accessible-label: root.label;
-    accessible-enabled: root.enabled;
     accessible-value: root.signed(root.value);
     accessible-value-minimum: -100;
     accessible-value-maximum: 100;
@@ -1134,7 +1131,6 @@ export component OffsetStepper inherits Rectangle {
     fs := FocusScope {
         x: 0;
         width: 0;   // takes no clicks
-        enabled: root.enabled;
         key-pressed(e) => {
             if e.text == Key.UpArrow || e.text == Key.RightArrow { root.bump(root.step); return accept; }
             if e.text == Key.DownArrow || e.text == Key.LeftArrow { root.bump(-root.step); return accept; }
@@ -1146,7 +1142,6 @@ export component OffsetStepper inherits Rectangle {
             width: 32px;
             background: lower.pressed ? Theme.subtle-pressed : lower.has-hover ? Theme.subtle-hover : transparent;
             lower := TouchArea {
-                enabled: root.enabled;
                 clicked => { fs.focus(); root.bump(-root.step); }
             }
             Text { text: "−"; font-size: 14px; color: Theme.text; accessible-role: none; }
@@ -1164,7 +1159,6 @@ export component OffsetStepper inherits Rectangle {
             width: 32px;
             background: raise.pressed ? Theme.subtle-pressed : raise.has-hover ? Theme.subtle-hover : transparent;
             raise := TouchArea {
-                enabled: root.enabled;
                 clicked => { fs.focus(); root.bump(root.step); }
             }
             Text { text: "+"; font-size: 14px; color: Theme.text; accessible-role: none; }

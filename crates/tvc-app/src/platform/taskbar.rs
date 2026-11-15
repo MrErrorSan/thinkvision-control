@@ -28,9 +28,7 @@ pub fn is_light() -> bool {
     }
     #[cfg(target_os = "linux")]
     {
-        let gnome = std::env::var("XDG_CURRENT_DESKTOP")
-            .is_ok_and(|d| d.split(':').any(|p| p.eq_ignore_ascii_case("GNOME")));
-        !gnome && portal::SCHEME.load(std::sync::atomic::Ordering::Relaxed) == portal::PREFER_LIGHT
+        !super::is_gnome(std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref()) && portal::SCHEME.load(std::sync::atomic::Ordering::Relaxed) == portal::PREFER_LIGHT
     }
     #[cfg(not(any(windows, target_os = "linux")))]
     false

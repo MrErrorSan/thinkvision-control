@@ -12,7 +12,7 @@ use super::ffi::{self, Cf, IoAv};
 use super::locator::locate_by_id;
 use super::{
     fallback_checksum_mode, is_unsupported_port, reply_outcome, transport_order, ExchangeOutcome, Transport, ATTEMPTS,
-    CAPABILITIES_FRAGMENT_LEN, CAPABILITIES_MAX_BYTES, RETRY_DELAY_MS, WRITE_CYCLES, WRITE_DELAY_MS,
+    CAPABILITIES_FRAGMENT_LEN, RETRY_DELAY_MS, WRITE_CYCLES, WRITE_DELAY_MS,
 };
 use crate::{ascii, not_connected, packet};
 
@@ -205,8 +205,9 @@ impl MonitorLink for IoAvLink {
         let mut text = Vec::new();
         let mut offset: u16 = 0;
         loop {
-            if text.len() >= CAPABILITIES_MAX_BYTES {
-                return Err(LinkError::Transient(format!("capabilities too long (over {CAPABILITIES_MAX_BYTES} bytes)")));
+            if text.len() >= packet::MAX_CAPABILITIES_LEN {
+                let max = packet::MAX_CAPABILITIES_LEN;
+                return Err(LinkError::Transient(format!("capabilities too long (over {max} bytes)")));
             }
             let at = offset;
             let reply = self.exchange(
