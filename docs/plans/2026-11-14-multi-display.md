@@ -113,7 +113,7 @@ todos:
 
 **Tier 2.** The release adds a new architectural boundary (a hub over several engines), cross-crate contracts, and a settings and data migration.
 **One release.** Every issue in [the verified register](2026-11-14-issues.md) ships fixed in 0.1.0; nothing is released in between.
-**Branch:** `feat/device-sourced-status`, renamed to `release/0.1.0` when Wave 1 starts. The waves are commits on that branch, not releases.
+**Branch:** `release/0.1.0` (renamed from `feat/device-sourced-status`). The waves are commits on that branch, not releases.
 
 Inputs:
 - [Verified issue register](2026-11-14-issues.md). Every task below names the register IDs it closes.
@@ -458,14 +458,27 @@ pub enum HubEvent {
 
 - Per-display Day/Night times. Each display follows the one global schedule, applied with its own preset values.
 - Verified profiles for other models. They need captures from real hardware, which the capability report collects.
-- Renaming the product (open question 1).
+- Renaming the product (decision 1).
 
-## Open questions
+## Decisions on the open questions (approved 2026-11-15)
 
-1. **Product name.** "ThinkVision" is a Lenovo brand. Keep "ThinkVision Control" once other makes work? A rename changes the OS identifiers and needs its own migration, so it isn't in this plan.
-2. **The start-up preset (APP-09).** My pick: catch up only when the phase actually changed since it was last applied. Or never apply on start?
-3. **Hotkey default.** All displays (my pick), or the display under the pointer?
-4. **Linux default input shortcuts.** Ctrl+Super+1/2/3 (my pick), or no defaults on Linux?
-5. **The `tvc.exe` console shim.** OK to add a second, tiny exe to the installer?
-6. **The third-party notices tool.** `cargo about` in CI (my pick), or a hand-kept file?
-7. **Winget.** 0.0.8 was never submitted. Skip it and submit 0.1.0 only (my pick)?
+1. **Product name:** kept as "ThinkVision Control"; a rename is out of scope.
+2. **The start-up preset (APP-09):** catch up only when the phase changed since `LastAppliedPhase`.
+3. **Hotkey default:** All displays.
+4. **Linux default input shortcuts:** Ctrl+Super+1/2/3.
+5. **`tvc.exe` console shim:** yes, installed next to the main exe.
+6. **Third-party notices:** `cargo about` in CI.
+7. **Winget:** skip 0.0.8; submit 0.1.0 only.
+
+## Implementation notes
+
+- **Wave 0** also pinned, beyond the list above:
+  - `Command::ConnectReading(codes)`, for single-code `--get`.
+  - `tvc_core::wire`, the reply-channel encoding, kept in core so the app needs no new dependency.
+  - The `Responder` type and `Start::Forwarded(Option<Reply>)`.
+  - `platform::process_alive`.
+  - `Settings.last_applied_phase`.
+  - `MonitorCapabilities.names` and `warnings`.
+- **CORE-20** landed with Wave 0 as `clock::set_utc_offset_source`.
+- **Firmware** is shown only at the Verified level, gated in the engine rather than through a profile flag.
+- **Agents write no new tests** (anvil). The orchestrator authors the regression tests after reconciling each wave.

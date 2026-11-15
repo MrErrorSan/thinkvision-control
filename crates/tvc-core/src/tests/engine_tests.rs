@@ -10,7 +10,7 @@ use crate::finder::CodeChange;
 use crate::link::{LinkError, LinkFailure, MonitorLink};
 use crate::result::ResultKind;
 use crate::profile::{ControlDefinition, ControlKind, SafetyClass, Section};
-use crate::store::{BackupStore, Preset};
+use crate::store::{BackupStore, CapabilitiesCache, Preset};
 
 fn connected() -> (TempDir, Harness) {
     let dir = TempDir::new();
@@ -65,7 +65,6 @@ fn step_reports_when_monitor_does_not_apply_brightness() {
 
     assert_eq!(result.outcome, WriteOutcome::Blocked);
     assert!(result.message.contains("Brightness remains 0"), "{}", result.message);
-    assert!(result.message.contains("color mode may lock brightness"));
     assert_eq!(result.kept, Some(0));
     assert_eq!(h.link.state().writes, [(0x10, 5)]);
 }
@@ -95,7 +94,7 @@ fn direct_range_write_verifies_the_monitor_applied_the_requested_value() {
     let result = h.set(0x10, 25, false);
 
     assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Kept));
-    assert_eq!(result.message, "Brightness remains 0; the monitor did not apply 25. The current color mode may lock brightness.");
+    assert_eq!(result.message, "Brightness remains 0; the monitor did not apply 25.");
     assert_eq!(result.kept, Some(0));
 }
 
@@ -156,7 +155,7 @@ fn factory_reset_needs_confirmation_and_backs_up_first() {
     assert_eq!(h.link.state().writes, [(0x04, 1)]);
     let backup = BackupStore::new(dir.path()).load_latest().unwrap().unwrap();
     assert_eq!(backup[&0x12], 70);
-    assert_eq!(backup[&0x60], 0x11);
+    assert!(!backup.contains_key(&0x60)); // restoring must not switch input
     assert!(!backup.contains_key(&0xD6));
     assert!(!backup.contains_key(&0xCA));
 }
@@ -795,7 +794,7 @@ fn a_gone_connection_is_not_retried_and_reconnects_at_once() {
 #[test]
 fn input_switch_is_skipped_when_already_there() {
     let (_dir, h) = connected();
-    let result = h.set(0x60, 0x11, false);
+    let result = h.set(0x60, 0x11, true);
     assert_eq!((result.kind, result.message.as_str()), (ResultKind::Ok, "Input → HDMI"));
     assert!(h.link.state().writes.is_empty());
 }
@@ -805,7 +804,7 @@ fn input_switch_writes_once_and_confirms_with_a_re_read() {
     let (_dir, h) = connected();
     let reads = h.link.state().reads.len();
 
-    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: false, origin: Origin::Window });
+    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: true, origin: Origin::Window });
 
     assert_eq!(results(&events)[0].message, "Input → DisplayPort");
     assert_eq!(values(&events), [(0x60, reading(0x0F, 49))]);
@@ -818,7 +817,7 @@ fn input_switch_reports_when_the_monitor_stayed() {
     let (_dir, h) = connected();
     h.link.state().ignored_writes.insert(0x60);
 
-    let result = h.set(0x60, 0x0F, false);
+    let result = h.set(0x60, 0x0F, true);
 
     assert_eq!((result.outcome, result.kind), (WriteOutcome::Blocked, ResultKind::Kept));
     assert_eq!(result.message, "The monitor stayed on HDMI");
@@ -832,7 +831,7 @@ fn input_switch_counts_a_silent_monitor_afterwards_as_done() {
     // This PC can't read the input at all, as when the monitor shows the other PC.
     link.script().read.insert(0x60, LinkError::Transient("no reply".into()));
 
-    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: false, origin: Origin::Window });
+    let events = h.run(Command::Set { code: 0x60, value: 0x0F, confirmed: true, origin: Origin::Window });
 
     let result = &results(&events)[0];
     assert_eq!((result.kind, result.message.as_str()), (ResultKind::Ok, "Input → DisplayPort"));
@@ -867,6 +866,8 @@ fn step_re_reads_a_stale_value_first() {
 #[test]
 fn safe_mode_skips_the_capability_read_and_the_finder_but_still_writes() {
     let dir = TempDir::new();
+    // Writes need live or cached capabilities, and safe mode skips the live read.
+    CapabilitiesCache::new(dir.path()).save(crate::fake::P32P20_CAPABILITIES);
     let fake = FakeLink::new();
     let h = Harness::spawn(Box::new(fake.clone()), &fake, dir.path(), Timing::zero(), true);
 

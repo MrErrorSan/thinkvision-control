@@ -1,6 +1,7 @@
 //! DDC/CI over the private IOAVService I²C calls (Apple Silicon). Timing and framing follow MonitorControl and m1ddc
-//! (both MIT): every request is written twice, each write preceded by 10 ms; a read waits, reads the reply and retries
-//! up to 5 times, 20 ms apart. The engine reconnects after wake or a display change: the service entry can change.
+//! (both MIT): every Get VCP and capabilities request is written twice, each write preceded by 10 ms; a read waits,
+//! reads the reply and retries up to 5 times, 20 ms apart. A Set VCP is written once. The engine reconnects after wake
+//! or a display change: the service entry can change.
 
 use std::thread::sleep;
 use std::time::Duration;
@@ -49,7 +50,7 @@ impl IoAvLink {
 
     /// Sends a request and reads the reply until `accept` takes it, trying the checksum forms per
     /// `fallback_checksum_mode` and remembering the one that worked. Once the form is known, a reply that `unsupported`
-    /// recognises ends the exchange with `LinkError::Unsupported`.
+    /// recognises ends the exchange with `LinkError::Unsupported`; so do null replies when `null_is_unsupported`.
     fn exchange(
         &mut self,
         what: &str,
@@ -57,6 +58,7 @@ impl IoAvLink {
         reply_len: usize,
         accept: impl Fn(&[u8]) -> bool,
         unsupported: impl Fn(&[u8]) -> bool,
+        null_is_unsupported: bool,
     ) -> Result<Vec<u8>, LinkError> {
         let mut mode = self.include_source.unwrap_or(true);
         loop {
@@ -71,6 +73,10 @@ impl IoAvLink {
             }
             return Err(match outcome {
                 ExchangeOutcome::Unsupported => LinkError::Unsupported(format!("{what} is not supported by the monitor")),
+                ExchangeOutcome::AllNull if null_is_unsupported => {
+                    LinkError::Unsupported(format!("{what}: the monitor sends only null replies"))
+                }
+                ExchangeOutcome::AllNull => LinkError::Transient(format!("Only null replies to {what}")),
                 ExchangeOutcome::IoError => {
                     LinkError::Transient(format!("{} {what} failed (IOReturn 0x{:08X})", error.0, error.1))
                 }
@@ -92,12 +98,13 @@ impl IoAvLink {
     ) -> Result<(ExchangeOutcome, Vec<u8>, CallError), LinkError> {
         let service = self.service()?;
         let mut saw_reply = false;
+        let mut nulls = 0;
         let mut error = ("", 0);
         for attempt in 0..ATTEMPTS {
             if attempt > 0 {
                 sleep(Duration::from_millis(RETRY_DELAY_MS));
             }
-            let ret = self.write_twice(service, payload);
+            let ret = self.send(service, payload, WRITE_CYCLES);
             if ret != 0 {
                 error = ("IOAVServiceWriteI2C", ret);
                 continue;
@@ -118,6 +125,13 @@ impl IoAvLink {
                 error = ("IOAVServiceReadI2C", ret);
                 continue;
             }
+            if packet::is_null_message(&reply) {
+                nulls += 1;
+                if nulls == packet::NULL_REPLY_LIMIT {
+                    return Ok((ExchangeOutcome::AllNull, Vec::new(), error));
+                }
+                continue;
+            }
             let accepted = accept(&reply);
             match reply_outcome(self.include_source.is_some(), accepted, !accepted && unsupported(&reply)) {
                 Some(ExchangeOutcome::Ok) => return Ok((ExchangeOutcome::Ok, reply, error)),
@@ -129,10 +143,11 @@ impl IoAvLink {
         Ok((outcome, Vec::new(), error))
     }
 
-    /// Writes the payload to data address 0x51 twice, each preceded by 10 ms. Returns the first IOReturn error, or 0.
-    fn write_twice(&self, service: &Service, payload: &[u8]) -> i32 {
+    /// Writes the payload to data address 0x51 `cycles` times, each preceded by 10 ms. Returns the first IOReturn
+    /// error, or 0.
+    fn send(&self, service: &Service, payload: &[u8], cycles: u32) -> i32 {
         let mut buffer = payload.to_vec();
-        for _ in 0..WRITE_CYCLES {
+        for _ in 0..cycles {
             sleep(Duration::from_millis(WRITE_DELAY_MS));
             // SAFETY: a live service and a buffer of exactly `buffer.len()` bytes.
             let ret = unsafe {
@@ -189,7 +204,10 @@ impl MonitorLink for IoAvLink {
         self.service()?;
         let mut text = Vec::new();
         let mut offset: u16 = 0;
-        while text.len() < CAPABILITIES_MAX_BYTES {
+        loop {
+            if text.len() >= CAPABILITIES_MAX_BYTES {
+                return Err(LinkError::Transient(format!("capabilities too long (over {CAPABILITIES_MAX_BYTES} bytes)")));
+            }
             let at = offset;
             let reply = self.exchange(
                 &format!("capabilities at {at}"),
@@ -197,6 +215,7 @@ impl MonitorLink for IoAvLink {
                 CAPABILITIES_FRAGMENT_LEN,
                 |bytes| packet::parse_capabilities_fragment(bytes, at).is_some(),
                 |_| false, // capability replies have no "unsupported" form
+                false,
             )?;
             let data = packet::parse_capabilities_fragment(&reply, at).unwrap_or_default();
             if data.is_empty() {
@@ -217,13 +236,14 @@ impl MonitorLink for IoAvLink {
             self.transport.vcp_reply_len,
             |bytes| packet::parse_vcp_reply(bytes, code).is_some(),
             |bytes| packet::is_unsupported_reply(bytes, code),
+            true,
         )?;
         packet::parse_vcp_reply(&reply, code).ok_or_else(|| LinkError::Transient("invalid reply".into()))
     }
 
     fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError> {
         let service = self.service()?;
-        let ret = self.write_twice(service, &packet::set_vcp(code, value, self.include_source.unwrap_or(true)));
+        let ret = self.send(service, &packet::set_vcp(code, value, self.include_source.unwrap_or(true)), 1);
         if ret != 0 {
             return Err(LinkError::Transient(format!("IOAVServiceWriteI2C VCP 0x{code:02X} failed (IOReturn 0x{ret:08X})")));
         }

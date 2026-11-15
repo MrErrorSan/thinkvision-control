@@ -1,5 +1,5 @@
-// The data contract between the Rust controller and the UI. The UI never knows VCP codes by meaning:
-// every code here comes from the monitor profile, so another model renders without UI changes.
+// The data contract between the Rust controller and the UI. The Monitor tab's cards come from the monitor profile;
+// the Display tab's controls (brightness, contrast, colour, input) are laid out by the UI.
 
 export enum Severity { info, success, warning, error }
 
@@ -38,6 +38,7 @@ export struct ControlRow {
     kind: ControlKind,
     label: string,
     description: string,
+    note: string,       // the monitor refused the last change, and why; "" = none
     glyph: string,
     options: [string],  // choice: value labels in profile order; toggle: [off, on]
     index: int,         // selected option, -1 = unknown

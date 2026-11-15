@@ -35,9 +35,10 @@ font = subset.load_font(str(source), options)
 subsetter = subset.Subsetter(options)
 subsetter.populate(unicodes=codepoints)
 subsetter.subset(font)
+# Check before saving, so a typo in EXTRA can't overwrite the tracked font with a broken subset.
 missing = sorted(c for c in codepoints if c not in font.getBestCmap())
+if missing:
+    raise SystemExit("not in the font: " + " ".join(f"{c:x}" for c in missing))
 subset.save_font(font, str(target), options)
 
 print(f"{len(codepoints)} code points, {source.stat().st_size:,} -> {target.stat().st_size:,} bytes")
-if missing:
-    raise SystemExit("not in the font: " + " ".join(f"{c:x}" for c in missing))

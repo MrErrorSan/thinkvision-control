@@ -20,15 +20,19 @@ use std::time::Duration;
 pub enum SystemEvent {
     /// Displays were added, removed or reconfigured, or the PC resumed; reconnect. Debounced.
     DisplayChanged,
+    #[cfg(any(windows, target_os = "macos"))]
     DisplayOff,
+    #[cfg(any(windows, target_os = "macos"))]
     DisplayOn,
     Locked,
     Unlocked,
     Suspending,
     Resumed,
     /// The light/dark theme changed (Windows: the taskbar's, which picks the tray icon variant).
+    #[cfg(windows)]
     ThemeChanged,
     /// Windows asks us to exit: sign-out, shutdown, or an installer through Restart Manager. Quit now.
+    #[cfg(windows)]
     SessionEnding,
 }
 
@@ -77,6 +81,7 @@ fn lock<T: ?Sized>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// Windows sends at registration (and duplicate resume messages) produce nothing.
 #[derive(Default)]
 struct Transitions {
+    #[cfg(any(windows, target_os = "macos"))]
     display_off: bool,
     locked: bool,
     suspended: bool,
@@ -87,8 +92,12 @@ impl Transitions {
     fn accept(&mut self, event: SystemEvent) -> bool {
         use SystemEvent::*;
         let (flag, value) = match event {
-            DisplayChanged | ThemeChanged | SessionEnding => return true,
+            DisplayChanged => return true,
+            #[cfg(windows)]
+            ThemeChanged | SessionEnding => return true,
+            #[cfg(any(windows, target_os = "macos"))]
             DisplayOff => (&mut self.display_off, true),
+            #[cfg(any(windows, target_os = "macos"))]
             DisplayOn => (&mut self.display_off, false),
             Locked => (&mut self.locked, true),
             Unlocked => (&mut self.locked, false),
@@ -100,6 +109,7 @@ impl Transitions {
 }
 
 /// `GUID_CONSOLE_DISPLAY_STATE` data: 0 off, 1 on, 2 dimmed (no event).
+#[cfg(windows)]
 fn console_display_event(state: u32) -> Option<SystemEvent> {
     match state {
         0 => Some(SystemEvent::DisplayOff),
@@ -343,12 +353,13 @@ mod imp {
             },
             WM_DEVICECHANGE if lparam != 0 && matches!(wparam as u32, DBT_DEVICEARRIVAL | DBT_DEVICEREMOVECOMPLETE) => {
                 // SAFETY: for these events lParam points at a DEV_BROADCAST_HDR; the class GUID follows it only
-                // when the type says device interface.
+                // when the type says device interface, so the header is read first, through the raw pointer.
                 let ours = unsafe {
-                    let hdr = &*(lparam as *const DEV_BROADCAST_HDR);
-                    let iface = &*(lparam as *const DEV_BROADCAST_DEVICEINTERFACE_W);
-                    hdr.dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE
-                        && guid_eq(&iface.dbcc_classguid, &MONITOR_INTERFACE)
+                    let hdr = lparam as *const DEV_BROADCAST_HDR;
+                    (*hdr).dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE && {
+                        let iface = lparam as *const DEV_BROADCAST_DEVICEINTERFACE_W;
+                        guid_eq(&std::ptr::addr_of!((*iface).dbcc_classguid).read_unaligned(), &MONITOR_INTERFACE)
+                    }
                 };
                 if ours {
                     send(SystemEvent::DisplayChanged);
@@ -784,10 +795,13 @@ mod tests {
     #[test]
     fn transitions_drop_repeats_and_the_initial_on() {
         let mut t = Transitions::default();
-        assert!(!t.accept(DisplayOn));
-        assert!(t.accept(DisplayOff));
-        assert!(!t.accept(DisplayOff));
-        assert!(t.accept(DisplayOn));
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            assert!(!t.accept(DisplayOn));
+            assert!(t.accept(DisplayOff));
+            assert!(!t.accept(DisplayOff));
+            assert!(t.accept(DisplayOn));
+        }
         assert!(t.accept(Locked));
         assert!(t.accept(Unlocked));
         assert!(!t.accept(Resumed));
@@ -798,6 +812,7 @@ mod tests {
         assert!(t.accept(DisplayChanged));
     }
 
+    #[cfg(windows)]
     #[test]
     fn console_display_states() {
         assert_eq!(console_display_event(0), Some(DisplayOff));

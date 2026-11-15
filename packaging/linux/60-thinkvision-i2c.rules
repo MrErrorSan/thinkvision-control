@@ -2,7 +2,8 @@
 # that graphics cards expose for their display connectors (DDC/CI).
 #
 # Install:  sudo cp packaging/linux/60-thinkvision-i2c.rules /etc/udev/rules.d/
-#           sudo udevadm control --reload && sudo udevadm trigger
+#           sudo udevadm control --reload
+#           sudo udevadm trigger --action=add --subsystem-match=i2c-dev --subsystem-match=backlight
 # Needs the i2c-dev kernel module (see README). The ddcutil package ships an
 # equivalent rule (60-ddcutil-i2c.rules); you only need one of the two.
 #
@@ -15,3 +16,9 @@ KERNEL=="i2c-[0-9]*", SUBSYSTEM=="i2c-dev", ATTRS{class}=="0x03*", TAG+="uaccess
 # If your monitor still reports "permission denied" (e.g. a GPU that is not a
 # PCI device), comment out the line above and use this broader one instead:
 # KERNEL=="i2c-[0-9]*", SUBSYSTEM=="i2c-dev", TAG+="uaccess"
+
+# A built-in panel's brightness (laptops): let the video group write
+# /sys/class/backlight/*/brightness. uaccess can't apply here, because this is a
+# sysfs attribute, not a device node.
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness"
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"

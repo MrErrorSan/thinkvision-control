@@ -3,7 +3,10 @@
 //!
 //! Pacing: ≥ `gap` between link calls; reads and capability reads wait until `settle` after the last
 //! write (writes are not held, so drags stream); a call failing with [`LinkError::Transient`] is tried up to
-//! `attempts` times, `retry` apart. `Unsupported` is final; `Gone` marks the monitor lost and reconnects at once.
+//! `attempts` times, `retry` apart, except a Set of input (0x60) or an action code, which goes out once.
+//! `Unsupported` is final; `Gone` marks the monitor lost and reconnects at once.
+//!
+//! Capabilities synthesized from the profile are for display only: writes wait for live or cached ones.
 //!
 //! While the display is off, the session is locked or the PC sleeps there is no monitor traffic at all.
 //! After a crash inside a capability read or the finder the app starts the engine in safe mode.
@@ -12,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,10 +34,20 @@ const BRIGHTNESS: u8 = 0x10;
 const CONTRAST: u8 = 0x12;
 const COLOUR_MODE: u8 = 0x14;
 const INPUT: u8 = 0x60;
-/// How long [`EngineHandle::shutdown`] waits for the operation in flight.
-pub const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+const LANGUAGE: u8 = 0xCC;
+/// Codes a Set writes once, with no `Transient` retry: factory resets (0x04, 0x05, 0x08) and input.
+const SINGLE_WRITE: [u8; 4] = [0x04, 0x05, 0x08, INPUT];
+/// How long [`EngineHandle::shutdown`] waits for the operation in flight (longer than an input confirm).
+pub const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
+/// A drag with no `DragTo` for this long is over, even without its `EndDrag`.
+const DRAG_EXPIRY: Duration = Duration::from_secs(2);
+/// Waits check for shutdown this often.
+const PAUSE_SLICE: Duration = Duration::from_millis(50);
 
 const ASLEEP_MESSAGE: &str = "The monitor is asleep or this PC is locked";
+const NO_CONTROLS_MESSAGE: &str = "The monitor answers but supports none of the controls this app uses";
+
+type Sink = Arc<Mutex<Box<dyn Fn(Event) + Send>>>;
 
 /// Engine pacing. `Default` = the P32p-20 values (also in the profile's `quirks.timing`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -167,18 +180,18 @@ pub struct ResolvedControls {
     pub capabilities: MonitorCapabilities,
     /// A definition for every code in `capabilities`.
     pub controls: BTreeMap<u8, ControlDefinition>,
-    /// "LB1.2", from the 0x04 value list.
+    /// "LB1.2", from the 0x04 value list; only for a Verified monitor.
     pub firmware: Option<String>,
 }
 
 /// Commands that would touch the monitor do nothing while asleep; writes then answer `kind: Asleep`.
 #[derive(Clone, Debug)]
 pub enum Command {
-    /// One connect attempt: capabilities (once per process, never in safe mode), then every Range/Enum code in
-    /// Main/Advanced plus every cached code. No retry burst; follow with `RequestReconnect` if that's wanted.
+    /// One connect attempt: capabilities (when there is no usable cache, at most once per process, not in safe
+    /// mode unless the cache was corrupt), then every Range/Enum code in Main/Advanced plus every cached code.
+    /// Connected needs at least one code read. No retry burst; follow with `RequestReconnect` if that's wanted.
     Connect,
-    /// Like `Connect`, but reads only `codes` after connecting (`--get brightness`). Stub: reads everything
-    /// until w1-engine.
+    /// Like `Connect`, but reads only `codes` after connecting (`--get brightness`).
     ConnectReading(Vec<u8>),
     /// After a display/device/power event: reconnect even while connected, then burst if still not connected.
     RecheckAfterEvent,
@@ -190,15 +203,18 @@ pub enum Command {
     /// failure and never changes the status (unless the connection is gone).
     Poll(Vec<u8>),
     Set { code: u8, value: u16, confirmed: bool, origin: Origin },
-    /// Live slider position: coalesced (newest wins), written without read-back, no `Value` events for the code.
+    /// Live slider position: coalesced (newest wins, up to a queued Set or Step for the code), written without
+    /// read-back, no `Value` events for the code until `DRAG_EXPIRY` (2 s) after the last one or a status change.
     DragTo { code: u8, value: u16 },
     /// Slider released: writes and verifies once, then emits the actual `Value` and a `Result`.
     EndDrag { code: u8, value: u16, origin: Origin },
     /// Adds `delta` to the cached value (re-reading first if uncached or older than `stale_after`), clamped to 0..max.
+    /// An Enum code moves `delta` places through the values the monitor advertises, confirmed like a Set.
     Step { code: u8, delta: i32, origin: Origin },
     /// Colour mode, brightness, contrast; stops at the first result that isn't Ok.
     ApplyPreset { preset: Preset, origin: Origin },
-    /// Re-applies the latest backup, stopping at the first failure. Never asks for confirmation.
+    /// Re-applies the latest backup in preset order (colour mode first), never input, language or actions,
+    /// carrying on past values the monitor didn't take; the result counts what was restored.
     RestoreBackup { origin: Origin },
     /// Reads every Hidden, non-NeverWrite code and keeps the values as the "before" snapshot.
     FinderSnapshot,
@@ -265,10 +281,22 @@ impl Engine {
         let (tx, rx) = mpsc::channel();
         let (done_tx, done) = mpsc::channel::<()>();
         let stop = Arc::new(AtomicBool::new(false));
+        let sink: Sink = Arc::new(Mutex::new(sink));
         let caps_cache = CapabilitiesCache::new(&dir);
-        let cached_raw = caps_cache.load();
-        let caps = cached_raw.as_deref().and_then(|raw| mccs::parse(raw).ok())
-            .unwrap_or_else(|| profiles.synthesize_capabilities());
+        let mut cached_raw = caps_cache.load();
+        let cached = cached_raw.as_deref().map(mccs::parse);
+        let corrupt_cache = matches!(cached, Some(Err(_)));
+        if let Some(Err(e)) = &cached {
+            log::write(&format!("Capabilities cache doesn't parse ({e}); reading them from the monitor."));
+            cached_raw = None;
+        }
+        let (caps, caps_known) = match cached {
+            Some(Ok(caps)) => {
+                log_warnings("cached", &caps);
+                (caps, true)
+            }
+            _ => (profiles.synthesize_capabilities(), false),
+        };
         let controls = profiles.resolve(&caps);
         let worker = Worker {
             link,
@@ -278,17 +306,21 @@ impl Engine {
             level: SupportLevel::Verified { profile: "p32p20".into() },
             backups: BackupStore::new(dir),
             timing,
-            sink,
+            sink: sink.clone(),
             rx,
             stop: stop.clone(),
             pending: VecDeque::new(),
             cached_raw,
             live_caps: false,
+            caps_known,
+            corrupt_cache,
+            caps_failed: false,
+            no_controls: false,
             caps,
             controls,
             cache: BTreeMap::new(),
             read_at: BTreeMap::new(),
-            drags: BTreeSet::new(),
+            drags: BTreeMap::new(),
             status: MonitorStatus::Connecting,
             failure: None,
             displays: None,
@@ -310,7 +342,7 @@ impl Engine {
                 worker.run();
             })
             .expect("spawn the engine thread");
-        EngineHandle { tx, stop, done }
+        EngineHandle { tx, stop, done, sink, dead: AtomicBool::new(false) }
     }
 }
 
@@ -319,11 +351,18 @@ pub struct EngineHandle {
     tx: Sender<Command>,
     stop: Arc<AtomicBool>,
     done: Receiver<()>,
+    sink: Sink,
+    /// The worker is gone; reported once.
+    dead: AtomicBool,
 }
 
 impl EngineHandle {
+    /// A worker that has died is logged once and reported through the sink as `Status(NotResponding)`.
     pub fn send(&self, command: Command) {
-        let _ = self.tx.send(command);
+        if self.tx.send(command).is_err() && !self.dead.swap(true, Ordering::SeqCst) {
+            log::write("Engine thread stopped unexpectedly; reporting the monitor as not responding.");
+            call(&self.sink, Event::Status { status: MonitorStatus::NotResponding, failure: None });
+        }
     }
 
     /// Another sender for other threads (hotkeys, tray).
@@ -358,13 +397,23 @@ struct Worker {
     crash: Marker,
     backups: BackupStore,
     timing: Timing,
-    sink: Box<dyn Fn(Event) + Send>,
+    sink: Sink,
     rx: Receiver<Command>,
     stop: Arc<AtomicBool>,
     /// Commands taken off the channel while coalescing a drag, handled before the channel.
     pending: VecDeque<Command>,
+    /// The cached capability string, only when it parses.
     cached_raw: Option<String>,
     live_caps: bool,
+    /// `caps` came from the monitor (live or cached), not from the profile; writes need this.
+    caps_known: bool,
+    /// The cache didn't parse: connecting reads the capabilities live, even in safe mode.
+    corrupt_cache: bool,
+    /// A connect's capability read failed: later connects don't repeat it (`ReadCapabilities` still does).
+    caps_failed: bool,
+    /// The last connect got only "unsupported" answers.
+    no_controls: bool,
+    /// For display; trusted for writes only with `caps_known`.
     caps: MonitorCapabilities,
     /// How far this monitor is trusted; always Verified until multi-display support resolves it.
     level: SupportLevel,
@@ -372,7 +421,8 @@ struct Worker {
     cache: BTreeMap<u8, VcpReading>,
     /// When each cached value was last read or written.
     read_at: BTreeMap<u8, Instant>,
-    drags: BTreeSet<u8>,
+    /// Codes being dragged, with the time of their last `DragTo`.
+    drags: BTreeMap<u8, Instant>,
     status: MonitorStatus,
     failure: Option<LinkFailure>,
     /// The last display list sent in `Event::Displays`.
@@ -442,9 +492,14 @@ impl Worker {
 
     fn handle(&mut self, command: Command) {
         match command {
-            Command::Connect | Command::ConnectReading(_) => {
+            Command::Connect => {
                 if !self.asleep() {
                     self.reconnect();
+                }
+            }
+            Command::ConnectReading(codes) => {
+                if !self.asleep() {
+                    self.connect_reading(Some(&codes));
                 }
             }
             Command::RecheckAfterEvent => {
@@ -586,6 +641,12 @@ impl Worker {
     }
 
     fn reconnect(&mut self) {
+        self.connect_reading(None);
+    }
+
+    /// One connect attempt, then reads `only` (else every Main/Advanced Range/Enum code plus the cached ones).
+    fn connect_reading(&mut self, only: Option<&[u8]>) {
+        self.no_controls = false;
         if let Err(failure) = self.connect() {
             let just_resumed = self.resumed_at.is_some_and(|at| at.elapsed() < self.timing.resume_grace);
             if failure == LinkFailure::PermissionDenied && just_resumed {
@@ -603,19 +664,32 @@ impl Worker {
             self.set_status(MonitorStatus::NotFound, Some(failure));
             return;
         }
-        // With a cached capability string, connect on values alone; `ReadCapabilities` refreshes it later.
-        if !self.live_caps && !self.safe_mode && self.cached_raw.is_none() && !self.read_capabilities() {
-            self.set_status(MonitorStatus::NotResponding, None);
-            return;
+        // With a cached capability string, connect on values alone; `ReadCapabilities` refreshes it later. A failed
+        // read isn't repeated by later connects, and the value reads decide whether the monitor answers.
+        let may_read = !self.safe_mode || self.corrupt_cache;
+        if !self.live_caps && self.cached_raw.is_none() && !self.caps_failed && may_read && !self.read_capabilities() {
+            self.caps_failed = true;
         }
-        let mut codes: BTreeSet<u8> = self.controls.values()
-            .filter(|d| matches!(d.kind, ControlKind::Range | ControlKind::Enum)
-                && matches!(d.section, Section::Main | Section::Advanced))
-            .map(|d| d.code)
-            .collect();
-        codes.extend(self.cache.keys());
-        if self.refresh(&codes.into_iter().collect::<Vec<_>>(), false) {
-            self.set_status(MonitorStatus::Connected, None);
+        let codes: Vec<u8> = match only {
+            Some(codes) => codes.to_vec(),
+            None => {
+                let mut codes: BTreeSet<u8> = self.controls.values()
+                    .filter(|d| matches!(d.kind, ControlKind::Range | ControlKind::Enum)
+                        && matches!(d.section, Section::Main | Section::Advanced))
+                    .map(|d| d.code)
+                    .collect();
+                codes.extend(self.cache.keys());
+                codes.into_iter().collect()
+            }
+        };
+        match self.refresh(&codes, false) {
+            Some(0) if !codes.is_empty() => {
+                log::write(&format!("Connect: every read was unsupported. {NO_CONTROLS_MESSAGE}."));
+                self.no_controls = true;
+                self.set_status(MonitorStatus::NotResponding, None);
+            }
+            Some(_) => self.set_status(MonitorStatus::Connected, None),
+            None => {}
         }
     }
 
@@ -636,9 +710,12 @@ impl Worker {
             }
         };
         self.live_caps = true;
+        self.caps_known = true;
+        self.corrupt_cache = false;
         if self.cached_raw.as_deref() == Some(raw.as_str()) {
-            return true;
+            return true; // its warnings were logged when the cache loaded
         }
+        log_warnings("live", &caps);
         self.caps_cache.save(&raw);
         self.cached_raw = Some(raw);
         self.controls = self.profiles.resolve(&caps);
@@ -672,13 +749,14 @@ impl Worker {
         }
     }
 
-    /// Reads `codes` into the cache. False if none answered (an "unsupported" reply counts as an answer); then the
-    /// monitor is NotResponding, and with `recover` the retry burst starts. Stops at a `Gone`.
-    fn refresh(&mut self, codes: &[u8], recover: bool) -> bool {
-        let mut answered = 0;
+    /// Reads `codes` into the cache; the number read. None if none answered (an "unsupported" reply counts as an
+    /// answer); then the monitor is NotResponding, and with `recover` the retry burst starts. Stops at a `Gone`.
+    fn refresh(&mut self, codes: &[u8], recover: bool) -> Option<usize> {
+        let (mut read, mut answered) = (0, 0);
         for &code in codes {
             match self.read(code) {
                 Ok(reading) => {
+                    read += 1;
                     answered += 1;
                     self.update_cache(code, reading);
                 }
@@ -686,7 +764,7 @@ impl Worker {
                     log::write(&format!("Read {} failed: {e}", hex(code)));
                     match e {
                         LinkError::Unsupported(_) => answered += 1,
-                        LinkError::Gone(_) => return false, // `run_op` already marked the monitor lost
+                        LinkError::Gone(_) => return None, // `run_op` already marked the monitor lost
                         LinkError::Transient(_) => {}
                     }
                 }
@@ -698,14 +776,20 @@ impl Worker {
             } else {
                 self.set_status(MonitorStatus::NotResponding, None);
             }
-            return false;
+            return None;
         }
-        true
+        Some(read)
+    }
+
+    /// True while `code` is being dragged: its last `DragTo` is under `DRAG_EXPIRY` old.
+    fn dragging(&self, code: u8) -> bool {
+        self.drags.get(&code).is_some_and(|at| at.elapsed() < DRAG_EXPIRY)
     }
 
     fn poll(&mut self, codes: &[u8]) {
         for &code in codes {
-            let changing = !self.drags.is_empty() || self.last_write.is_some_and(|t| t.elapsed() < self.timing.poll_quiet);
+            let dragging = self.drags.values().any(|at| at.elapsed() < DRAG_EXPIRY);
+            let changing = dragging || self.last_write.is_some_and(|t| t.elapsed() < self.timing.poll_quiet);
             if self.status != MonitorStatus::Connected || changing || self.asleep() {
                 return;
             }
@@ -719,12 +803,21 @@ impl Worker {
         }
     }
 
-    fn set(&mut self, code: u8, value: u16, confirmed: bool) -> WriteResult {
+    /// Why no write can go out now, if none can: asleep, not connected, or no live or cached capabilities yet.
+    fn write_gate(&self) -> Option<WriteResult> {
         if let Some(result) = self.hold() {
-            return result;
+            return Some(result);
         }
         if self.status != MonitorStatus::Connected {
-            return self.not_connected();
+            return Some(self.not_connected());
+        }
+        (!self.caps_known).then(|| WriteResult::blocked(ResultKind::Refused,
+            "The monitor's capabilities haven't been read yet.".into()))
+    }
+
+    fn set(&mut self, code: u8, value: u16, confirmed: bool) -> WriteResult {
+        if let Some(result) = self.write_gate() {
+            return result;
         }
         let def = self.controls.get(&code).cloned();
         let cached = self.cache.get(&code).copied();
@@ -753,7 +846,10 @@ impl Worker {
             }
         }
 
-        if let Err(e) = self.write(code, v) {
+        // A retried reset, action or input write could act twice (the Linux backend uses the same list).
+        let once = SINGLE_WRITE.contains(&code) || def.kind == ControlKind::Action;
+        let attempts = if once { 1 } else { self.timing.attempts };
+        if let Err(e) = self.write(code, v, attempts) {
             log::write(&format!("Write {}={v} failed: {e}", hex(code)));
             return self.failed_result(&def.name, &e);
         }
@@ -767,11 +863,10 @@ impl Worker {
                             actual.current, actual.max));
                     }
                     if actual.current != v {
-                        let detail = if code == BRIGHTNESS { " The current color mode may lock brightness." } else { "" };
                         return WriteResult {
                             kept: Some(actual.current),
                             ..WriteResult::blocked(ResultKind::Kept, format!(
-                                "{} remains {}; the monitor did not apply {v}.{detail}", def.name, actual.current))
+                                "{} remains {}; the monitor did not apply {v}.", def.name, actual.current))
                         };
                     }
                 }
@@ -810,7 +905,7 @@ impl Worker {
                 return self.failed_result(&def.name, e);
             }
         }
-        sleep_until(self.last_write.unwrap_or_else(Instant::now) + self.timing.input_confirm);
+        self.pause_until(self.last_write.unwrap_or_else(Instant::now) + self.timing.input_confirm);
         let max = self.cache.get(&INPUT).map_or(0, |c| c.max);
         match self.read_with(INPUT, 1) {
             Ok(reading) => {
@@ -846,12 +941,13 @@ impl Worker {
         {
             return;
         }
-        self.drags.insert(code);
-        sleep_until(self.ready_at);
+        self.drags.insert(code, Instant::now());
+        self.pause_until(self.ready_at);
         // Let newer positions arrive during the gap, then write only the newest.
         let Some(newest) = self.coalesce(code, value) else { return };
         let Some(v) = self.evaluate_drag(code, newest) else { return };
-        match self.write(code, v) {
+        let attempts = self.timing.attempts;
+        match self.write(code, v, attempts) {
             Ok(()) => {
                 let max = self.cache.get(&code).map_or(100, |c| c.max);
                 self.update_cache(code, VcpReading { current: v, max });
@@ -864,13 +960,16 @@ impl Worker {
     }
 
     fn evaluate_drag(&self, code: u8, value: u16) -> Option<u16> {
+        if !self.caps_known {
+            return None;
+        }
         let max = self.cache.get(&code).map(|c| c.max);
         let d = safety::evaluate(self.controls.get(&code), &self.caps, code, value, max, &self.level, false);
         (d.verdict == Verdict::Allow).then_some(d.value)
     }
 
-    /// Drains the channel and removes queued `DragTo`s for `code`, returning the newest value; None when an
-    /// `EndDrag` for `code` is already queued (it writes the final value).
+    /// Drains the channel and removes queued `DragTo`s for `code` up to the first Set or Step for it, returning the
+    /// newest value; None when an `EndDrag` for `code` is queued before that (it writes the final value).
     fn coalesce(&mut self, code: u8, value: u16) -> Option<u16> {
         self.pending.extend(self.rx.try_iter());
         let mut newest = value;
@@ -882,6 +981,7 @@ impl Worker {
                     self.pending.remove(i);
                 }
                 Command::EndDrag { code: c, .. } if c == code => return None,
+                Command::Set { code: c, .. } | Command::Step { code: c, .. } if c == code => break,
                 _ => i += 1,
             }
         }
@@ -889,11 +989,8 @@ impl Worker {
     }
 
     fn step(&mut self, code: u8, delta: i32) -> WriteResult {
-        if let Some(result) = self.hold() {
+        if let Some(result) = self.write_gate() {
             return result;
-        }
-        if self.status != MonitorStatus::Connected {
-            return self.not_connected();
         }
         // another PC or the monitor's buttons may have changed it since (uncached codes have no time).
         let fresh = self.read_at.get(&code).is_some_and(|at| at.elapsed() < self.timing.stale_after);
@@ -908,8 +1005,24 @@ impl Worker {
             }
         }
         let Some(&reading) = self.cache.get(&code) else { return self.not_connected() };
+        if self.controls.get(&code).is_some_and(|d| d.kind == ControlKind::Enum) {
+            let target = self.enum_step(code, reading.current, delta);
+            return self.set(code, target, false);
+        }
         let target = (i64::from(reading.current) + i64::from(delta)).clamp(0, i64::from(reading.max));
         self.set(code, target as u16, false)
+    }
+
+    /// The value `delta` places from `current` among those the monitor allows for `code`, stopping at the last one.
+    fn enum_step(&self, code: u8, current: u16, delta: i32) -> u16 {
+        let allowed = |v: &u16| self.caps.allows_value(code, *v);
+        let places = delta.unsigned_abs() as usize;
+        let found = if delta > 0 {
+            (current.saturating_add(1)..=0xFF).filter(allowed).take(places).last()
+        } else {
+            (0..current.min(0x100)).rev().filter(allowed).take(places).last()
+        };
+        found.unwrap_or(current)
     }
 
     fn apply_preset(&mut self, preset: &Preset) -> WriteResult {
@@ -929,18 +1042,46 @@ impl Worker {
     }
 
     fn restore_backup(&mut self) -> WriteResult {
-        let values = match self.backups.load_latest() {
+        let mut values = match self.backups.load_latest() {
             Ok(Some(values)) => values,
             Ok(None) => return WriteResult::blocked(ResultKind::Refused, "No backup found.".into()),
             Err(e) => return WriteResult::blocked(ResultKind::Refused, format!("Couldn't read the backup: {e}")),
         };
-        for (code, value) in values {
+        if let Some(result) = self.write_gate() {
+            return result;
+        }
+        values.retain(|&code, _| self.restorable(code));
+        // As `apply_preset`: colour mode first, since it can lock brightness and contrast.
+        let mut steps: Vec<(u8, u16)> = [COLOUR_MODE, BRIGHTNESS, CONTRAST].into_iter()
+            .filter_map(|code| values.remove(&code).map(|v| (code, v)))
+            .collect();
+        steps.extend(values);
+        let total = steps.len();
+        let (mut restored, mut kind, mut notes) = (0, None, Vec::new());
+        for (code, value) in steps {
             let result = self.set(code, value, false);
-            if result.outcome != WriteOutcome::Ok {
-                return result;
+            match result.outcome {
+                WriteOutcome::Ok => restored += 1,
+                WriteOutcome::NotResponding => {
+                    return WriteResult { message: format!("{}; restored {restored} of {total} settings.", result.message),
+                        ..result };
+                }
+                _ => {
+                    kind.get_or_insert(result.kind);
+                    notes.push(result.message);
+                }
             }
         }
-        WriteResult::ok("Backup restored".into(), None)
+        match kind {
+            None => WriteResult::ok("Backup restored".into(), None),
+            Some(kind) => WriteResult::blocked(kind,
+                format!("Restored {restored} of {total} settings. {}", notes.join(" "))),
+        }
+    }
+
+    /// Backed up and restored: not input (it would switch away from this PC), not the OSD language, no action.
+    fn restorable(&self, code: u8) -> bool {
+        !matches!(code, INPUT | LANGUAGE) && self.controls.get(&code).is_none_or(|d| d.kind != ControlKind::Action)
     }
 
     /// Reads the finder's codes inside the crash marker.
@@ -954,17 +1095,17 @@ impl Worker {
         codes.iter().filter_map(|c| self.cache.get(c).map(|r| (*c, r.current))).collect()
     }
 
-    /// Cached Range and Enum values of Normal-safety controls.
+    /// Cached Range and Enum values of restorable Normal-safety controls.
     fn backup_values(&self) -> BTreeMap<u8, u16> {
         self.cache.iter()
-            .filter(|(code, _)| self.controls.get(code).is_some_and(|d|
+            .filter(|(&code, _)| self.restorable(code) && self.controls.get(&code).is_some_and(|d|
                 matches!(d.kind, ControlKind::Range | ControlKind::Enum) && d.safety == SafetyClass::Normal))
             .map(|(&code, r)| (code, r.current))
             .collect()
     }
 
     fn update_cache(&mut self, code: u8, reading: VcpReading) {
-        let changed = self.cache.get(&code).is_none_or(|old| old.current != reading.current) && !self.drags.contains(&code);
+        let changed = self.cache.get(&code).is_none_or(|old| old.current != reading.current) && !self.dragging(code);
         self.cache.insert(code, reading);
         self.read_at.insert(code, Instant::now());
         if changed {
@@ -985,6 +1126,7 @@ impl Worker {
     fn not_connected(&self) -> WriteResult {
         let (kind, message) = match self.status {
             MonitorStatus::NotFound => (ResultKind::NotFound, "Monitor not found"),
+            MonitorStatus::NotResponding if self.no_controls => (ResultKind::NotResponding, NO_CONTROLS_MESSAGE),
             _ => (ResultKind::NotResponding, "Monitor not responding"),
         };
         WriteResult { outcome: WriteOutcome::NotResponding, kind, message: message.into(), value: None, kept: None }
@@ -1038,6 +1180,7 @@ impl Worker {
             self.burst = None;
         }
         if self.status != status || self.failure != failure {
+            self.drags.clear();
             self.status = status;
             self.failure = failure;
             self.emit(Event::Status { status, failure });
@@ -1045,7 +1188,7 @@ impl Worker {
     }
 
     fn connect(&mut self) -> Result<(), LinkFailure> {
-        sleep_until(self.ready_at);
+        self.pause_until(self.ready_at);
         let result = self.link.connect();
         self.ready_at = Instant::now() + self.timing.gap;
         result
@@ -1062,28 +1205,29 @@ impl Worker {
             .map(|r| if code == INPUT { VcpReading { current: r.current & 0xFF, ..r } } else { r })
     }
 
-    fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError> {
-        let attempts = self.timing.attempts;
+    fn write(&mut self, code: u8, value: u16, attempts: u32) -> Result<(), LinkError> {
         self.run_op(OpKind::Write, attempts, |l| l.write(code, value))
     }
 
-    /// One link call, paced; only `Transient` failures are retried. A `Gone` marks the monitor lost.
+    /// One link call, paced; only `Transient` failures are retried. A `Gone` marks the monitor lost. Every wait
+    /// ends early on shutdown, and no call starts after it.
     fn run_op<T>(&mut self, kind: OpKind, attempts: u32,
         mut op: impl FnMut(&mut dyn MonitorLink) -> Result<T, LinkError>) -> Result<T, LinkError> {
-        sleep_until(self.ready_at);
+        self.pause_until(self.ready_at);
         let mut attempt = 1;
         let result = loop {
+            if let (OpKind::Read, Some(at)) = (kind, self.last_write) {
+                self.pause_until(at + self.timing.settle);
+            }
             if self.stopping() {
                 break Err(LinkError::Gone("shutting down".into()));
             }
-            match (kind, self.last_write) {
-                (OpKind::Read, Some(at)) => sleep_until(at + self.timing.settle),
-                (OpKind::Read, None) => {}
-                (OpKind::Write, _) => self.last_write = Some(Instant::now()),
+            if kind == OpKind::Write {
+                self.last_write = Some(Instant::now());
             }
             match op(self.link.as_mut()) {
                 Err(LinkError::Transient(_)) if attempt < attempts => {
-                    thread::sleep(self.timing.retry);
+                    self.pause_until(Instant::now() + self.timing.retry);
                     attempt += 1;
                 }
                 result => break result,
@@ -1106,8 +1250,19 @@ impl Worker {
         self.stop.load(Ordering::SeqCst)
     }
 
+    /// Sleeps until `at`, or until shutdown.
+    fn pause_until(&self, at: Instant) {
+        while !self.stopping() {
+            let now = Instant::now();
+            if at <= now {
+                return;
+            }
+            thread::sleep((at - now).min(PAUSE_SLICE));
+        }
+    }
+
     fn emit(&self, event: Event) {
-        (self.sink)(event);
+        call(&self.sink, event);
     }
 
     fn emit_result(&self, origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult) {
@@ -1119,9 +1274,20 @@ impl Worker {
             profile: self.profiles.profile().clone(),
             capabilities: self.caps.clone(),
             controls: self.controls.clone(),
-            firmware: self.caps.firmware(),
+            firmware: matches!(self.level, SupportLevel::Verified { .. }).then(|| self.caps.firmware()).flatten(),
         })));
     }
+}
+
+/// Logs what the parser skipped in a capability string (`source`: "live" or "cached").
+fn log_warnings(source: &str, caps: &MonitorCapabilities) {
+    for warning in &caps.warnings {
+        log::write(&format!("Capabilities ({source}): {warning}"));
+    }
+}
+
+fn call(sink: &Sink, event: Event) {
+    (sink.lock().unwrap_or_else(|e| e.into_inner()))(event);
 }
 
 fn describe(def: &ControlDefinition, value: u16) -> String {
@@ -1140,11 +1306,4 @@ fn value_label(def: &ControlDefinition, value: u16) -> String {
 
 fn saturate(value: u32) -> u16 {
     u16::try_from(value).unwrap_or(u16::MAX)
-}
-
-fn sleep_until(at: Instant) {
-    let now = Instant::now();
-    if at > now {
-        thread::sleep(at - now);
-    }
 }

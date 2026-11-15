@@ -7,9 +7,11 @@ pub fn register() {
     imp::register();
 }
 
+#[cfg(windows)]
 const ROOT: &str = r"Software\Classes\thinkvision";
 
 /// The values to set, as (subkey under HKCU, value name — `None` for the default value, data).
+#[cfg(windows)]
 fn entries(exe: &str) -> [(String, Option<&'static str>, String); 4] {
     [
         (ROOT.into(), None, "URL:ThinkVision Control".into()),
@@ -77,7 +79,7 @@ mod imp {
     pub fn register() {}
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 

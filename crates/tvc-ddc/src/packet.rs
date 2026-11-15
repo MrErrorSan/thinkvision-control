@@ -13,6 +13,8 @@ pub const MONITOR_ADDRESS: u8 = 0x37;
 pub const HOST_SOURCE: u8 = 0x51;
 /// Bytes read back for a Get VCP reply.
 pub const VCP_REPLY_LEN: usize = 11;
+/// Null replies after which a Get VCP counts as unsupported (ddcutil's `ddcrc_null_response_max`).
+pub const NULL_REPLY_LIMIT: u32 = 3;
 /// Bytes read back for one capabilities fragment (header 3 + up to 32 data + offset 2 + checksum 1).
 pub const FRAGMENT_REPLY_LEN: usize = 3 + 32 + 3;
 
@@ -58,6 +60,12 @@ pub fn parse_vcp_reply(reply: &[u8], expected_code: u8) -> Option<VcpReading> {
         current: u16::from_be_bytes([reply[8], reply[9]]),
         max: u16::from_be_bytes([reply[6], reply[7]]),
     })
+}
+
+/// True for the DDC/CI null message `6E 80 BE`: the monitor has nothing to say. [`NULL_REPLY_LIMIT`] of them to one
+/// Get VCP mean it doesn't implement the code.
+pub fn is_null_message(reply: &[u8]) -> bool {
+    reply.starts_with(&[0x6E, LENGTH_FLAG, 0xBE]) // checksum 0x50 ^ 0x6E ^ 0x80
 }
 
 /// True for a well-formed Get VCP reply whose result code is 1: the monitor doesn't implement `code`.

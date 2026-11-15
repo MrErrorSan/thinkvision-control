@@ -13,8 +13,9 @@ use windows_sys::Win32::Devices::Display::{
     GetCapabilitiesStringLength, GetDisplayConfigBufferSizes, GetNumberOfPhysicalMonitorsFromHMONITOR,
     GetPhysicalMonitorsFromHMONITOR, GetVCPFeatureAndVCPFeatureReply, QueryDisplayConfig, SetVCPFeature,
     DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED,
-    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL,
-    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_WIRED,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS,
+    DISPLAYCONFIG_OUTPUT_TECHNOLOGY_MIRACAST, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER, DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED,
     DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_TARGET_DEVICE_NAME, DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY, PHYSICAL_MONITOR,
     QDC_ONLY_ACTIVE_PATHS,
 };
@@ -24,7 +25,8 @@ use windows_sys::Win32::Foundation::{
     LPARAM, RECT,
 };
 use windows_sys::Win32::Graphics::Gdi::{
-    EnumDisplayDevicesW, EnumDisplayMonitors, GetMonitorInfoW, DISPLAY_DEVICEW, HDC, HMONITOR, MONITORINFOEXW,
+    EnumDisplayDevicesW, EnumDisplayMonitors, GetMonitorInfoW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ACTIVE, HDC, HMONITOR,
+    MONITORINFOEXW,
 };
 
 use crate::{ascii, not_connected};
@@ -74,18 +76,21 @@ impl MonitorLink for Dxva2Link {
                 target = ids
                     .iter()
                     .take(physical.len())
-                    .position(|id| id.to_ascii_uppercase().contains(&edid_id))
+                    .position(|id| edid_id_from_path(id).is_some_and(|id| id == edid_id))
                     .map(|i| all.len() + i);
             }
             all.extend(physical);
         }
 
-        if target.is_none() {
-            if let Some(hint) = self.target.description_hint.as_deref().map(str::to_lowercase) {
-                target = all.iter().position(|m| {
-                    let description = { m.szPhysicalMonitorDescription }; // copy out of the packed struct
-                    wide_to_string(&description).to_lowercase().contains(&hint)
-                });
+        // The description fallback, only when it names exactly one monitor (an empty hint would name them all).
+        let hint = self.target.description_hint.as_deref().map(str::trim).filter(|h| !h.is_empty());
+        if let (None, Some(hint)) = (target, hint.map(str::to_lowercase)) {
+            let mut matching = all.iter().enumerate().filter(|(_, m)| {
+                let description = { m.szPhysicalMonitorDescription }; // copy out of the packed struct
+                wide_to_string(&description).to_lowercase().contains(&hint)
+            });
+            if let (Some((i, _)), None) = (matching.next(), matching.next()) {
+                target = Some(i);
             }
         }
 
@@ -225,7 +230,7 @@ fn physical_monitors(monitor: HMONITOR) -> Vec<PHYSICAL_MONITOR> {
     monitors
 }
 
-/// The device interface paths of the monitors on this HMONITOR's adapter output, e.g.
+/// The device interface paths of the active monitors on this HMONITOR's adapter output, e.g.
 /// `\\?\DISPLAY#LEN62A2#5&...#{e6f07b5f-...}`, in the same order as its physical monitors.
 fn device_ids(monitor: HMONITOR) -> Vec<String> {
     let mut ids = Vec::new();
@@ -240,7 +245,9 @@ fn device_ids(monitor: HMONITOR) -> Vec<String> {
         device.cb = size_of::<DISPLAY_DEVICEW>() as u32;
         let mut index = 0;
         while EnumDisplayDevicesW(info.szDevice.as_ptr(), index, &mut device, EDD_GET_DEVICE_INTERFACE_NAME) != 0 {
-            ids.push(wide_to_string(&device.DeviceID));
+            if device.StateFlags & DISPLAY_DEVICE_ACTIVE != 0 {
+                ids.push(wide_to_string(&device.DeviceID));
+            }
             index += 1;
         }
     }
@@ -290,20 +297,28 @@ fn active_targets() -> Option<Vec<DISPLAYCONFIG_TARGET_DEVICE_NAME>> {
 }
 
 /// "LEN62A2" from a monitor device path such as `\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352#{e6f07b5f-...}`.
+/// Only three letters and four hex digits count.
 fn edid_id_from_path(path: &str) -> Option<String> {
-    let id = path.split('#').nth(1)?;
-    (id.len() == 7 && id.is_ascii()).then(|| id.to_ascii_uppercase())
+    let id = path.split('#').nth(1)?.to_ascii_uppercase();
+    let (pnp, product) = id.split_at_checked(3)?;
+    let valid = pnp.bytes().all(|b| b.is_ascii_uppercase())
+        && product.len() == 4
+        && product.bytes().all(|b| b.is_ascii_hexdigit());
+    valid.then_some(id)
 }
 
-/// Built in for laptop panels (internal, embedded DisplayPort/UDI, LVDS); virtual for indirect-virtual targets,
-/// unclassified ones without an EDID id, and hypervisor/remote-desktop vendors; otherwise external.
+/// Built in for laptop panels (internal, embedded DisplayPort/UDI, LVDS); virtual for indirect targets (virtual,
+/// DisplayLink USB, Miracast: none carries DDC/CI), unclassified ones without an EDID id, and hypervisor/remote-desktop
+/// vendors; otherwise external.
 fn display_kind(technology: DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY, edid_id: &str) -> DisplayKind {
     match technology {
         DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL
         | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED
         | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED
         | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS => DisplayKind::BuiltIn,
-        DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL => DisplayKind::Virtual,
+        DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL
+        | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_WIRED
+        | DISPLAYCONFIG_OUTPUT_TECHNOLOGY_MIRACAST => DisplayKind::Virtual,
         DISPLAYCONFIG_OUTPUT_TECHNOLOGY_OTHER if edid_id.is_empty() => DisplayKind::Virtual,
         _ if is_virtual_vendor(edid_id) => DisplayKind::Virtual,
         _ => DisplayKind::External,

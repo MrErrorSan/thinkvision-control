@@ -43,18 +43,19 @@ fn accepts_both_value_forms_case_insensitively() {
 }
 
 #[test]
-fn unknown_or_malformed_input_shows_the_window() {
-    for args in [&[][..], &["--bogus"], &["--preset", "noon"], &["--step", "brightness=+500"], &["--preset"],
+fn unknown_or_malformed_input_is_an_error() {
+    assert_eq!(command(&[]), CliCommand::Show);
+    for args in [&["--bogus"][..], &["--preset", "noon"], &["--step", "brightness=+500"], &["--preset"],
         &["--step", "volume=+5"], &["preset", "day"]] {
-        assert_eq!(command(args), CliCommand::Show, "{args:?}");
+        assert!(parse(args).is_err(), "{args:?}");
     }
 }
 
 #[test]
-fn first_verb_wins_and_a_malformed_first_verb_shows() {
+fn first_verb_wins_and_a_malformed_verb_is_an_error() {
     assert_eq!(command(&["--preset", "day", "--input", "hdmi"]), CliCommand::Preset { night: false });
-    assert_eq!(command(&["--preset", "noon", "--input", "hdmi"]), CliCommand::Show);
-    assert_eq!(command(&["--bogus", "--input", "hdmi"]), CliCommand::Input(Some(0x11)));
+    assert!(parse(&["--preset", "noon", "--input", "hdmi"]).is_err());
+    assert!(parse(&["--bogus", "--input", "hdmi"]).is_err());
 }
 
 #[test]
@@ -76,10 +77,10 @@ fn get_reads_each_target() {
 }
 
 #[test]
-fn malformed_get_shows_and_first_verb_still_wins() {
-    assert_eq!(command(&["--get"]), CliCommand::Show);
-    assert_eq!(command(&["--get", "volume"]), CliCommand::Show);
-    assert_eq!(command(&["--get", "--json"]), CliCommand::Show);
+fn malformed_get_is_an_error_and_first_verb_still_wins() {
+    assert!(parse(&["--get"]).is_err());
+    assert!(parse(&["--get", "volume"]).is_err());
+    assert!(parse(&["--get", "--json"]).is_err());
     assert_eq!(command(&["--get", "all", "--preset", "day"]), CliCommand::Get(GetTarget::All));
     assert_eq!(command(&["--preset", "day", "--get", "all"]), CliCommand::Preset { night: false });
 }
@@ -145,7 +146,7 @@ fn bad_urls_are_none() {
 fn a_lone_url_argument_is_a_verb() {
     assert_eq!(command(&["thinkvision://preset/night"]), CliCommand::Preset { night: true });
     assert_eq!(command(&["THINKVISION:input/this"]), CliCommand::Input(None));
-    assert_eq!(command(&["thinkvision://nonsense"]), CliCommand::Show);
+    assert!(parse(&["thinkvision://nonsense"]).is_err());
     assert_eq!(parse(&["--startup", "thinkvision://get/all", "--json"]).unwrap(),
         Parsed { command: CliCommand::Get(GetTarget::All), startup: true, json: true, ..Parsed::default() });
 }

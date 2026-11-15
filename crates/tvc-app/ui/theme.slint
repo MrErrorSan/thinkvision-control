@@ -31,6 +31,10 @@ export global Theme {
     out property <color> error-fg: dark ? #ff99a4 : #c42b1c;
     out property <color> success-fg: dark ? #6ccb5f : #0f7b0f;
 
+    // Keyboard focus ring (WinUI focus strokes, as the std widgets draw them).
+    out property <color> focus-outer: dark ? #ffffff : #000000e6;
+    out property <color> focus-inner: dark ? #000000b3 : #ffffff;
+
     out property <length> radius: 6px;
     out property <length> gutter: 20px;
 }

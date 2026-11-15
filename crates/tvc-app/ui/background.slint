@@ -35,7 +35,7 @@ export component Tray inherits SystemTrayIcon {
     }
 }
 
-// The step OSD: a 264x64 card. The software renderer can't draw per-pixel transparency on Windows, so the window is
+// The step OSD: a 320x64 card. The software renderer can't draw per-pixel transparency on Windows, so the window is
 // the card and DWM rounds the corners. It stays "visible"; Rust shows and hides it with layered alpha.
 export component Osd inherits Window {
     in property <string> glyph: Glyphs.brightness;

@@ -13,10 +13,10 @@ fn missing_file_gives_defaults() {
     let dir = TempDir::new();
     let s = SettingsStore::new(dir.path()).load();
 
-    assert_eq!(s.hotkeys[&Action::BrightnessUp], "Ctrl+Alt+Up");
-    assert_eq!(s.hotkeys[&Action::BrightnessDown], "Ctrl+Alt+Down");
-    assert_eq!(s.hotkeys[&Action::ContrastUp], "Ctrl+Alt+Left");
-    assert_eq!(s.hotkeys[&Action::ContrastDown], "Ctrl+Alt+Right");
+    assert_eq!(s.hotkeys[&Action::BrightnessUp], Action::BrightnessUp.default_gesture());
+    assert_eq!(s.hotkeys[&Action::BrightnessDown], Action::BrightnessDown.default_gesture());
+    assert_eq!(s.hotkeys[&Action::ContrastUp], Action::ContrastUp.default_gesture());
+    assert_eq!(s.hotkeys[&Action::ContrastDown], Action::ContrastDown.default_gesture());
     assert_eq!(s.hotkeys.len(), Action::ALL.len());
     assert_eq!(s.night, Preset { name: "Night".into(), brightness: 0, contrast: 70, colour_mode: None });
     assert_eq!(s.day, Preset { name: "Day".into(), brightness: 60, contrast: 70, colour_mode: None });
@@ -121,10 +121,10 @@ fn replaces_legacy_default_slider_shortcuts_but_preserves_custom_shortcuts() {
 
     let loaded = store.load();
 
-    assert_eq!(loaded.hotkeys[&Action::BrightnessUp], "Ctrl+Alt+Up");
-    assert_eq!(loaded.hotkeys[&Action::BrightnessDown], "Ctrl+Alt+Down");
-    assert_eq!(loaded.hotkeys[&Action::ContrastUp], "Ctrl+Alt+Left");
-    assert_eq!(loaded.hotkeys[&Action::ContrastDown], "Ctrl+Alt+Right");
+    assert_eq!(loaded.hotkeys[&Action::BrightnessUp], Action::BrightnessUp.default_gesture());
+    assert_eq!(loaded.hotkeys[&Action::BrightnessDown], Action::BrightnessDown.default_gesture());
+    assert_eq!(loaded.hotkeys[&Action::ContrastUp], Action::ContrastUp.default_gesture());
+    assert_eq!(loaded.hotkeys[&Action::ContrastDown], Action::ContrastDown.default_gesture());
     assert_eq!(loaded.hotkeys[&Action::DayPreset], "Ctrl+Shift+D");
     assert_eq!(loaded.hotkeys[&Action::OpenPanel], "Ctrl+Alt+O"); // a missing action gets its default
 }

@@ -1,0 +1,26 @@
+# cargo-about: generates THIRD-PARTY-NOTICES.txt for the packages (see scripts/ and .github/workflows/release.yml).
+#
+#   cargo about generate --fail -o THIRD-PARTY-NOTICES.txt about.hbs
+#
+# For a crate under a choice of licences, the first one in this list that it offers is used. Slint is taken under
+# GPL-3.0-only, never its royalty-free or commercial licences.
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "0BSD",
+    "CC0-1.0",
+    "Unlicense",
+    "GPL-3.0-only",
+]
+# Only what ships in the three packages.
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# The workspace's own crates (publish = false) are this program, under LICENSE.
+private = { ignore = true }

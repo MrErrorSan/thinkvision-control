@@ -15,8 +15,10 @@ impl Gesture {
     pub const MOD_SHIFT: u8 = 0x4;
     pub const MOD_WIN: u8 = 0x8;
     const ALL_MODS: u8 = 0xF;
+    /// A global shortcut needs one of these; Shift alone isn't enough.
+    const REQUIRED_MODS: u8 = Self::MOD_CONTROL | Self::MOD_ALT | Self::MOD_WIN;
 
-    /// Modifiers Ctrl/Control/Alt/Shift/Win (any case, any order) and exactly one key; at least one modifier.
+    /// Modifiers Ctrl/Control/Alt/Shift/Win (any case, any order) and exactly one key; Ctrl, Alt or Win required.
     /// Keys: A–Z, 0–9, F1–F24, PageUp/PgUp, PageDown/PgDn, End, Home, Left, Up, Right, Down, Insert, Delete.
     pub fn parse(text: &str) -> Option<Self> {
         let mut mods = 0;
@@ -30,12 +32,12 @@ impl Gesture {
                 return None;
             }
         }
-        (mods != 0).then_some(Self { mods, vk: key? })
+        (mods & Self::REQUIRED_MODS != 0).then_some(Self { mods, vk: key? })
     }
 
-    /// None for no modifiers, unknown modifier bits or an unsupported key.
+    /// None without Ctrl, Alt or Win, for unknown modifier bits or an unsupported key.
     pub fn try_create(mods: u8, vk: u16) -> Option<Self> {
-        (mods != 0 && mods & !Self::ALL_MODS == 0 && is_supported_key(vk)).then_some(Self { mods, vk })
+        (mods & Self::REQUIRED_MODS != 0 && mods & !Self::ALL_MODS == 0 && is_supported_key(vk)).then_some(Self { mods, vk })
     }
 }
 
@@ -125,9 +127,27 @@ impl Action {
         self.info().1
     }
 
-    /// The default gesture text.
+    /// The default gesture text for this OS.
     pub fn default_gesture(self) -> &'static str {
-        self.info().2
+        self.default_gesture_for(cfg!(target_os = "linux"))
+    }
+
+    /// The default gesture text on Linux (`linux`) or elsewhere. On Linux Ctrl+Alt+F1–F3 switch to a virtual console
+    /// and Ctrl+Alt+arrows switch workspaces, so those actions get other keys there.
+    pub fn default_gesture_for(self, linux: bool) -> &'static str {
+        if !linux {
+            return self.info().2;
+        }
+        match self {
+            Action::BrightnessUp => "Ctrl+Alt+PageUp",
+            Action::BrightnessDown => "Ctrl+Alt+PageDown",
+            Action::ContrastUp => "Ctrl+Win+PageUp",
+            Action::ContrastDown => "Ctrl+Win+PageDown",
+            Action::InputHdmi => "Ctrl+Win+1",
+            Action::InputDp => "Ctrl+Win+2",
+            Action::InputUsbC => "Ctrl+Win+3",
+            _ => self.info().2,
+        }
     }
 
     pub fn from_key(key: &str) -> Option<Self> {

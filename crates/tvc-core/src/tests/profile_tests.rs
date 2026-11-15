@@ -39,10 +39,14 @@ fn parses_tokens_without_spaces() {
 }
 
 #[test]
-fn missing_vcp_section_or_bad_syntax_is_an_error() {
+fn missing_vcp_section_is_an_error_and_bad_syntax_is_skipped() {
     assert!(mccs::parse("(prot(monitor)type(LCD))").is_err());
-    assert!(mccs::parse("(vcp(10 12(01)").is_err());
-    assert!(mccs::parse("(vcp(10 1G))").is_err());
+    let unclosed = mccs::parse("(vcp(10 12(01)").unwrap();
+    assert_eq!(unclosed.vcp.keys().copied().collect::<Vec<_>>(), [0x10, 0x12]);
+    assert_eq!(unclosed.warnings.len(), 1);
+    let bad = mccs::parse("(vcp(10 1G))").unwrap();
+    assert_eq!(bad.vcp.keys().copied().collect::<Vec<_>>(), [0x10]);
+    assert_eq!(bad.warnings.len(), 1);
     // "vcp(" inside another name or nested deeper doesn't count.
     assert!(mccs::parse("(xvcp(10))").is_err());
     assert!(mccs::parse("(a(b(vcp(10))))").is_err());
@@ -187,7 +191,7 @@ fn overlay_can_never_make_osd_enable_or_power_writable() {
 }
 
 #[test]
-fn corrupt_overlay_is_ignored() {
+fn corrupt_overlay_is_ignored_and_a_bad_entry_is_skipped() {
     let dir = TempDir::new();
     std::fs::write(dir.path().join("profile.user.json"), "{ not json").unwrap();
     assert_eq!(ProfileStore::new(dir.path()).resolve(&caps())[&0x10].name, "Brightness");
@@ -196,5 +200,6 @@ fn corrupt_overlay_is_ignored() {
     { "code": "0xC8", "name": "Game mode", "kind": "Enum", "section": "Advanced", "safety": "Normal" },
     { "code": "0xZZ", "name": "x", "kind": "Enum", "section": "Main", "safety": "Normal" } ] }"#;
     std::fs::write(dir.path().join("profile.user.json"), bad_code).unwrap();
-    assert_eq!(ProfileStore::new(dir.path()).resolve(&caps())[&0xC8].name, "Unknown 0xC8");
+    // CORE-16: the bad entry is skipped; the good one next to it is kept.
+    assert_eq!(ProfileStore::new(dir.path()).resolve(&caps())[&0xC8].name, "Game mode");
 }

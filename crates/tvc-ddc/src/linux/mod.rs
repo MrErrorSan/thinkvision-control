@@ -5,6 +5,8 @@ mod i2c;
 #[cfg(target_os = "linux")]
 pub(crate) use i2c::I2cLink;
 
+use std::cmp::Ordering;
+
 use tvc_core::link::{is_virtual_vendor, DisplayKind};
 
 /// Adapter-name prefixes (`/sys/bus/i2c/devices/i2c-N/name`) that are never a display's DDC lines, as ddcutil matches
@@ -48,6 +50,31 @@ pub fn connector_kind(connector: &str, edid_id: &str) -> DisplayKind {
     } else {
         DisplayKind::External
     }
+}
+
+/// Codes whose Set VCP goes out once, never retried: an input switch and the restore-defaults actions (0x04, 0x05,
+/// 0x08) act on every copy that arrives, and the engine decides about a second try.
+pub fn writes_once(code: u8) -> bool {
+    matches!(code, 0x04 | 0x05 | 0x08 | 0x60)
+}
+
+/// Orders DRM connector names with their numbers compared as numbers: `card0-DP-2` before `card0-DP-10`.
+pub fn connector_order(a: &str, b: &str) -> Ordering {
+    natural_key(a).cmp(&natural_key(b))
+}
+
+/// Runs of digits (as numbers) and of everything else.
+fn natural_key(name: &str) -> Vec<Result<u64, &str>> {
+    let mut key = Vec::new();
+    let mut rest = name;
+    while let Some(first) = rest.chars().next() {
+        let digits = first.is_ascii_digit();
+        let end = rest.find(|c: char| c.is_ascii_digit() != digits).unwrap_or(rest.len());
+        let (run, tail) = rest.split_at(end);
+        key.push(if digits { run.parse().map_err(|_| run) } else { Err(run) });
+        rest = tail;
+    }
+    key
 }
 
 fn bus_number(device: &str) -> Option<u32> {

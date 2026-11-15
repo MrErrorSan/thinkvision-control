@@ -2,6 +2,7 @@
 //! exists and is shown, per the background-mode rules). Models are updated row by row so an unchanged slider or
 //! combo box is not rebuilt under the user's pointer.
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -54,23 +55,43 @@ fn s(text: impl AsRef<str>) -> SharedString {
     text.as_ref().into()
 }
 
-fn strings<I: IntoIterator<Item = String>>(items: I) -> ModelRc<SharedString> {
-    ModelRc::new(VecModel::from(items.into_iter().map(SharedString::from).collect::<Vec<_>>()))
-}
-
-/// Replaces rows that changed; replaces the model only when the row count changed.
-fn sync<T: Clone + PartialEq + 'static>(current: ModelRc<T>, rows: Vec<T>, set: impl FnOnce(ModelRc<T>)) {
-    if let Some(vec) = current.as_any().downcast_ref::<VecModel<T>>() {
-        if vec.row_count() == rows.len() {
-            for (i, row) in rows.into_iter().enumerate() {
-                if vec.row_data(i).as_ref() != Some(&row) {
-                    vec.set_row_data(i, row);
-                }
-            }
-            return;
+/// Sets the rows that changed, then adds or removes rows at the end, so a repeater keeps every unchanged item.
+fn update<T: Clone + PartialEq + 'static>(vec: &VecModel<T>, rows: Vec<T>) {
+    let len = rows.len();
+    for (i, row) in rows.into_iter().enumerate() {
+        match vec.row_data(i) {
+            Some(old) if old == row => {}
+            Some(_) => vec.set_row_data(i, row),
+            None => vec.push(row),
         }
     }
-    set(ModelRc::new(Rc::new(VecModel::from(rows))));
+    while vec.row_count() > len {
+        vec.remove(vec.row_count() - 1);
+    }
+}
+
+/// Updates the window's model in place; sets a new one only the first time.
+fn sync<T: Clone + PartialEq + 'static>(current: ModelRc<T>, rows: Vec<T>, set: impl FnOnce(ModelRc<T>)) {
+    match current.as_any().downcast_ref::<VecModel<T>>() {
+        Some(vec) => update(vec, rows),
+        None => set(ModelRc::new(Rc::new(VecModel::from(rows)))),
+    }
+}
+
+/// A model for a row's nested list: the row's current one updated in place, else a new one. `ModelRc` compares by
+/// pointer, so reusing it keeps the row equal and its inner repeater keeps its items (focus, open popups).
+fn nested<T: Clone + PartialEq + 'static>(current: Option<ModelRc<T>>, rows: Vec<T>) -> ModelRc<T> {
+    if let Some(model) = current {
+        if let Some(vec) = model.as_any().downcast_ref::<VecModel<T>>() {
+            update(vec, rows);
+            return model;
+        }
+    }
+    ModelRc::new(VecModel::from(rows))
+}
+
+fn strings<I: IntoIterator<Item = String>>(current: Option<ModelRc<SharedString>>, items: I) -> ModelRc<SharedString> {
+    nested(current, items.into_iter().map(SharedString::from).collect())
 }
 
 /// Value labels a control offers: the capability list for the code, else the profile's labels.
@@ -169,8 +190,8 @@ pub fn not_found(st: &State) -> NotFound {
     let message = match physical.as_slice() {
         [] if !displays.is_empty() => "This PC is only showing a virtual display, such as a remote session or a virtual machine. Display controls need a display connected to this PC.".into(),
         [] => "No display is connected. Connect a display that supports DDC/CI and it will be found automatically.".into(),
-        [one] => format!("{} is connected, but it isn't supported yet.", capitalised(one)),
-        [rest @ .., last] => format!("{} and {last} are connected, but none of them is supported yet.", capitalised(&rest.join(", "))),
+        [one] => format!("{} is connected, but this app has no profile for it.", capitalised(one)),
+        [rest @ .., last] => format!("{} and {last} are connected, but this app has no profile for them.", capitalised(&rest.join(", "))),
     };
     let title = match name.as_str() {
         "" => "No supported display found".to_owned(),
@@ -209,7 +230,7 @@ pub fn status_line(st: &State) -> (&'static str, String) {
             let input = st
                 .value(INPUT)
                 .and_then(|v| inputs(st).into_iter().find(|(c, _)| *c == v))
-                .map(|(_, l)| format!("Connected over {l}"))
+                .map(|(_, l)| format!("Input: {l}"))
                 .unwrap_or_else(|| "Connected".into());
             let fw = st.firmware().map(|f| format!(" · Firmware {f}")).unwrap_or_default();
             (glyph::CONNECTED, input + &fw)
@@ -217,6 +238,38 @@ pub fn status_line(st: &State) -> (&'static str, String) {
         MonitorStatus::Connecting => (glyph::CONNECTING, "Looking for your monitor…".into()),
         MonitorStatus::NotFound => (glyph::NOT_FOUND, not_found(st).status.into()),
         MonitorStatus::NotResponding => (glyph::ERROR, "Not responding".into()),
+    }
+}
+
+/// About: the display's own name (as it reported it over DDC/CI, else its EDID name) and how far the app supports it.
+fn about_text(st: &State) -> String {
+    let edid = st.displays.iter().flatten().find(|d| d.target).map(|d| d.name.trim().to_owned());
+    let name = Some(monitor_name(st)).into_iter().chain(edid).find(|n| !n.is_empty());
+    // Every display is Verified until support levels are worked out per display.
+    name.into_iter()
+        .chain(["Support: Verified".to_owned()])
+        .chain(st.firmware().map(|f| format!("Firmware {f}")))
+        .chain(["Built with Slint".to_owned()])
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// The title and text of the card a tab shows when it has no controls.
+fn empty_state(st: &State) -> (&'static str, &'static str) {
+    match st.status {
+        MonitorStatus::Connecting => ("Looking for your monitor…", "This usually takes a second or two."),
+        MonitorStatus::Connected => ("No controls to show", "The monitor didn't report any setting this app can change."),
+        _ => ("No controls yet", "They appear here once the monitor answers."),
+    }
+}
+
+/// Why the monitor's cards are greyed out; "" while they aren't.
+fn disabled_reason(st: &State) -> &'static str {
+    match st.status {
+        MonitorStatus::Connected => "",
+        MonitorStatus::Connecting => "Available once the monitor answers",
+        MonitorStatus::NotResponding => "Available when the monitor responds again",
+        MonitorStatus::NotFound => "Available when the monitor is connected",
     }
 }
 
@@ -287,7 +340,7 @@ fn range_row(st: &State, code: u8, label: &str, glyph: &str) -> RangeRow {
         glyph: s(glyph),
         value: reading.map_or(0.0, |r| r.current as f32),
         maximum: reading.map_or(100.0, |r| r.max.max(1) as f32),
-        enabled: reading.is_some(),
+        enabled: reading.is_some() && !st.values_stale,
         revision: st.revision(code),
     }
 }
@@ -302,6 +355,7 @@ fn preset_summary(st: &State, p: &tvc_core::store::Preset) -> String {
 }
 
 /// Where `code` is listed in the embedded profile's `controls` (tvc-core exposes no order); unknown codes after.
+/// This reads p32p20.json's text, so it orders every monitor like that one.
 fn profile_rank(code: u8) -> (usize, u8) {
     const PROFILE: &str = include_str!("../../tvc-core/src/profile/p32p20.json");
     let controls = PROFILE.find("\"controls\"").map_or("", |i| &PROFILE[i..]);
@@ -310,8 +364,13 @@ fn profile_rank(code: u8) -> (usize, u8) {
     (rank.unwrap_or(usize::MAX), code)
 }
 
-fn monitor_groups(st: &State) -> Vec<ControlGroup> {
+/// The Monitor tab's groups. `shown` is what the window shows now: each group keeps its rows model and each card
+/// its options model, so a render updates only the cards whose content changed.
+fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup> {
     let Some(rc) = st.controls.as_ref() else { return vec![] };
+    let shown: Vec<ControlGroup> = shown.iter().collect();
+    let shown_options: BTreeMap<i32, ModelRc<SharedString>> =
+        shown.iter().flat_map(|g| g.rows.iter()).map(|r| (r.code, r.options)).collect();
     let mut groups: Vec<(&str, Vec<ControlRow>)> =
         vec![("Picture", vec![]), ("Ports", vec![]), ("On-screen menu", vec![]), ("More settings", vec![]), ("Reset and restore", vec![])];
     // Known codes in profile order, the rest by code.
@@ -340,14 +399,15 @@ fn monitor_groups(st: &State) -> Vec<ControlGroup> {
             UiKind::Toggle => current.map_or(-1, |v| v as i32),
             _ => current.and_then(|v| opts.iter().position(|(o, _)| *o == v)).map_or(-1, |i| i as i32),
         };
-        let description = st.notes.get(&def.code).cloned().or_else(|| def.description.clone()).unwrap_or_default();
+        let code = def.code as i32;
         groups[slot].1.push(ControlRow {
-            code: def.code as i32,
+            code,
             kind,
             label: s(&def.name),
-            description: s(description),
+            description: s(def.description.as_deref().unwrap_or_default()),
+            note: s(st.notes.get(&def.code).map_or("", String::as_str)),
             glyph: s(glyph::named(def.icon.as_deref())),
-            options: strings(opts.into_iter().map(|(_, l)| l)),
+            options: strings(shown_options.get(&code).cloned(), opts.into_iter().map(|(_, l)| l)),
             index,
             button: s(button),
             enabled: true,
@@ -357,7 +417,10 @@ fn monitor_groups(st: &State) -> Vec<ControlGroup> {
     groups
         .into_iter()
         .filter(|(_, rows)| !rows.is_empty())
-        .map(|(title, rows)| ControlGroup { title: s(title), rows: ModelRc::new(VecModel::from(rows)) })
+        .map(|(title, rows)| {
+            let rows_model = shown.iter().find(|g| g.title == title).map(|g| g.rows.clone());
+            ControlGroup { title: s(title), rows: nested(rows_model, rows) }
+        })
         .collect()
 }
 
@@ -367,7 +430,14 @@ pub fn render(app: &App, st: &State) {
     app.set_status_glyph(s(status_glyph));
     app.set_status_text(s(status_text));
     app.set_connected(st.status == MonitorStatus::Connected);
+    app.set_values_stale(st.values_stale);
     app.set_banner(banner(st));
+    app.set_loading(st.status == MonitorStatus::Connecting || (st.retrying && st.status != MonitorStatus::Connected));
+    app.set_disabled_reason(s(disabled_reason(st)));
+    let (empty_title, empty_message) = empty_state(st);
+    app.set_empty_title(s(empty_title));
+    app.set_empty_message(s(empty_message));
+    app.set_has_controls(st.controls.as_ref().is_some_and(|rc| !rc.controls.is_empty()));
 
     // Display tab
     let inputs = inputs(st);
@@ -383,6 +453,7 @@ pub fn render(app: &App, st: &State) {
         |m| app.set_inputs(m),
     );
     app.set_active_input(st.value(INPUT).map_or(-1, |v| v as i32));
+    app.set_input_note(s(st.notes.get(&INPUT).map_or("", String::as_str)));
     let mut ranges = vec![];
     if st.def(BRIGHTNESS).is_some() {
         ranges.push(range_row(st, BRIGHTNESS, "Brightness", glyph::SUN));
@@ -407,12 +478,15 @@ pub fn render(app: &App, st: &State) {
     sync(app.get_colour_modes(), modes.into_iter().map(|(_, l)| s(l)).collect(), |m| app.set_colour_modes(m));
     let custom = mode == Some(st.profile.custom_colour_mode as u16);
     app.set_custom_colour_available(custom);
-    let custom_label = st.def(COLOUR_MODE).map(|d| label(d, st.profile.custom_colour_mode as u16)).unwrap_or_default();
-    app.set_custom_colour_hint(s(if custom {
-        "Red, green and blue gain".to_string()
-    } else {
-        format!("Available in {custom_label} colour mode")
+    let custom_label = st.def(COLOUR_MODE).map(|d| label(d, st.profile.custom_colour_mode as u16));
+    app.set_custom_colour_hint(s(match custom_label {
+        _ if custom => "Red, green and blue gain".to_string(),
+        Some(l) => format!("Available in {l} colour mode"),
+        None => String::new(),
     }));
+    app.set_colour_note(s(
+        [COLOUR_MODE].iter().chain(&GAINS).find_map(|c| st.notes.get(c)).map_or("", String::as_str),
+    ));
     let gains: Vec<RangeRow> = GAINS
         .iter()
         .zip(["Red", "Green", "Blue"])
@@ -422,7 +496,8 @@ pub fn render(app: &App, st: &State) {
     sync(app.get_custom_colour(), gains, |m| app.set_custom_colour(m));
 
     // Monitor tab
-    sync(app.get_monitor_groups(), monitor_groups(st), |m| app.set_monitor_groups(m));
+    let groups = monitor_groups(st, &app.get_monitor_groups());
+    sync(app.get_monitor_groups(), groups, |m| app.set_monitor_groups(m));
     app.set_restore_text(s(&st.restore_text));
 
     // Settings tab
@@ -456,25 +531,27 @@ pub fn render(app: &App, st: &State) {
     } else {
         "Shortcuts work while Run in background is on. Turn it on to use them."
     }));
-    sync(app.get_hotkeys(), hotkey_rows(st), |m| app.set_hotkeys(m));
+    let hotkeys = hotkey_rows(st, &app.get_hotkeys());
+    sync(app.get_hotkeys(), hotkeys, |m| app.set_hotkeys(m));
     app.set_version(s(env!("CARGO_PKG_VERSION")));
-    let fw = st.firmware().map(|f| format!(" · Firmware {f}")).unwrap_or_default();
-    app.set_profile_text(s(format!("Monitor profile: {}{fw} · Built with Slint", st.profile.display_name)));
+    app.set_profile_text(s(about_text(st)));
 
     render_auto(app, st);
     render_finder(app, st);
 }
 
-fn hotkey_rows(st: &State) -> Vec<HotkeyRow> {
+/// Each row keeps the keycap model the window shows at its place in `shown`.
+fn hotkey_rows(st: &State, shown: &ModelRc<HotkeyRow>) -> Vec<HotkeyRow> {
     use tvc_core::hotkey::Action;
     Action::ALL
         .iter()
-        .map(|a| {
+        .enumerate()
+        .map(|(i, a)| {
             let text = st.settings.hotkeys.get(a).cloned().unwrap_or_default();
             let failed = st.settings.background_mode && st.hotkeys_available && st.failed_hotkeys.contains(a);
             HotkeyRow {
                 label: s(a.label()),
-                keys: strings(keycaps(&text)),
+                keys: strings(shown.row_data(i).map(|r| r.keys), keycaps(&text)),
                 warning: s(if failed { "Another app is using this shortcut" } else { "" }),
             }
         })

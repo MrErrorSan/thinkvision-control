@@ -1,0 +1,5 @@
+# The toolchain for CI and release builds, so a release is built the same way every time. Bump it deliberately.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["clippy"]

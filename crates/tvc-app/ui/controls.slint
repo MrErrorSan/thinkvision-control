@@ -1,5 +1,5 @@
 // Building blocks: cards, rows, the input selector, tabs, banner, keycaps, dialog.
-import { Slider, Switch, Button, ComboBox } from "std-widgets.slint";
+import { Slider, Switch, Button, ComboBox, ProgressIndicator } from "std-widgets.slint";
 import { Theme, Glyphs, Icon } from "theme.slint";
 import { Severity, Banner, InputItem, Dialog } from "types.slint";
 
@@ -13,7 +13,21 @@ export component SectionHeader inherits VerticalLayout {
         font-size: 14px;
         font-weight: 600;
         color: Theme.text;
-        accessible-role: none;
+    }
+}
+
+// Keyboard focus ring, drawn over the focused element's bounds.
+export component FocusRing inherits Rectangle {
+    border-width: 2px;
+    border-color: Theme.focus-outer;
+    Rectangle {
+        x: parent.border-width;
+        y: parent.border-width;
+        width: parent.width - 2 * parent.border-width;
+        height: parent.height - 2 * parent.border-width;
+        border-width: 1px;
+        border-radius: max(0px, parent.border-radius - 2px);
+        border-color: Theme.focus-inner;
     }
 }
 
@@ -24,17 +38,27 @@ export component CardFrame inherits Rectangle {
     border-color: Theme.card-stroke;
 }
 
-// Icon + title + description on the left, the control (children) on the right.
+// Icon + title + description on the left, the control (children) on the right. The group carries the title, so
+// the control inside is labelled by what it does only. `note` is a failure; `reason` says why it's disabled.
 export component Card inherits CardFrame {
     in property <string> glyph;
     in property <string> title;
     in property <string> description;
+    in property <string> note;
+    in property <string> reason;
     in property <bool> enabled: true;
+    property <string> why: root.enabled ? "" : root.reason;
+
+    pure function join(a: string, b: string) -> string {
+        if a == "" { return b; }
+        if b == "" { return a; }
+        a + ". " + b
+    }
 
     min-height: 60px;
     accessible-role: groupbox;
     accessible-label: root.title;
-    accessible-description: root.description;
+    accessible-description: root.join(root.join(root.description, root.note), root.why);
 
     HorizontalLayout {
         padding-left: 16px;
@@ -58,12 +82,28 @@ export component Card inherits CardFrame {
                 font-size: 14px;
                 color: root.enabled ? Theme.text : Theme.text-disabled;
                 overflow: elide;
+                accessible-role: none;
             }
             if root.description != "": Text {
                 text: root.description;
                 font-size: 12px;
                 color: root.enabled ? Theme.text-secondary : Theme.text-disabled;
                 wrap: word-wrap;
+                accessible-role: none;
+            }
+            if root.note != "": Text {
+                text: root.note;
+                font-size: 12px;
+                color: Theme.error-fg;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+            if root.why != "": Text {
+                text: root.why;
+                font-size: 12px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+                accessible-role: none;
             }
         }
         VerticalLayout {
@@ -138,8 +178,9 @@ export component RowDivider inherits Rectangle {
     background: Theme.divider;
 }
 
-// A large toggle-style button: accent fill when selected; optional second line.
-export component TileButton inherits Rectangle {
+// A large tile: accent fill when selected; optional second line. Focusable; Space or Enter clicks it.
+// TileButton and InputTile give it its role.
+component TileFace inherits Rectangle {
     in property <string> glyph;
     in property <string> label;
     in property <string> caption;
@@ -147,6 +188,7 @@ export component TileButton inherits Rectangle {
     in property <bool> enabled: true;
     callback clicked;
 
+    forward-focus: fs;
     min-height: root.caption != "" ? 56px : 44px;
     border-radius: Theme.radius;
     border-width: root.selected ? 0px : 1px;
@@ -157,14 +199,19 @@ export component TileButton inherits Rectangle {
               : Theme.card-bg;
     animate background { duration: 100ms; }
     opacity: root.enabled ? 1 : 0.45;
-    accessible-role: button;
-    accessible-label: root.caption != "" ? root.label + ", " + root.caption : root.label;
-    accessible-checked: root.selected;
-    accessible-action-default => { if root.enabled { root.clicked(); } }
 
     ta := TouchArea {
         enabled: root.enabled;
         clicked => { root.clicked(); }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;   // takes no clicks
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if e.text == Key.Space || e.text == Key.Return { root.clicked(); return accept; }
+            reject
+        }
     }
 
     HorizontalLayout {
@@ -187,6 +234,7 @@ export component TileButton inherits Rectangle {
                 horizontal-alignment: center;
                 overflow: elide;
                 color: root.selected ? Theme.on-accent : Theme.text;
+                accessible-role: none;
             }
             if root.caption != "": Text {
                 text: root.caption;
@@ -194,9 +242,33 @@ export component TileButton inherits Rectangle {
                 horizontal-alignment: center;
                 overflow: elide;
                 color: root.selected ? Theme.on-accent : Theme.text-secondary;
+                accessible-role: none;
             }
         }
     }
+    if fs.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+export component TileButton inherits TileFace {
+    accessible-role: button;
+    accessible-enabled: root.enabled;
+    accessible-label: root.caption != "" ? root.label + ", " + root.caption : root.label;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+}
+
+// One input of the InputSelector: a radio button.
+export component InputTile inherits TileFace {
+    in property <bool> this-pc;
+    in property <int> item-index;
+    in property <int> item-count;
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    accessible-enabled: root.enabled;
+    accessible-label: root.this-pc ? root.label + ", This PC" : root.label;
+    accessible-item-index: root.item-index;
+    accessible-item-count: root.item-count;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
 }
 
 // Segmented input selector; equal-width tiles.
@@ -211,9 +283,12 @@ export component InputSelector inherits HorizontalLayout {
     accessible-role: radio-group;
     accessible-label: "Input";
 
-    for item in root.inputs: TileButton {
+    for item[i] in root.inputs: InputTile {
         horizontal-stretch: 1;
         label: item.label;
+        this-pc: item.this-pc;
+        item-index: i;
+        item-count: root.inputs.length;
         caption: item.this-pc && !root.compact ? "This PC" : (root.compact ? "" : " ");
         selected: item.code == root.active;
         enabled: root.enabled;
@@ -225,8 +300,10 @@ export component InputSelector inherits HorizontalLayout {
 export component Tab inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
+    out property <bool> has-focus: fs.has-focus;
     callback clicked;
 
+    forward-focus: fs;
     width: t.preferred-width + 24px;
     height: 40px;
     accessible-role: tab;
@@ -235,6 +312,14 @@ export component Tab inherits Rectangle {
     accessible-action-default => { root.clicked(); }
 
     ta := TouchArea { clicked => { root.clicked(); } }
+    fs := FocusScope {
+        x: 0;
+        width: 0;   // takes no clicks
+        key-pressed(e) => {
+            if e.text == Key.Space || e.text == Key.Return { root.clicked(); return accept; }
+            reject
+        }
+    }
     Rectangle {
         y: 4px;
         height: 32px;
@@ -247,6 +332,12 @@ export component Tab inherits Rectangle {
         font-weight: root.selected ? 600 : 400;
         color: root.selected ? Theme.text : Theme.text-secondary;
         vertical-alignment: center;
+        accessible-role: none;
+    }
+    if fs.has-focus: FocusRing {
+        y: 4px;
+        height: 32px;
+        border-radius: 4px;
     }
     Rectangle {
         y: parent.height - 3px;
@@ -273,6 +364,7 @@ export component InfoBar inherits Rectangle {
     accessible-role: groupbox;
     accessible-label: root.data.title;
     accessible-description: root.data.message;
+    accessible-live-region: root.data.severity == Severity.error ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
 
     HorizontalLayout {
         padding: 14px;
@@ -298,12 +390,14 @@ export component InfoBar inherits Rectangle {
                 font-weight: 600;
                 color: Theme.text;
                 wrap: word-wrap;
+                accessible-role: none;
             }
             if root.data.message != "": Text {
                 text: root.data.message;
                 font-size: 13px;
                 color: Theme.text;
                 wrap: word-wrap;
+                accessible-role: none;
             }
         }
         if root.data.action != "": VerticalLayout {
@@ -353,6 +447,7 @@ export component LabelledSwitch inherits HorizontalLayout {
         vertical-alignment: center;
         color: root.enabled ? Theme.text : Theme.text-disabled;
         font-size: 14px;
+        accessible-role: none;  // the switch says it
     }
     sw := Switch {
         enabled: root.enabled;
@@ -370,8 +465,6 @@ export component ExpanderCard inherits CardFrame {
     in-out property <bool> expanded;
 
     clip: true;
-    accessible-role: groupbox;
-    accessible-label: root.title;
 
     VerticalLayout {
         Rectangle {
@@ -382,8 +475,18 @@ export component ExpanderCard inherits CardFrame {
             accessible-description: root.description;
             accessible-expandable: true;
             accessible-expanded: root.expanded;
+            accessible-action-default => { root.expanded = !root.expanded; }
             accessible-action-expand => { root.expanded = !root.expanded; }
             ta := TouchArea { clicked => { root.expanded = !root.expanded; } }
+            fs := FocusScope {
+                x: 0;
+                width: 0;   // takes no clicks
+                key-pressed(e) => {
+                    if e.text == Key.Space || e.text == Key.Return { root.expanded = !root.expanded; return accept; }
+                    reject
+                }
+            }
+            if fs.has-focus: FocusRing { border-radius: Theme.radius; }
 
             HorizontalLayout {
                 padding-left: 16px;
@@ -402,12 +505,14 @@ export component ExpanderCard inherits CardFrame {
                         text: root.title;
                         font-size: 14px;
                         color: root.enabled ? Theme.text : Theme.text-disabled;
+                        accessible-role: none;
                     }
                     Text {
                         text: root.description;
                         font-size: 12px;
                         color: Theme.text-secondary;
                         wrap: word-wrap;
+                        accessible-role: none;
                     }
                 }
                 Icon {
@@ -434,10 +539,11 @@ export component ExpanderCard inherits CardFrame {
 }
 
 // Modal confirm dialog drawn over the window. Cancel (`secondary`) is the default: accent style, initial focus,
-// Enter; Esc anywhere cancels. An empty `primary` leaves one button (an OK message).
+// Enter; Esc anywhere cancels; Tab stays inside. An empty `primary` leaves one button (an OK message).
 export component DialogOverlay inherits Rectangle {
     in property <Dialog> data;
     callback result(bool);
+    property <int> focus-primary;   // bumped to move the focus to the primary button
 
     background: #00000066;
     TouchArea { }  // swallow clicks behind the dialog
@@ -449,6 +555,10 @@ export component DialogOverlay inherits Rectangle {
         focus-on-tab-navigation: false;
         key-pressed(e) => {
             if e.text == Key.Escape || e.text == Key.Return { root.result(false); return accept; }
+            if e.text == Key.Tab || e.text == Key.Backtab {
+                if cancel.has-focus && root.data.primary != "" { root.focus-primary += 1; } else { cancel.focus(); }
+                return accept;
+            }
             reject
         }
 
@@ -467,6 +577,7 @@ export component DialogOverlay inherits Rectangle {
                     spacing: 12px;
                     Text {
                         text: root.data.title;
+                        accessible-role: none;  // the dialog's label
                         font-size: 20px;
                         font-weight: 600;
                         color: Theme.text;
@@ -487,6 +598,8 @@ export component DialogOverlay inherits Rectangle {
                         padding: 24px;
                         spacing: 8px;
                         if root.data.primary != "": Button {
+                            property <int> request: root.focus-primary;
+                            changed request => { self.focus(); }
                             horizontal-stretch: 1;
                             text: root.data.primary;
                             clicked => { root.result(true); }
@@ -511,4 +624,72 @@ export component SyncCombo inherits ComboBox {
     init => { self.current-index = root.index; }
     changed index => { self.current-index = root.index; }
     changed revision => { self.current-index = root.index; }
+}
+
+// A 32 px icon button (back, edit). `label` says what it does.
+export component IconButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    callback clicked;
+
+    forward-focus: fs;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: ta.pressed ? Theme.subtle-pressed : ta.has-hover ? Theme.subtle-hover : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+
+    Icon { text: root.glyph; font-size: 16px; }
+    ta := TouchArea { clicked => { root.clicked(); } }
+    fs := FocusScope {
+        x: 0;
+        width: 0;   // takes no clicks
+        key-pressed(e) => {
+            if e.text == Key.Space || e.text == Key.Return { root.clicked(); return accept; }
+            reject
+        }
+    }
+    if fs.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// What a tab shows when the monitor has no controls for it; `busy` adds a progress bar.
+export component EmptyState inherits CardFrame {
+    in property <string> title;
+    in property <string> message;
+    in property <bool> busy;
+
+    accessible-role: groupbox;
+    accessible-label: root.title;
+    accessible-description: root.message;
+    accessible-live-region: polite;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 6px;
+        Icon {
+            text: Glyphs.display;
+            font-size: 40px;
+            color: Theme.text-secondary;
+        }
+        Text {
+            text: root.title;
+            font-size: 18px;
+            font-weight: 600;
+            color: Theme.text;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+        Text {
+            text: root.message;
+            font-size: 13px;
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+        if root.busy: ProgressIndicator { indeterminate: true; }
+    }
 }

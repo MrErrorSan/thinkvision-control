@@ -4,6 +4,9 @@
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde::de::Error as _;
 use serde::ser::SerializeMap;
@@ -65,23 +68,49 @@ impl Default for Settings {
     }
 }
 
-/// `settings.json` in a directory. Missing → defaults; corrupt → defaults and the file is renamed `settings.json.bak`.
+/// `settings.json` in a directory. Missing → defaults; corrupt → defaults and the file is renamed `settings.json.bak`
+/// (unless that is newer); unreadable → defaults, and saving is refused so the file isn't overwritten.
 #[derive(Clone, Debug)]
 pub struct SettingsStore {
     dir: PathBuf,
+    /// The last load couldn't read the file.
+    unreadable: Arc<AtomicBool>,
 }
 
 impl SettingsStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self { dir: dir.into(), unreadable: Arc::default() }
     }
 
     pub fn load(&self) -> Settings {
         let path = self.dir.join("settings.json");
-        let Ok(text) = std::fs::read_to_string(&path) else { return Settings::default() };
-        let Ok(file) = serde_json::from_str::<SettingsFile>(&text) else {
-            let _ = std::fs::rename(&path, self.dir.join("settings.json.bak"));
-            return Settings::default();
+        let read = std::fs::read(&path).or_else(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                return Err(e);
+            }
+            std::thread::sleep(Duration::from_millis(100));
+            std::fs::read(&path)
+        });
+        self.unreadable.store(false, Ordering::Relaxed);
+        let bytes = match read {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Settings::default(),
+            Err(e) => {
+                crate::log::write(&format!("settings.json couldn't be read, using defaults: {e}"));
+                self.unreadable.store(true, Ordering::Relaxed);
+                return Settings::default();
+            }
+        };
+        let parsed = std::str::from_utf8(&bytes)
+            .map_err(serde_json::Error::custom)
+            .and_then(|text| serde_json::from_str::<SettingsFile>(text.strip_prefix('\u{feff}').unwrap_or(text)));
+        let file = match parsed {
+            Ok(file) => file,
+            Err(e) => {
+                crate::log::write(&format!("settings.json is corrupt, using defaults: {e}"));
+                self.keep_corrupt(&path);
+                return Settings::default();
+            }
         };
         let saved = file.hotkeys.unwrap_or_default();
         let hotkeys = Action::ALL.into_iter().map(|action| {
@@ -92,6 +121,8 @@ impl SettingsStore {
                 | (Action::ContrastUp, Some("Ctrl+Alt+Shift+PageUp"))
                 | (Action::ContrastDown, Some("Ctrl+Alt+Shift+PageDown"))
                 | (_, None) => default,
+                // CLI-01: 0.0.8 saved the same defaults on Linux, where Ctrl+Alt+F-keys and arrows clash.
+                (_, Some(old)) if cfg!(target_os = "linux") && old == action.default_gesture_for(false) => default,
                 (_, Some(custom)) => custom,
             };
             (action, gesture.to_string())
@@ -106,12 +137,26 @@ impl SettingsStore {
             auto_day_night: file.auto_day_night.mode,
             auto_times: file.auto_day_night.times,
             auto_location: file.auto_day_night.location,
-            last_applied_phase: None,
+            last_applied_phase: file.last_applied_phase,
         }
     }
 
-    /// Atomic: writes `settings.json.tmp`, then moves it over `settings.json`.
+    /// Renames a corrupt `settings.json` to `settings.json.bak`, unless the `.bak` there is newer.
+    fn keep_corrupt(&self, path: &Path) {
+        let bak = self.dir.join("settings.json.bak");
+        let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        if matches!((modified(&bak), modified(path)), (Some(b), Some(f)) if b > f) {
+            return;
+        }
+        let _ = std::fs::rename(path, bak);
+    }
+
+    /// Atomic: writes `settings.json.tmp`, then moves it over `settings.json`. Refused after a load that couldn't
+    /// read the file.
     pub fn save(&self, settings: &Settings) -> io::Result<()> {
+        if self.unreadable.load(Ordering::Relaxed) {
+            return Err(io::Error::other("settings.json couldn't be read, so it isn't overwritten"));
+        }
         std::fs::create_dir_all(&self.dir)?;
         let file = SettingsFileOut {
             hotkeys: Hotkeys(&settings.hotkeys),
@@ -121,12 +166,21 @@ impl SettingsStore {
             start_with_windows: settings.start_with_windows,
             background_mode: settings.background_mode,
             auto_day_night: AutoFileOut::from(settings),
+            last_applied_phase: settings.last_applied_phase.map(|p| match p {
+                Phase::Day => "Day",
+                Phase::Night => "Night",
+            }),
         };
-        let path = self.dir.join("settings.json");
-        let temp = self.dir.join("settings.json.tmp");
-        std::fs::write(&temp, serde_json::to_string_pretty(&file).map_err(io::Error::other)?)?;
-        std::fs::rename(&temp, &path)
+        write_atomic(&self.dir.join("settings.json"), &serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
     }
+}
+
+/// Writes `<path>.tmp`, then moves it over `path`.
+pub(crate) fn write_atomic(path: &Path, contents: &str) -> io::Result<()> {
+    let mut temp = path.as_os_str().to_owned();
+    temp.push(".tmp");
+    std::fs::write(&temp, contents)?;
+    std::fs::rename(&temp, path)
 }
 
 #[derive(Deserialize)]
@@ -134,7 +188,9 @@ impl SettingsStore {
 struct SettingsFile {
     #[serde(default)]
     hotkeys: Option<BTreeMap<String, String>>,
+    #[serde(default = "default_day")]
     day: PresetFile,
+    #[serde(default = "default_night")]
     night: PresetFile,
     #[serde(default = "default_input")]
     this_machine_input: HexByte,
@@ -146,6 +202,9 @@ struct SettingsFile {
     /// New in 0.0.5 (0.0.4 ignores it). Missing or malformed → Off; never makes the file corrupt.
     #[serde(default, deserialize_with = "auto_lenient")]
     auto_day_night: AutoLoaded,
+    /// New in 0.1.0 (0.0.4 and 0.0.8 ignore it). Missing or malformed → None; never makes the file corrupt.
+    #[serde(default, deserialize_with = "phase_lenient")]
+    last_applied_phase: Option<Phase>,
 }
 
 #[derive(Serialize)]
@@ -158,6 +217,15 @@ struct SettingsFileOut<'a> {
     start_with_windows: bool,
     background_mode: bool,
     auto_day_night: AutoFileOut,
+    last_applied_phase: Option<&'static str>,
+}
+
+fn default_day() -> PresetFile {
+    PresetFile::from(&Settings::default().day)
+}
+
+fn default_night() -> PresetFile {
+    PresetFile::from(&Settings::default().night)
 }
 
 fn default_input() -> HexByte {
@@ -204,6 +272,16 @@ fn auto_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<AutoLoaded, D::Error>
     };
     let times = (day.unwrap_or(DEFAULT_AUTO_TIMES.0), night.unwrap_or(DEFAULT_AUTO_TIMES.1));
     Ok(AutoLoaded { mode, times, location })
+}
+
+/// `"Day"` or `"Night"` (any case); anything else → None.
+fn phase_lenient<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Phase>, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    Ok(match value.as_str().map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("day") => Some(Phase::Day),
+        Some("night") => Some(Phase::Night),
+        _ => None,
+    })
 }
 
 fn valid_place(lat: f64, lon: f64) -> bool {
@@ -320,12 +398,15 @@ impl CapabilitiesCache {
     }
 
     pub fn save(&self, raw: &str) {
-        let result = std::fs::create_dir_all(&self.dir).and_then(|_| std::fs::write(self.dir.join("capabilities.txt"), raw));
+        let result = std::fs::create_dir_all(&self.dir).and_then(|_| write_atomic(&self.dir.join("capabilities.txt"), raw));
         if let Err(e) = result {
             crate::log::write(&format!("Capabilities cache save failed: {e}"));
         }
     }
 }
+
+/// How many backups [`BackupStore::save`] keeps.
+const KEEP_BACKUPS: usize = 10;
 
 /// Timestamped `backup-yyyyMMdd-HHmmss[-n].json` files of `{"0xNN": value}`.
 #[derive(Clone, Debug)]
@@ -338,7 +419,7 @@ impl BackupStore {
         Self { dir: dir.into() }
     }
 
-    /// Returns the path written.
+    /// Returns the path written. Backups beyond the newest [`KEEP_BACKUPS`] are deleted.
     pub fn save(&self, values: &BTreeMap<u8, u16>) -> io::Result<PathBuf> {
         std::fs::create_dir_all(&self.dir)?;
         let t = crate::clock::now();
@@ -350,22 +431,42 @@ impl BackupStore {
             n += 1;
         }
         let json: serde_json::Map<String, serde_json::Value> = values.iter().map(|(&k, &v)| (hex(k), v.into())).collect();
-        std::fs::write(&path, serde_json::to_string_pretty(&json).map_err(io::Error::other)?)?;
+        write_atomic(&path, &serde_json::to_string_pretty(&json).map_err(io::Error::other)?)?;
+        for name in self.names().into_iter().rev().skip(KEEP_BACKUPS) {
+            if let Err(e) = std::fs::remove_file(self.dir.join(&name)) {
+                crate::log::write(&format!("Couldn't delete old backup {name}: {e}"));
+            }
+        }
         Ok(path)
     }
 
-    /// The newest backup by stamp, then suffix; `Ok(None)` when there is none.
+    /// The newest backup by stamp, then suffix, falling back to older ones that can be read; `Ok(None)` when there
+    /// is none, the newest one's error when none can be read.
     pub fn load_latest(&self) -> io::Result<Option<BTreeMap<u8, u16>>> {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else { return Ok(None) };
-        let latest = entries
+        let mut first_error = None;
+        for name in self.names().into_iter().rev() {
+            match read_backup(&self.dir.join(&name)) {
+                Ok(values) => return Ok(Some(values)),
+                Err(e) => {
+                    crate::log::write(&format!("Backup {name} can't be read: {e}"));
+                    first_error.get_or_insert(e);
+                }
+            }
+        }
+        first_error.map_or(Ok(None), Err)
+    }
+
+    /// Backup file names, oldest first.
+    fn names(&self) -> Vec<String> {
+        let Ok(entries) = std::fs::read_dir(&self.dir) else { return Vec::new() };
+        let mut keyed: Vec<_> = entries
             .filter_map(|e| {
                 let name = e.ok()?.file_name().into_string().ok()?;
-                let key = backup_key(&name)?;
-                Some((key, name))
+                Some((backup_key(&name)?, name))
             })
-            .max_by(|a, b| a.0.cmp(&b.0));
-        let Some((_, name)) = latest else { return Ok(None) };
-        read_backup(&self.dir.join(name)).map(Some)
+            .collect();
+        keyed.sort();
+        keyed.into_iter().map(|(_, name)| name).collect()
     }
 }
 

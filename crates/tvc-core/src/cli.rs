@@ -1,8 +1,9 @@
 //! Command-line verbs: `--preset day|night`, `--input hdmi|dp|usbc|this`, `--step brightness=+5`,
-//! `--get brightness|contrast|input|colour-mode|all`, `--help`, plus the flags `--startup` and `--json`.
-//! `--x value` and `--x=value` both work, case-insensitively. The first verb wins; a malformed first verb (or none)
-//! gives [`CliCommand::Show`]. `--help` (`-h`, `/?`) wins wherever it appears. A `thinkvision://…` argument (how
-//! the OS opens a link) counts as a verb; see [`parse_url`].
+//! `--get brightness|contrast|input|colour-mode|all`, `--help`, plus the flags `--startup`, `--json`, `--yes` and
+//! `--version`. `--x value` and `--x=value` both work, case-insensitively. Every argument must be valid, or
+//! [`parse`] returns a [`CliError`]; of several valid verbs the first wins, and the rest are ignored. `--help` (`-h`,
+//! `/?`) wins wherever it appears, even next to a bad argument. A `thinkvision://…` argument (how the OS opens a
+//! link) counts as a verb; see [`parse_url`]. No verb gives [`CliCommand::Show`].
 
 use crate::result::ResultKind;
 
@@ -35,7 +36,7 @@ pub enum CliCommand {
     /// `None` = this PC's input (`ThisMachineInput`).
     Input(Option<u8>),
     Step { code: u8, delta: i32 },
-    /// Read and print; always runs its own read-only connection (a forwarded command can't return output).
+    /// Read and print.
     Get(GetTarget),
     /// Print [`help`].
     Help,
@@ -66,66 +67,96 @@ pub const EXIT_USAGE: i32 = 2;
 pub const EXIT_NEEDS_CONFIRMATION: i32 = 3;
 
 pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
-    let mut command = None;
-    let (mut startup, mut json, mut help) = (false, false, false);
+    let mut parsed = Parsed::default();
+    let (mut command, mut help, mut error, mut developer) = (None, false, None, false);
     let mut i = 0;
     while i < args.len() {
         let arg = args[i].as_ref();
         i += 1;
-        if arg == "-h" || arg == "/?" {
+        let outcome = if arg == "-h" || arg == "/?" {
             help = true;
-            continue;
-        }
-        let Some(rest) = arg.strip_prefix("--") else {
-            if is_url(arg) && command.is_none() {
-                command = Some(parse_url(arg).unwrap_or(CliCommand::Show));
-            }
-            continue;
-        };
-        let (name, inline) = match rest.split_once('=') {
-            Some((n, v)) => (n.to_lowercase(), Some(v)),
-            None => (rest.to_lowercase(), None),
-        };
-        match name.as_str() {
-            "startup" => startup = true,
-            "json" => json = true,
-            "help" => help = true,
-            "preset" | "input" | "step" | "get" => {
-                let value = match inline {
-                    Some(v) => Some(v),
-                    None if i < args.len() && !args[i].as_ref().starts_with("--") => {
-                        i += 1;
-                        Some(args[i - 1].as_ref())
-                    }
-                    None => None,
-                };
-                if command.is_none() {
-                    command =
-                        Some(value.and_then(|v| parse_verb(&name, &v.trim().to_lowercase())).unwrap_or(CliCommand::Show));
+            Ok(None)
+        } else if let Some(rest) = arg.strip_prefix("--") {
+            let (typed, inline) = match rest.split_once('=') {
+                Some((n, v)) => (n, Some(v)),
+                None => (rest, None),
+            };
+            let name = typed.to_lowercase();
+            let flag = match name.as_str() {
+                "startup" => Some(&mut parsed.startup),
+                "json" => Some(&mut parsed.json),
+                "yes" => Some(&mut parsed.yes),
+                "version" => Some(&mut parsed.version),
+                "help" => Some(&mut help),
+                // Developer flags the app reads itself.
+                "dark" | "light" | "demo" => Some(&mut developer),
+                _ => None,
+            };
+            match (flag, inline) {
+                (Some(_), Some(_)) => Err(format!("option '--{typed}' takes no value")),
+                (Some(flag), None) => {
+                    *flag = true;
+                    Ok(None)
                 }
+                (None, _) if matches!(name.as_str(), "preset" | "input" | "step" | "get") => {
+                    let value = inline.or_else(|| {
+                        let next = args.get(i)?.as_ref();
+                        (!next.starts_with('-') && next != "/?").then(|| {
+                            i += 1;
+                            next
+                        })
+                    });
+                    match value.map(str::trim).filter(|v| !v.is_empty()) {
+                        Some(v) => parse_verb(&name, v).map(Some),
+                        None => Err(format!("'--{typed}' needs a value ({})", choices(&name))),
+                    }
+                }
+                (None, _) => Err(format!("unknown option '--{typed}'")),
             }
-            _ => {}
+        } else if is_url(arg) {
+            url_command(arg).map(Some)
+        } else if arg.starts_with('-') {
+            Err(format!("unknown option '{arg}'"))
+        } else {
+            Err(format!("unexpected argument '{arg}'"))
+        };
+        match outcome {
+            Ok(verb) => command = command.or(verb),
+            Err(message) => error = error.or(Some(message)),
         }
     }
-    let command = if help { CliCommand::Help } else { command.unwrap_or(CliCommand::Show) };
-    Ok(Parsed { command, startup, json, ..Parsed::default() })
+    parsed.command = match (help, error) {
+        (true, _) => CliCommand::Help,
+        (false, Some(message)) => return Err(CliError { message }),
+        (false, None) => command.unwrap_or_default(),
+    };
+    Ok(parsed)
+}
+
+/// `thinkvision-control <version>`, for `--version`.
+pub fn version_line() -> String {
+    format!("thinkvision-control {}", env!("CARGO_PKG_VERSION"))
 }
 
 /// A `thinkvision:` link, case-insensitive, with or without `//` and a trailing `/`:
 /// `open`, `preset/day|night`, `input/hdmi|dp|displayport|usbc|usb-c|this`, `step/brightness|contrast/+N|-N`,
 /// `get/brightness|contrast|input|colour-mode|color-mode|all`. None when it isn't one of these.
 pub fn parse_url(url: &str) -> Option<CliCommand> {
+    url_command(url).ok()
+}
+
+fn url_command(url: &str) -> Result<CliCommand, String> {
     if !is_url(url) {
-        return None;
+        return Err(format!("'{url}' is not a thinkvision: link"));
     }
     let lower = url.trim().to_lowercase().replace("%2b", "+");
     let path = lower["thinkvision:".len()..].trim_start_matches('/').trim_end_matches('/');
     let parts: Vec<&str> = path.split('/').collect();
     match parts[..] {
-        ["" | "open"] => Some(CliCommand::Show),
+        ["" | "open"] => Ok(CliCommand::Show),
         ["preset" | "input" | "get", value] => parse_verb(parts[0], value),
         ["step", target, delta] => parse_verb("step", &format!("{target}={delta}")),
-        _ => None,
+        _ => Err(format!("'{}' is not a known thinkvision: link (see --help)", url.trim())),
     }
 }
 
@@ -168,27 +199,29 @@ pub fn exit_code(kind: Option<ResultKind>, status_found: bool) -> i32 {
 
 /// Usage text for `--help`.
 pub fn help() -> &'static str {
-    "\
-ThinkVision Control
+    "ThinkVision Control
 
-Usage: thinkvision-control [verb] [--json] [--startup]
+Usage: thinkvision-control [verb] [--json] [--yes] [--startup]
+On Windows, scripts should run tvc (tvc.exe), the console launcher, with the same arguments.
 
 Verbs (the first one counts):
   --preset day|night                 Apply the Day or Night preset
   --input hdmi|dp|usbc|this          Switch the input (this = this PC's input)
   --step brightness|contrast=+N|-N   Change brightness or contrast by N (up to 100)
   --get brightness|contrast|input|colour-mode|all
-                                     Print current values (always reads the monitor itself)
+                                     Print current values
   --help, -h, /?                     Show this text
+  --version                          Print the version
   (none)                             Open the window
 
 Flags:
   --json      Print the result as JSON
+  --yes       Confirm an --input switch without asking on screen
   --startup   Start in the tray without a window
 
-Exit codes: 0 OK, 1 monitor not found, 2 value out of range, 4 not supported,
+Exit codes: 0 OK, 1 monitor not found, 2 bad arguments or value out of range,
+            3 input switch needs --yes, 4 not supported,
             5 monitor not answering (or asleep, or safe mode), 8 timed out.
-A verb handed to a running copy exits 0; the result shows on screen there.
 
 Links (thinkvision://):
   thinkvision://open
@@ -199,20 +232,47 @@ Links (thinkvision://):
 "
 }
 
-fn parse_verb(name: &str, value: &str) -> Option<CliCommand> {
-    match name {
-        "preset" => match value {
+/// The accepted values of a verb, for error messages.
+fn choices(verb: &str) -> &'static str {
+    match verb {
+        "preset" => "day, night",
+        "input" => "hdmi, dp, usbc, this",
+        "get" => "brightness, contrast, input, colour-mode, all",
+        _ => "brightness=+N or contrast=-N",
+    }
+}
+
+/// `value` is trimmed but may be in any case.
+fn parse_verb(name: &str, value: &str) -> Result<CliCommand, String> {
+    let lower = value.to_lowercase();
+    let command = match name {
+        "preset" => match lower.as_str() {
             "day" => Some(CliCommand::Preset { night: false }),
             "night" => Some(CliCommand::Preset { night: true }),
             _ => None,
         },
-        "input" => INPUTS.iter().find(|(n, _)| *n == value).map(|(_, c)| CliCommand::Input(*c)),
-        "get" => TARGETS.iter().find(|(n, _)| *n == value).map(|(_, t)| CliCommand::Get(*t)),
-        _ => {
-            let (target, delta) = value.split_once('=')?;
-            let code = STEPS.iter().find(|(n, _)| *n == target)?.1;
-            let delta: i32 = delta.parse().ok()?;
-            (-MAX_STEP..=MAX_STEP).contains(&delta).then_some(CliCommand::Step { code, delta })
-        }
+        "input" => INPUTS.iter().find(|(n, _)| *n == lower).map(|(_, c)| CliCommand::Input(*c)),
+        "get" => TARGETS.iter().find(|(n, _)| *n == lower).map(|(_, t)| CliCommand::Get(*t)),
+        _ => return parse_step(&lower),
+    };
+    let what = match name {
+        "preset" => "a preset",
+        "input" => "an input",
+        _ => "something --get can read",
+    };
+    command.ok_or_else(|| format!("'{value}' is not {what} ({})", choices(name)))
+}
+
+fn parse_step(value: &str) -> Result<CliCommand, String> {
+    let Some((target, delta)) = value.split_once('=') else {
+        return Err(format!("'{value}' is not a step ({})", choices("step")));
+    };
+    let Some(code) = STEPS.iter().find(|(n, _)| *n == target).map(|(_, c)| *c) else {
+        return Err(format!("'{target}' can't be stepped (brightness, contrast)"));
+    };
+    let delta: i32 = delta.parse().map_err(|_| format!("'{delta}' is not a number like +5 or -5"))?;
+    if !(-MAX_STEP..=MAX_STEP).contains(&delta) {
+        return Err(format!("step {delta:+} is out of range (-{MAX_STEP} to +{MAX_STEP})"));
     }
+    Ok(CliCommand::Step { code, delta })
 }

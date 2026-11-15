@@ -65,6 +65,12 @@ git clone https://github.com/MrErrorSan/thinkvision-control.git && cd thinkvisio
 
 The script installs the app in Applications and starts it in the menu bar. Linux and macOS haven't been tested with the monitor on real hardware yet; [reports](../../issues) are welcome.
 
+**Uninstall:**
+
+- **Windows:** Settings → Apps → Installed apps → ThinkVision Control → Uninstall. It also removes the "Start with Windows" entry and the `thinkvision://` link handler. Your settings stay in `%APPDATA%\ThinkVisionControl`; delete that folder too for a clean slate.
+- **Linux:** run `~/.local/share/thinkvision-control/uninstall.sh`. It removes the app, the launcher entry, the icon and the start-at-login entry, then offers to remove the monitor access rule (asks for your password). Your settings stay in `~/.config/ThinkVisionControl`.
+- **macOS:** turn off **Settings → Start when you log in** if you use it, quit the app from the menu bar, then drag **ThinkVision Control** from Applications to the Bin. Your settings stay in `~/.config/ThinkVisionControl`.
+
 **Before you start:** connect the monitor directly (docks, KVMs and DisplayLink usually block DDC/CI), and keep DDC/CI on (it's on by default; holding the monitor's **Exit** key for 10 s toggles it).
 
 ## Shortcuts
@@ -92,6 +98,8 @@ thinkvision-control --get all --json        # brightness, contrast, input, colou
 thinkvision-control --help                  # everything, including exit codes
 ```
 
+**Windows:** in scripts and terminals, call `tvc` instead, installed next to the app: `& "$env:ProgramFiles\ThinkVision Control\tvc.exe" --get all` in PowerShell. It takes the same arguments, waits for the result and passes on its output and exit code. `thinkvision-control.exe` is a windowed program, so cmd and PowerShell don't wait for it and drop its exit code.
+
 The same as links: `thinkvision://preset/night`, `thinkvision://input/this`, `thinkvision://step/brightness/+10`.
 
 ## Troubleshooting
@@ -104,12 +112,18 @@ The same as links: `thinkvision://preset/night`, `thinkvision://input/this`, `th
 
 ## Build from source
 
-With [Rust](https://rustup.rs): `cargo run --release -p tvc-app`. Installers: `scripts/make-windows-setup.ps1` (needs [Inno Setup](https://jrsoftware.org/isinfo.php)), `scripts/make-linux-tarball.sh`, `scripts/make-macos-app.sh`. Tests: `cargo test --workspace`.
+With [Rust](https://rustup.rs): `cargo run --release -p tvc-app`. The toolchain is pinned in `rust-toolchain.toml`; rustup installs it on first use. On Linux, first install the system packages (Debian/Ubuntu names):
+
+```bash
+sudo apt-get install pkg-config libfontconfig1-dev libudev-dev libxkbcommon-dev
+```
+
+Installers: `scripts/make-windows-setup.ps1` (needs [Inno Setup](https://jrsoftware.org/isinfo.php)), `scripts/make-linux-tarball.sh`, `scripts/make-macos-app.sh`. They add `THIRD-PARTY-NOTICES.txt` when [cargo-about](https://github.com/EmbarkStudios/cargo-about) is installed (`cargo install cargo-about --locked`). Tests: `cargo test --workspace`.
 
 Only the P32p-20 is supported today. For another model, open an issue with its capabilities string: `cargo run -p tvc-ddc --example probe` prints it without changing anything on the monitor.
 
 ## Licence
 
-GPL-2.0-or-later; see [LICENSE](LICENSE). Built with [Slint](https://slint.dev/) under its GPLv3 option, so the distributed program is GPLv3. Includes the [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) font (© Microsoft, MIT) and uses [global-hotkey](https://github.com/tauri-apps/global-hotkey) (MIT/Apache-2.0). The Linux and macOS monitor code was informed by [MonitorControl](https://github.com/MonitorControl/MonitorControl), [m1ddc](https://github.com/waydabber/m1ddc) and [ddcutil](https://www.ddcutil.com/).
+GPL-2.0-or-later; see [LICENSE](LICENSE). Built with [Slint](https://slint.dev/) under its GPLv3 option, so the distributed program is GPLv3 ([LICENSE-GPL-3.0.txt](LICENSE-GPL-3.0.txt)). The packages ship both texts and `THIRD-PARTY-NOTICES.txt`, the licences of every bundled Rust crate, generated with cargo-about. (The Linux build carries two versions of tiny-skia, pulled in by upstream crates; that's expected.) Includes the [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) font (© Microsoft, MIT) and uses [global-hotkey](https://github.com/tauri-apps/global-hotkey) (MIT/Apache-2.0). The Linux and macOS monitor code was informed by [MonitorControl](https://github.com/MonitorControl/MonitorControl), [m1ddc](https://github.com/waydabber/m1ddc) and [ddcutil](https://www.ddcutil.com/).
 
 Lenovo and ThinkVision are trademarks of Lenovo.

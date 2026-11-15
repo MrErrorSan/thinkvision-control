@@ -5,22 +5,22 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use tvc_core::link::{AttachedDisplay, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
 
-use super::{bus_name, candidate_buses, connector_kind, is_ignorable_adapter};
+use super::{bus_name, candidate_buses, connector_kind, connector_order, is_ignorable_adapter, writes_once};
 use crate::{ascii, edid, not_connected, packet};
 
 const REPLY_DELAY: Duration = Duration::from_millis(50); // spec minimum is 40 ms between request and reply
 const RETRY_GAP: Duration = Duration::from_millis(50);
 const READ_ATTEMPTS: u32 = 10; // ddcutil's write-read default
-const WRITE_ATTEMPTS: u32 = 4; // ddcutil's write-only default
+const WRITE_ATTEMPTS: u32 = 4; // ddcutil's write-only default; 1 for `writes_once` codes
 const FRAGMENT_ATTEMPTS: u32 = 8; // ddcutil's multi-part default
 const PROBE_ATTEMPTS: u32 = 3;
-const MAX_CAPABILITIES_LEN: usize = 1024;
+const MAX_CAPABILITIES_LEN: usize = 8192;
 const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
 const PROBE_CODE: u8 = 0x10; // brightness: every MCCS monitor answers it
 const EDID_ADDRESS: u16 = 0x50;
@@ -131,18 +131,25 @@ impl MonitorLink for I2cLink {
     }
 
     /// The connected DRM connectors, named from the EDID the kernel already read (no bus traffic, no permissions).
-    /// None when there's no DRM sysfs to read (no KMS driver).
+    /// None when DRM lists no connectors (no KMS driver, e.g. nvidia without `modeset=1`).
     fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
-        let entries = fs::read_dir("/sys/class/drm").ok()?;
-        let mut displays: Vec<(String, AttachedDisplay)> = entries
+        let connectors: Vec<(String, PathBuf)> = fs::read_dir("/sys/class/drm")
+            .ok()?
             .flatten()
-            .filter_map(|e| {
-                let connector = e.file_name().to_str()?.to_owned();
-                let status = fs::read_to_string(e.path().join("status")).ok()?;
+            .filter_map(|e| Some((e.file_name().into_string().ok()?, e.path())))
+            .filter(|(name, _)| name.starts_with("card") && name.contains('-')) // "card0-DP-1", not "card0" or "version"
+            .collect();
+        if connectors.is_empty() {
+            return None;
+        }
+        let mut displays: Vec<(String, AttachedDisplay)> = connectors
+            .into_iter()
+            .filter_map(|(connector, path)| {
+                let status = fs::read_to_string(path.join("status")).ok()?;
                 if status.trim() != "connected" {
                     return None;
                 }
-                let data = fs::read(e.path().join("edid")).unwrap_or_default();
+                let data = fs::read(path.join("edid")).unwrap_or_default();
                 let edid_id = edid::id(&data).unwrap_or_default();
                 let kind = connector_kind(&connector, &edid_id);
                 let name = edid::display_name(&data).unwrap_or_default();
@@ -150,7 +157,7 @@ impl MonitorLink for I2cLink {
                 Some((connector, AttachedDisplay { name, edid_id, kind, target }))
             })
             .collect();
-        displays.sort_by(|a, b| a.0.cmp(&b.0));
+        displays.sort_by(|a, b| connector_order(&a.0, &b.0));
         Some(displays.into_iter().map(|(_, d)| d).collect())
     }
 }
@@ -162,6 +169,7 @@ fn read_vcp(bus: &Bus, code: u8) -> Result<VcpReading, LinkError> {
     let mut reply = [0u8; packet::VCP_REPLY_LEN];
     let mut last_errno = 0;
     let mut last_error = String::from("no valid reply");
+    let mut nulls = 0;
     {
         let _lock = lock(bus)?;
         for attempt in 1..=READ_ATTEMPTS {
@@ -182,6 +190,12 @@ fn read_vcp(bus: &Bus, code: u8) -> Result<VcpReading, LinkError> {
             if packet::is_unsupported_reply(&reply, code) {
                 return Err(LinkError::Unsupported(format!("VCP 0x{code:02X} is not supported by the monitor")));
             }
+            if packet::is_null_message(&reply) {
+                nulls += 1;
+                if nulls == packet::NULL_REPLY_LIMIT {
+                    return Err(LinkError::Unsupported(format!("VCP 0x{code:02X}: the monitor sends only null replies")));
+                }
+            }
             last_error = format!("invalid reply {}", hex(&reply));
         }
     }
@@ -194,10 +208,11 @@ fn read_vcp(bus: &Bus, code: u8) -> Result<VcpReading, LinkError> {
 fn write_vcp(bus: &Bus, code: u8, value: u16) -> Result<(), LinkError> {
     // No sleep after the write: the engine's post-write settle covers it.
     let request = request(&packet::set_vcp(code, value, true));
+    let attempts = if writes_once(code) { 1 } else { WRITE_ATTEMPTS };
     let mut last_errno = 0;
     {
         let _lock = lock(bus)?;
-        for attempt in 1..=WRITE_ATTEMPTS {
+        for attempt in 1..=attempts {
             if attempt > 1 {
                 sleep(RETRY_GAP);
             }
@@ -215,7 +230,7 @@ fn write_vcp(bus: &Bus, code: u8, value: u16) -> Result<(), LinkError> {
     }
     Err(fail(
         format!(
-            "Set VCP 0x{code:02X}={value} on {} failed after {WRITE_ATTEMPTS} attempts ({})",
+            "Set VCP 0x{code:02X}={value} on {} failed after {attempts} attempt(s) ({})",
             bus.path,
             describe(last_errno)
         ),
@@ -226,7 +241,13 @@ fn write_vcp(bus: &Bus, code: u8, value: u16) -> Result<(), LinkError> {
 fn read_capabilities(bus: &Bus) -> Result<String, LinkError> {
     let mut text = Vec::new();
     let mut reply = [0u8; packet::FRAGMENT_REPLY_LEN];
-    while text.len() < MAX_CAPABILITIES_LEN {
+    loop {
+        if text.len() >= MAX_CAPABILITIES_LEN {
+            return Err(LinkError::Transient(format!(
+                "capabilities too long (over {MAX_CAPABILITIES_LEN} bytes on {})",
+                bus.path
+            )));
+        }
         let offset = text.len() as u16;
         let request = request(&packet::capabilities_request(offset, true));
         let mut last_errno = 0;
@@ -370,15 +391,23 @@ fn lock(bus: &Bus) -> Result<BusLock<'_>, LinkError> {
     }
 }
 
-/// Reads the 128-byte EDID base block at 0x50: `I2C_SLAVE 0x50`, write offset `00`, read 128. `Ok(None)` on a short
-/// read; `Err(errno)` when a call fails.
+/// Reads the 128-byte EDID base block at 0x50: `I2C_SLAVE 0x50`, write offset `00`, read 128. A bad checksum (a noisy
+/// bus) is read once more; the second read is used as it comes, since some monitors ship a wrong checksum. `Ok(None)`
+/// on a short read; `Err(errno)` when a call fails.
 fn read_edid(device: &str) -> Result<Option<Vec<u8>>, i32> {
     let file = open_rw(device).map_err(|e| errno_of(&e))?;
-    set_slave(&file, EDID_ADDRESS)?;
-    write_all(&file, &[0x00])?;
     let mut data = vec![0u8; EDID_LEN];
-    let read = (&file).read(&mut data).map_err(|e| errno_of(&e))?;
-    Ok((read == EDID_LEN).then_some(data))
+    for _ in 0..2 {
+        set_slave(&file, EDID_ADDRESS)?;
+        write_all(&file, &[0x00])?;
+        if (&file).read(&mut data).map_err(|e| errno_of(&e))? != EDID_LEN {
+            return Ok(None);
+        }
+        if edid::checksum_ok(&data) {
+            break;
+        }
+    }
+    Ok(Some(data))
 }
 
 // ----- discovery -----

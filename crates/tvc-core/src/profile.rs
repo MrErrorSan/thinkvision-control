@@ -201,7 +201,7 @@ impl ProfileStore {
             ..ProfileFile::default()
         };
         std::fs::create_dir_all(&self.dir)?;
-        std::fs::write(self.dir.join(OVERLAY_FILE), serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
+        crate::store::write_atomic(&self.dir.join(OVERLAY_FILE), &serde_json::to_string_pretty(&file).map_err(io::Error::other)?)
     }
 
     /// Embedded definitions with the overlay applied. An overlay entry inherits the v2 presentation fields it lacks.
@@ -224,11 +224,17 @@ impl ProfileStore {
         known
     }
 
-    /// The overlay's definitions; a missing or corrupt file gives none.
+    /// The overlay's definitions; a missing or corrupt file gives none, and an entry that doesn't parse is skipped.
     fn load_overlay(&self) -> Vec<ControlDefinition> {
         let Ok(text) = std::fs::read_to_string(self.dir.join(OVERLAY_FILE)) else { return Vec::new() };
-        let Ok(file) = serde_json::from_str::<ProfileFile>(&text) else { return Vec::new() };
-        file.controls.iter().map(to_definition).collect::<Option<Vec<_>>>().unwrap_or_default()
+        let Ok(file) = serde_json::from_str::<OverlayFile>(&text) else { return Vec::new() };
+        file.controls.into_iter().enumerate().filter_map(|(i, value)| {
+            let def = serde_json::from_value::<ControlEntry>(value).ok().as_ref().and_then(to_definition);
+            if def.is_none() {
+                crate::log::write(&format!("Skipped {OVERLAY_FILE} control {}: it doesn't parse.", i + 1));
+            }
+            def
+        }).collect()
     }
 }
 
@@ -286,6 +292,12 @@ struct ProfileFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     quirks: Option<Quirks>,
     controls: Vec<ControlEntry>,
+}
+
+/// `profile.user.json` as loaded: each control is parsed on its own.
+#[derive(Deserialize)]
+struct OverlayFile {
+    controls: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -1,5 +1,7 @@
-# Builds build\ThinkVisionControl-Setup-<version>.exe: builds the app with cargo (target\release\thinkvision-control.exe),
-# then compiles the Inno Setup script. Needs Rust (rustup.rs) and Inno Setup 6.5+ (winget install JRSoftware.InnoSetup).
+# Builds build\ThinkVisionControl-Setup-<version>.exe: builds the app and the tvc console launcher with cargo
+# (target\release\thinkvision-control.exe, tvc.exe), generates THIRD-PARTY-NOTICES.txt, then compiles the Inno Setup
+# script. Needs Rust (rustup.rs), Inno Setup 6.5+ (winget install JRSoftware.InnoSetup) and cargo-about
+# (cargo install cargo-about --locked; without it a local build leaves the notices out, CI fails instead).
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $cargoToml = Get-Content -Raw "$root\Cargo.toml"
@@ -11,14 +13,33 @@ $iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFile
 if (-not $iscc) { throw 'Inno Setup 6 not found. Install it with: winget install JRSoftware.InnoSetup' }
 
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-# From the repo root, so cargo picks up .cargo\config.toml (static C runtime).
+$notices = "$root\build\THIRD-PARTY-NOTICES.txt"
+# From the repo root, so cargo picks up .cargo\config.toml (static C runtime) and rust-toolchain.toml.
 Push-Location $root
-try { cargo build --release -p tvc-app } finally { Pop-Location }
-if ($LASTEXITCODE) { throw 'cargo build failed' }
-$exe = [IO.File]::ReadAllBytes("$root\target\release\thinkvision-control.exe")
-if ([Text.Encoding]::ASCII.GetString($exe) -match 'VCRUNTIME140') { throw 'The exe needs VCRUNTIME140.dll; the static C runtime setting did not apply' }
+try {
+    cargo build --release --locked -p tvc-app -p tvc-launch
+    if ($LASTEXITCODE) { throw 'cargo build failed' }
+    New-Item -ItemType Directory -Force "$root\build" | Out-Null
+    Remove-Item -ErrorAction Ignore $notices
+    if (Get-Command cargo-about -ErrorAction Ignore) {
+        cargo about generate --fail -o $notices about.hbs
+        if ($LASTEXITCODE) { throw 'cargo about failed' }
+    } elseif ($env:CI) {
+        throw 'cargo-about not found'
+    } else {
+        Write-Warning 'cargo-about not found; the setup has no THIRD-PARTY-NOTICES.txt'
+    }
+} finally { Pop-Location }
+
+$app = "$root\target\release\thinkvision-control.exe"
+foreach ($path in $app, "$root\target\release\tvc.exe") {
+    $bytes = [IO.File]::ReadAllBytes($path)
+    if ([Text.Encoding]::ASCII.GetString($bytes) -match 'VCRUNTIME140') { throw "$path needs VCRUNTIME140.dll; the static C runtime setting did not apply" }
+}
+# The size budget (Cargo.toml [profile.release]).
+if ((Get-Item $app).Length -ge 10MB) { throw ('thinkvision-control.exe is {0:N2} MB, over the 10 MB budget' -f ((Get-Item $app).Length / 1MB)) }
 
 & $iscc /Q "/DAppVersion=$version" "$root\packaging\windows\ThinkVisionControl.iss"
 if ($LASTEXITCODE) { throw 'Inno Setup failed' }
-Get-Item "$root\target\release\thinkvision-control.exe", "$root\build\ThinkVisionControl-Setup-$version.exe" |
+Get-Item $app, "$root\target\release\tvc.exe", "$root\build\ThinkVisionControl-Setup-$version.exe" |
     Select-Object Name, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 2) } }

@@ -13,14 +13,15 @@ pub(crate) use link::IoAvLink;
 pub const ATTEMPTS: u32 = 5;
 /// Gap between attempts, ms.
 pub const RETRY_DELAY_MS: u64 = 20;
-/// Every request is written this many times (MonitorControl and m1ddc do the same).
+/// Every Get VCP and capabilities request is written this many times (MonitorControl and m1ddc do the same). A Set VCP
+/// is written once: a second copy could switch the input or reset the monitor twice.
 pub const WRITE_CYCLES: u32 = 2;
 /// Wait before each write, ms.
 pub const WRITE_DELAY_MS: u64 = 10;
 /// Bytes read for one capabilities fragment.
 pub const CAPABILITIES_FRAGMENT_LEN: usize = 38;
 /// Upper bound on the capability string.
-pub const CAPABILITIES_MAX_BYTES: usize = 1024;
+pub const CAPABILITIES_MAX_BYTES: usize = 8192;
 
 /// How the locator tied the display to its DDC service.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,6 +82,9 @@ pub enum ExchangeOutcome {
     InvalidReply,
     /// Every attempt failed with an IOReturn error.
     IoError,
+    /// The monitor sent the DDC/CI null message `packet::NULL_REPLY_LIMIT` times. For a Get VCP that means
+    /// unsupported. No checksum fallback: a busy monitor says nothing about the checksum form.
+    AllNull,
     /// A valid reply said the monitor doesn't implement the code. Final: no retry, no checksum fallback.
     Unsupported,
 }

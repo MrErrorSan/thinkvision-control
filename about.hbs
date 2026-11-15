@@ -1,0 +1,25 @@
+THIRD-PARTY NOTICES FOR THINKVISION CONTROL
+
+ThinkVision Control is licensed under the GNU GPL, version 2 or later (LICENSE). It is built with Slint under the
+GNU GPL version 3 (LICENSE-GPL-3.0.txt), so the program as distributed is under GPLv3. It contains the code of the
+Rust crates below, each under the licence shown. The icon font's licence is in LICENSE-FluentSystemIcons.txt.
+
+The Linux build contains two versions of tiny-skia (0.11 and 0.12). Both come from upstream crates (sctk-adwaita
+and resvg) and are listed below.
+
+Licences used:
+{{#each overview}}
+  {{name}} ({{id}}): {{count}} crates
+{{/each}}
+{{#each licenses}}
+
+================================================================================
+{{name}} ({{id}})
+
+Used by:
+{{#each used_by}}
+  {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

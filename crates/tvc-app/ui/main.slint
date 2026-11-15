@@ -1,5 +1,5 @@
 // Main window: header with the monitor and its state, a tab strip, one scrolling page.
-import { Palette, ScrollView } from "std-widgets.slint";
+import { Palette, ScrollView, ProgressIndicator } from "std-widgets.slint";
 import "fonts/FluentSystemIcons-Regular.ttf";
 import { Theme, Glyphs, Icon } from "theme.slint";
 import { App } from "app.slint";
@@ -15,6 +15,8 @@ export component MainWindow inherits Window {
     in property <int> forced-scheme: 0;
     in-out property <int> tab: 0;
     property <bool> compact: root.width < 520px;
+    property <bool> finder-open: App.finder-open;
+    property <bool> modal: App.dialog.visible || App.editor.visible;
 
     changed forced-scheme => {
         if root.forced-scheme == 1 { Palette.color-scheme = ColorScheme.dark; }
@@ -31,9 +33,17 @@ export component MainWindow inherits Window {
     default-font-family: "Segoe UI Variable Text";
     default-font-size: 14px;
 
-    // Ctrl+1/2/3 switch tabs.
-    FocusScope {
-        key-pressed(e) => {
+    // Keys reach only the focused element and its parents, so the window starts focused on `keys`, and focus goes
+    // back there whenever the element holding it goes away: the page on a tab switch, a closed dialog.
+    forward-focus: keys;
+    changed tab => { if !(tab-display.has-focus || tab-monitor.has-focus || tab-settings.has-focus) { keys.focus(); } }
+    changed finder-open => { keys.focus(); }
+    changed modal => { if !root.modal { keys.focus(); } }
+
+    // Ctrl+1/2/3 switch tabs, wherever the focus is in the window.
+    keys := FocusScope {
+        focus-on-tab-navigation: false;
+        capture-key-pressed(e) => {
             if e.modifiers.control && e.text == "1" { root.tab = 0; return accept; }
             if e.modifiers.control && e.text == "2" { root.tab = 1; return accept; }
             if e.modifiers.control && e.text == "3" { root.tab = 2; return accept; }
@@ -78,6 +88,7 @@ export component MainWindow inherits Window {
                             color: Theme.text-secondary;
                             overflow: elide;
                             accessible-role: text;
+                            accessible-live-region: polite;
                         }
                     }
                 }
@@ -90,9 +101,9 @@ export component MainWindow inherits Window {
                     padding-left: Theme.gutter - 12px;
                     alignment: start;
                     accessible-role: tab-list;
-                    Tab { label: "Display"; selected: root.tab == 0; clicked => { root.tab = 0; } }
-                    Tab { label: "Monitor"; selected: root.tab == 1; clicked => { root.tab = 1; } }
-                    Tab { label: "Settings"; selected: root.tab == 2; clicked => { root.tab = 2; } }
+                    tab-display := Tab { label: "Display"; selected: root.tab == 0; clicked => { root.tab = 0; } }
+                    tab-monitor := Tab { label: "Monitor"; selected: root.tab == 1; clicked => { root.tab = 1; } }
+                    tab-settings := Tab { label: "Settings"; selected: root.tab == 2; clicked => { root.tab = 2; } }
                 }
                 Rectangle {
                     y: parent.height - 1px;
@@ -116,10 +127,12 @@ export component MainWindow inherits Window {
 
                         if App.banner.visible: VerticalLayout {
                             padding-bottom: 12px;
+                            spacing: 4px;
                             InfoBar {
                                 data: App.banner;
                                 action => { App.banner-action(); }
                             }
+                            if App.loading: ProgressIndicator { indeterminate: true; }
                         }
                         if root.tab == 0: DisplayPage { compact: root.compact; }
                         if root.tab == 1 && !App.finder-open: MonitorPage { }
@@ -131,8 +144,10 @@ export component MainWindow inherits Window {
         }
     }
 
-    // Toast: short result messages ("Brightness stays 0: the colour mode locks it").
-    if App.toast != "": Rectangle {
+    // Toast: short result messages ("Brightness stays 0: the colour mode locks it"). Always there, hidden while
+    // empty, so a screen reader announces each new message.
+    Rectangle {
+        visible: App.toast != "";
         x: (parent.width - self.width) / 2;
         y: parent.height - self.height - 16px;
         width: min(parent.width - 32px, toast-text.preferred-width + 32px);
@@ -143,6 +158,7 @@ export component MainWindow inherits Window {
         drop-shadow-color: #00000044;
         accessible-role: text;
         accessible-label: App.toast;
+        accessible-live-region: polite;
         toast-text := Text {
             width: parent.width - 32px;
             text: App.toast;
@@ -151,6 +167,7 @@ export component MainWindow inherits Window {
             wrap: word-wrap;
             horizontal-alignment: center;
             vertical-alignment: center;
+            accessible-role: none;
         }
     }
 

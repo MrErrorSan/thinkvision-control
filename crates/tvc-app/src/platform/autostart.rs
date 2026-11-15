@@ -13,7 +13,7 @@ pub fn label() -> &'static str {
 
 /// Turns start-at-login on or off. Windows: HKCU Run value `ThinkVisionControl` = `"<exe>" --startup`.
 /// Linux: `~/.config/autostart/thinkvision-control.desktop`. macOS: `SMAppService.mainAppService` (13+, only from
-/// a.app bundle; opens System Settings → Login Items while approval is pending).
+/// a.app bundle; when the user turns it on and approval is pending, opens System Settings → Login Items).
 pub fn apply(enabled: bool) -> io::Result<()> {
     imp::apply(enabled)
 }
@@ -62,6 +62,7 @@ mod imp {
 
 #[cfg(target_os = "linux")]
 mod imp {
+    use std::path::PathBuf;
     use std::{fs, io};
 
     pub fn apply(enabled: bool) -> io::Result<()> {
@@ -72,11 +73,25 @@ mod imp {
                 other => other,
             };
         }
-        let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or("thinkvision-control".into());
+        let exe = exe_path().map(|p| p.display().to_string()).unwrap_or("thinkvision-control".into());
         if let Some(dir) = path.parent() {
             fs::create_dir_all(dir)?;
         }
         fs::write(path, super::desktop_entry(&exe))
+    }
+
+    /// The install.sh location when it exists, else the running binary (`/proc/self/exe`) without the " (deleted)"
+    /// it shows once an update has replaced the file.
+    fn exe_path() -> Option<PathBuf> {
+        let installed = crate::platform::home().join(".local/share/thinkvision-control/thinkvision-control");
+        if installed.is_file() {
+            return Some(installed);
+        }
+        let exe = fs::read_link("/proc/self/exe").ok()?;
+        Some(match exe.to_str().and_then(|p| p.strip_suffix(" (deleted)")) {
+            Some(stripped) => PathBuf::from(stripped),
+            None => exe,
+        })
     }
 }
 
@@ -84,6 +99,7 @@ mod imp {
 mod imp {
     use std::ffi::{c_char, c_void, CStr};
     use std::io;
+    use std::sync::Mutex;
 
     type Id = *mut c_void;
     type Sel = *const c_void;
@@ -98,6 +114,9 @@ mod imp {
     }
     #[link(name = "ServiceManagement", kind = "framework")]
     extern "C" {}
+
+    /// The last `enabled` applied in this process: None until the first (start-up) apply.
+    static LAST: Mutex<Option<bool>> = Mutex::new(None);
 
     // SMAppServiceStatus (NSInteger).
     const ENABLED: isize = 1;
@@ -129,16 +148,19 @@ mod imp {
         if !in_bundle {
             return Ok(());
         }
+        // Only a change after start-up is the user flipping the setting; other applies stay quiet.
+        let previous = LAST.lock().unwrap_or_else(|e| e.into_inner()).replace(enabled);
+        let toggled = previous.is_some_and(|p| p != enabled);
         // SAFETY: a pool for the autoreleased NSError, popped on every path.
         unsafe {
             let pool = objc_autoreleasePoolPush();
-            let result = apply_in_pool(enabled);
+            let result = apply_in_pool(enabled, toggled);
             objc_autoreleasePoolPop(pool);
             result
         }
     }
 
-    fn apply_in_pool(enabled: bool) -> io::Result<()> {
+    fn apply_in_pool(enabled: bool, toggled: bool) -> io::Result<()> {
         // SAFETY: class and selectors are looked up by name; a nil class (macOS < 13) is checked before use.
         unsafe {
             let class = objc_getClass(c"SMAppService".as_ptr());
@@ -155,7 +177,7 @@ mod imp {
                     return Ok(());
                 }
                 let ok = send_bool_err(service, sel(c"registerAndReturnError:"));
-                if send_int(service, sel(c"status")) == REQUIRES_APPROVAL {
+                if toggled && send_int(service, sel(c"status")) == REQUIRES_APPROVAL {
                     send_id(class, sel(c"openSystemSettingsLoginItems"));
                 }
                 ok

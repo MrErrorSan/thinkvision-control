@@ -11,21 +11,13 @@ pub struct Hint {
     pub command: String,
 }
 
-/// The cards for the current link failure and hotkey state. On Linux this also looks at the desktop, a running
-/// PowerDevil, `/etc/os-release` and (on GNOME only) whether a tray host is on the session bus, so call it off
-/// the UI thread or rarely.
+/// The cards for the current link failure and hotkey state. On Linux they also depend on the desktop, a running
+/// PowerDevil, `/etc/os-release` and (on GNOME only) whether a tray host is on the session bus. Those are looked
+/// up on a worker thread and cached for 30 s, so this never blocks; until the first lookup ends they count as absent.
 pub fn hints(failure: Option<LinkFailure>, hotkeys_ok: bool) -> Vec<Hint> {
     #[cfg(target_os = "linux")]
     {
-        let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
-        let gnome = is_gnome(desktop.as_deref());
-        let facts = LinuxFacts {
-            gnome_without_tray: gnome && live::tray_host_missing(),
-            powerdevil_ddc: live::powerdevil_ddc_active(),
-            os_release_ids: live::os_release_ids(),
-            command: command_name(std::env::current_exe().ok().map(|p| p.display().to_string()).as_deref()),
-        };
-        linux_hints(failure, hotkeys_ok, &facts)
+        linux_hints(failure, hotkeys_ok, &live::cached_facts())
     }
     #[cfg(target_os = "macos")]
     {
@@ -58,8 +50,9 @@ fn mac_hints(failure: Option<LinkFailure>) -> Vec<Hint> {
     )]
 }
 
-/// What the Linux cards depend on besides the failure, gathered live by `hints`.
+/// What the Linux cards depend on besides the failure, gathered by `live::cached_facts`.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[derive(Clone)]
 struct LinuxFacts {
     gnome_without_tray: bool,
     powerdevil_ddc: bool,
@@ -191,11 +184,56 @@ fn has_ddc_disabled(environ: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 mod live {
+    use super::LinuxFacts;
     use std::fs;
     use std::process::{Command, Stdio};
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    struct Cache {
+        facts: Option<LinuxFacts>,
+        at: Option<Instant>,
+        busy: bool,
+    }
+
+    static CACHE: Mutex<Cache> = Mutex::new(Cache { facts: None, at: None, busy: false });
+
+    /// The last facts looked up (none yet: all absent), starting a lookup on a worker thread when they are missing
+    /// or older than 30 s.
+    pub(super) fn cached_facts() -> LinuxFacts {
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if !cache.busy && cache.at.is_none_or(|at| at.elapsed() > Duration::from_secs(30)) {
+            let spawned = std::thread::Builder::new().name("tvc-setup-facts".into()).spawn(|| {
+                let facts = facts();
+                let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+                *cache = Cache { facts: Some(facts), at: Some(Instant::now()), busy: false };
+            });
+            cache.busy = spawned.is_ok();
+        }
+        cache.facts.clone().unwrap_or_else(|| LinuxFacts {
+            gnome_without_tray: false,
+            powerdevil_ddc: false,
+            os_release_ids: None,
+            command: command(),
+        })
+    }
+
+    fn facts() -> LinuxFacts {
+        let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
+        LinuxFacts {
+            gnome_without_tray: super::is_gnome(desktop.as_deref()) && tray_host_missing(),
+            powerdevil_ddc: powerdevil_ddc_active(),
+            os_release_ids: os_release_ids(),
+            command: command(),
+        }
+    }
+
+    fn command() -> String {
+        super::command_name(std::env::current_exe().ok().map(|p| p.display().to_string()).as_deref())
+    }
 
     /// True when a PowerDevil process of ours runs without `POWERDEVIL_NO_DDCUTIL`.
-    pub fn powerdevil_ddc_active() -> bool {
+    fn powerdevil_ddc_active() -> bool {
         let Ok(dirs) = fs::read_dir("/proc") else { return false };
         for dir in dirs.flatten() {
             let name = dir.file_name();
@@ -219,7 +257,7 @@ mod live {
         false
     }
 
-    pub fn os_release_ids() -> Option<String> {
+    fn os_release_ids() -> Option<String> {
         let text = fs::read_to_string("/etc/os-release").ok()?;
         let ids: Vec<&str> = text
             .lines()
@@ -230,7 +268,7 @@ mod live {
     }
 
     /// No `org.kde.StatusNotifierWatcher` on the session bus (asked through `gdbus`, 1 s timeout). Unknown → false.
-    pub fn tray_host_missing() -> bool {
+    fn tray_host_missing() -> bool {
         Command::new("gdbus")
             .args([
                 "call",

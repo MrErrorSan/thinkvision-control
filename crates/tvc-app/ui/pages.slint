@@ -1,25 +1,40 @@
 // The three tabs. Each is a column of sections; the window wraps it in a scroll view.
-import { Button, LineEdit } from "std-widgets.slint";
-import { Theme, Glyphs, Icon } from "theme.slint";
+import { Button, LineEdit, ProgressIndicator } from "std-widgets.slint";
+import { Theme, Glyphs } from "theme.slint";
 import { ControlKind } from "types.slint";
 import { App } from "app.slint";
-import { SectionHeader, CardFrame, Card, SliderRow, RowDivider, TileButton, InputSelector, Keycap, LabelledSwitch, ExpanderCard, InfoBar, SyncCombo } from "controls.slint";
+import { SectionHeader, CardFrame, Card, SliderRow, RowDivider, TileButton, InputSelector, Keycap, LabelledSwitch, ExpanderCard, InfoBar, SyncCombo, FocusRing, IconButton, EmptyState } from "controls.slint";
 
 export component DisplayPage inherits VerticalLayout {
     in property <bool> compact;
     property <bool> custom-open;
+    property <bool> has-colour: App.colour-modes.length > 0 || App.custom-colour.length > 0;
+    property <bool> has-any: App.inputs.length > 0 || App.main-ranges.length > 0 || root.has-colour;
+
+    if !root.has-any: EmptyState {
+        title: App.empty-title;
+        message: App.empty-message;
+        busy: App.loading;
+    }
 
     if App.inputs.length > 0: SectionHeader { text: "Input"; first: true; }
     if App.inputs.length > 0: InputSelector {
         inputs: App.inputs;
         active: App.active-input;
-        enabled: App.connected;
+        // No second confirm while one is open.
+        enabled: App.connected && !App.dialog.visible;
         compact: root.compact;
         select(code) => { App.select-input(code); }
     }
+    if App.inputs.length > 0 && App.input-note != "": Text {
+        text: App.input-note;
+        font-size: 12px;
+        color: Theme.error-fg;
+        wrap: word-wrap;
+    }
 
-    SectionHeader { text: "Brightness and contrast"; first: App.inputs.length == 0; }
-    CardFrame {
+    if App.main-ranges.length > 0: SectionHeader { text: "Brightness and contrast"; first: App.inputs.length == 0; }
+    if App.main-ranges.length > 0: CardFrame {
         VerticalLayout {
             padding-top: 2px;
             padding-bottom: 2px;
@@ -46,8 +61,8 @@ export component DisplayPage inherits VerticalLayout {
         wrap: word-wrap;
     }
 
-    if App.presets.length > 0: SectionHeader { text: "Presets"; }
-    if App.presets.length > 0: HorizontalLayout {
+    if App.presets.length > 0 && root.has-any: SectionHeader { text: "Presets"; }
+    if App.presets.length > 0 && root.has-any: HorizontalLayout {
         spacing: 6px;
         for p[i] in App.presets: TileButton {
             horizontal-stretch: 1;
@@ -59,26 +74,27 @@ export component DisplayPage inherits VerticalLayout {
         }
     }
 
-    SectionHeader { text: "Colour"; }
-    VerticalLayout {
+    if root.has-colour: SectionHeader { text: "Colour"; first: App.inputs.length == 0 && App.main-ranges.length == 0; }
+    if root.has-colour: VerticalLayout {
         spacing: 4px;
         Card {
             glyph: Glyphs.colour;
             title: "Colour mode";
+            note: App.colour-note;
+            reason: App.disabled-reason;
             enabled: App.connected;
             SyncCombo {
                 model: App.colour-modes;
                 index: App.colour-mode-index;
                 revision: App.colour-revision;
                 enabled: App.connected;
-                accessible-label: "Colour mode";
                 selected => { App.colour-mode-selected(self.current-index); }
             }
         }
         ExpanderCard {
             glyph: Glyphs.options;
             title: "Custom colour";
-            description: App.custom-colour-hint;
+            description: App.connected ? App.custom-colour-hint : App.disabled-reason;
             enabled: App.custom-colour-available && App.connected;
             expanded <=> root.custom-open;
             for r in App.custom-colour: SliderRow {
@@ -97,6 +113,12 @@ export component DisplayPage inherits VerticalLayout {
 }
 
 export component MonitorPage inherits VerticalLayout {
+    if App.monitor-groups.length == 0: EmptyState {
+        title: App.empty-title;
+        message: App.empty-message;
+        busy: App.loading;
+    }
+
     for g[gi] in App.monitor-groups: VerticalLayout {
         SectionHeader { text: g.title; first: gi == 0; }
         VerticalLayout {
@@ -105,26 +127,26 @@ export component MonitorPage inherits VerticalLayout {
                 glyph: row.glyph;
                 title: row.label;
                 description: row.description;
+                note: row.note;
+                reason: App.disabled-reason;
                 enabled: row.enabled && App.connected;
                 if row.kind == ControlKind.choice: SyncCombo {
                     model: row.options;
                     index: row.index;
                     revision: row.revision;
                     enabled: row.enabled && App.connected;
-                    accessible-label: row.label;
                     selected => { App.control-changed(row.code, self.current-index); }
                 }
                 if row.kind == ControlKind.toggle: LabelledSwitch {
                     checked: row.index == 1;
                     revision: row.revision;
-                    name: row.label;
                     enabled: row.enabled && App.connected;
                     toggled(on) => { App.control-changed(row.code, on ? 1 : 0); }
                 }
                 if row.kind == ControlKind.action: Button {
                     text: row.button;
-                    enabled: row.enabled && App.connected;
-                    accessible-label: row.label;
+                    // No second confirm while one is open.
+                    enabled: row.enabled && App.connected && !App.dialog.visible;
                     clicked => { App.control-action(row.code); }
                 }
             }
@@ -136,6 +158,7 @@ export component MonitorPage inherits VerticalLayout {
         glyph: Glyphs.reset;
         title: "Restore backup";
         description: App.restore-text;
+        reason: App.disabled-reason;
         enabled: App.connected;
         Button {
             text: "Restore";
@@ -149,8 +172,10 @@ export component MonitorPage inherits VerticalLayout {
         glyph: Glyphs.search;
         title: "Find hidden settings";
         description: "Look for settings your monitor supports but doesn't list";
+        enabled: App.has-controls;
         Button {
             text: "Open";
+            enabled: App.has-controls;
             clicked => { App.finder-open = true; App.find-hidden(); }
         }
     }
@@ -165,12 +190,30 @@ export component ShortcutDialog inherits Rectangle {
     property <bool> blocked: App.dialog.visible;
     changed blocked => { if !root.blocked { capture.focus(); } }
 
+    // Tab and Shift+Tab cycle through the capture area and the enabled buttons, never the page behind.
+    function focus-next() {
+        if capture.has-focus { reset-button.focus(); }
+        else if reset-button.has-focus && App.editor.can-clear { clear-button.focus(); }
+        else if (reset-button.has-focus || clear-button.has-focus) && App.editor.can-save { save-button.focus(); }
+        else if reset-button.has-focus || clear-button.has-focus || save-button.has-focus { cancel-button.focus(); }
+        else { capture.focus(); }
+    }
+    function focus-previous() {
+        if capture.has-focus { cancel-button.focus(); }
+        else if cancel-button.has-focus && App.editor.can-save { save-button.focus(); }
+        else if (cancel-button.has-focus || save-button.has-focus) && App.editor.can-clear { clear-button.focus(); }
+        else if cancel-button.has-focus || save-button.has-focus || clear-button.has-focus { reset-button.focus(); }
+        else { capture.focus(); }
+    }
+
     // Esc cancels from anywhere in the dialog, buttons included.
     FocusScope {
         focus-on-click: false;
         focus-on-tab-navigation: false;
         key-pressed(e) => {
             if e.text == Key.Escape { App.editor-cancel(); return accept; }
+            if e.text == Key.Backtab || (e.text == Key.Tab && e.modifiers.shift) { root.focus-previous(); return accept; }
+            if e.text == Key.Tab { root.focus-next(); return accept; }
             reject
         }
 
@@ -187,7 +230,7 @@ export component ShortcutDialog inherits Rectangle {
                 VerticalLayout {
                     padding: 24px;
                     spacing: 12px;
-                    Text { text: "Edit shortcut"; font-size: 20px; font-weight: 600; color: Theme.text; }
+                    Text { text: "Edit shortcut"; font-size: 20px; font-weight: 600; color: Theme.text; accessible-role: none; }
                     Text {
                         text: "Press a combination of keys to change the shortcut for " + App.editor.action + ".";
                         font-size: 14px;
@@ -270,11 +313,12 @@ export component ShortcutDialog inherits Rectangle {
                     HorizontalLayout {
                         padding: 24px;
                         spacing: 8px;
-                        Button { text: "Reset to default"; clicked => { App.editor-reset(); } }
-                        Button { text: "Clear"; enabled: App.editor.can-clear; clicked => { App.editor-clear(); } }
+                        // Reset may ask to confirm; never while a confirm is open.
+                        reset-button := Button { text: "Reset to default"; enabled: !App.dialog.visible; clicked => { App.editor-reset(); } }
+                        clear-button := Button { text: "Clear"; enabled: App.editor.can-clear; clicked => { App.editor-clear(); } }
                         Rectangle { horizontal-stretch: 1; }
-                        Button { text: "Save"; primary: true; enabled: App.editor.can-save; clicked => { App.editor-save(); } }
-                        Button { text: "Cancel"; clicked => { App.editor-cancel(); } }
+                        save-button := Button { text: "Save"; primary: true; enabled: App.editor.can-save; clicked => { App.editor-save(); } }
+                        cancel-button := Button { text: "Cancel"; clicked => { App.editor-cancel(); } }
                     }
                 }
             }
@@ -287,16 +331,10 @@ export component FinderPage inherits VerticalLayout {
     HorizontalLayout {
         spacing: 8px;
         padding-bottom: 8px;
-        Rectangle {
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
-            background: back.pressed ? Theme.subtle-pressed : back.has-hover ? Theme.subtle-hover : transparent;
-            accessible-role: button;
-            accessible-label: "Back to Monitor";
-            accessible-action-default => { App.finder-open = false; }
-            Icon { text: Glyphs.back; font-size: 16px; }
-            back := TouchArea { clicked => { App.finder-open = false; } }
+        IconButton {
+            glyph: Glyphs.back;
+            label: "Back to Monitor";
+            clicked => { App.finder-open = false; }
         }
         Text {
             text: "Find hidden settings";
@@ -314,7 +352,9 @@ export component FinderPage inherits VerticalLayout {
     }
     if App.finder-status.visible: VerticalLayout {
         padding-top: 12px;
+        spacing: 4px;
         InfoBar { data: App.finder-status; }
+        if App.finder-busy: ProgressIndicator { indeterminate: true; }
     }
 
     SectionHeader { text: "Steps"; }
@@ -331,7 +371,7 @@ export component FinderPage inherits VerticalLayout {
         }
         Card {
             title: "2. Change one setting with the monitor's buttons";
-            description: "For example Over Drive. Change only one, then compare.";
+            description: "Pick any one in the monitor's own menu. Change only one, then compare.";
         }
         Card {
             title: "3. Compare";
@@ -358,6 +398,14 @@ export component FinderPage inherits VerticalLayout {
                 accessible-item-selected: i == App.finder-selected;
                 accessible-action-default => { App.finder-select(i); }
                 cta := TouchArea { clicked => { App.finder-select(i); } }
+                cfs := FocusScope {
+                    x: 0;
+                    width: 0;   // takes no clicks
+                    key-pressed(e) => {
+                        if e.text == Key.Space || e.text == Key.Return { App.finder-select(i); return accept; }
+                        reject
+                    }
+                }
                 Rectangle {
                     x: 0px;
                     width: 3px;
@@ -371,7 +419,9 @@ export component FinderPage inherits VerticalLayout {
                     font-size: 14px;
                     color: Theme.text;
                     vertical-alignment: center;
+                    accessible-role: none;
                 }
+                if cfs.has-focus: FocusRing { border-radius: 4px; }
             }
         }
     }
@@ -426,7 +476,6 @@ component AutoDayNightCard inherits CardFrame {
             SyncCombo {
                 model: ["Off", "At set times", "At sunrise and sunset"];
                 index: App.auto-mode;
-                accessible-label: "Switch presets automatically";
                 selected => {
                     root.choice = self.current-index;
                     App.set-auto-mode(self.current-index);
@@ -471,7 +520,6 @@ export component SettingsPage inherits VerticalLayout {
             description: h.command != "" ? h.message + "\n" + h.command : h.message;
             if h.command != "": Button {
                 text: "Copy";
-                accessible-label: "Copy the command for: " + h.title;
                 clicked => { App.copy-text(h.command); }
             }
         }
@@ -487,7 +535,6 @@ export component SettingsPage inherits VerticalLayout {
                 description: App.background-description;
                 LabelledSwitch {
                     checked: App.background-mode;
-                    name: "Run in background";
                     toggled(on) => { App.set-background(on); }
                 }
             }
@@ -500,7 +547,6 @@ export component SettingsPage inherits VerticalLayout {
                 description: App.start-description;
                 LabelledSwitch {
                     checked: App.start-with-os;
-                    name: App.start-label;
                     toggled(on) => { App.set-start(on); }
                 }
             }
@@ -515,7 +561,6 @@ export component SettingsPage inherits VerticalLayout {
         SyncCombo {
             model: App.input-labels;
             index: App.this-pc-index;
-            accessible-label: "This PC's input";
             selected => { App.set-this-pc(self.current-index); }
         }
     }
@@ -527,9 +572,11 @@ export component SettingsPage inherits VerticalLayout {
             glyph: p.glyph;
             title: p.name;
             description: p.summary;
+            reason: App.disabled-reason;
+            enabled: App.connected;
             Button {
                 text: "Save current";
-                accessible-label: "Save current settings as " + p.name;
+                enabled: App.connected && !App.values-stale;
                 clicked => { App.save-preset(i); }
             }
         }
@@ -575,17 +622,11 @@ export component SettingsPage inherits VerticalLayout {
                     }
                     Rectangle {
                         width: 36px;
-                        accessible-role: button;
-                        accessible-label: "Edit shortcut: " + h.label;
-                        accessible-action-default => { App.edit-hotkey(i); }
-                        Rectangle {
-                            width: 32px;
-                            height: 32px;
-                            border-radius: 4px;
-                            background: eta.pressed ? Theme.subtle-pressed : eta.has-hover ? Theme.subtle-hover : transparent;
+                        IconButton {
+                            glyph: Glyphs.edit;
+                            label: "Edit shortcut: " + h.label;
+                            clicked => { App.edit-hotkey(i); }
                         }
-                        Icon { text: Glyphs.edit; font-size: 16px; }
-                        eta := TouchArea { clicked => { App.edit-hotkey(i); } }
                     }
                 }
             }

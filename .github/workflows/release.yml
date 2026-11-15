@@ -1,5 +1,6 @@
 # Builds the Windows setup and the Linux tarball.
 # - Run by hand (Actions → Release → Run workflow): builds both and keeps them as workflow artifacts, a dry run.
+#   The bare Windows exes (thinkvision-control.exe, tvc.exe) are kept too, as "windows-exe", for live testing.
 # - Push a tag vX.Y.Z matching the version in Cargo.toml: also creates a draft pre-release with both files and
 #   SHA256SUMS.txt. Review it, add the release notes, then publish it.
 name: Release
@@ -12,14 +13,22 @@ on:
 permissions:
   contents: read
 
+env:
+  # Generates THIRD-PARTY-NOTICES.txt (about.toml, about.hbs).
+  CARGO_ABOUT_VERSION: "0.9.3"
+
 jobs:
   windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # The toolchain pinned in rust-toolchain.toml.
+      - run: rustup toolchain install
+      - name: Install cargo-about
+        run: cargo install cargo-about --version ${{ env.CARGO_ABOUT_VERSION }} --locked
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
+      # Also fails when thinkvision-control.exe is 10 MB or larger.
       - name: Build setup
         shell: pwsh
         run: ./scripts/make-windows-setup.ps1
@@ -28,13 +37,23 @@ jobs:
           name: windows
           path: build/ThinkVisionControl-Setup-*.exe
           if-no-files-found: error
+      # The bare exes, for live testing without installing. Not part of the release.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: |
+            target/release/thinkvision-control.exe
+            target/release/tvc.exe
+          if-no-files-found: error
 
   linux:
     # The oldest supported runner, so the binary runs on older glibc (Ubuntu 22.04, Debian 12).
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup toolchain install
+      - name: Install cargo-about
+        run: cargo install cargo-about --version ${{ env.CARGO_ABOUT_VERSION }} --locked
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev libudev-dev libxkbcommon-dev
       - name: Build tarball
@@ -69,6 +88,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --draft --prerelease --verify-tag \
+          gh release create "$GITHUB_REF_NAME" dist/ThinkVisionControl-Setup-*.exe dist/thinkvision-control-*-linux-x64.tar.gz dist/SHA256SUMS.txt --draft --prerelease --verify-tag \
             --title "ThinkVision Control $VERSION (preview)" \
             --notes "Built by GitHub Actions from $GITHUB_SHA."

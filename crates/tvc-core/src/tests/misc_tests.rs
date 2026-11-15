@@ -66,8 +66,9 @@ fn unsupported_code_is_blocked() {
 }
 
 #[test]
-fn valid_input_is_allowed() {
-    assert_eq!(eval(0x60, 0x31, None, false).verdict, Verdict::Allow);
+fn valid_input_needs_confirmation() {
+    assert_eq!(eval(0x60, 0x31, None, false).verdict, Verdict::NeedsConfirmation);
+    assert_eq!(eval(0x60, 0x31, None, true).verdict, Verdict::Allow);
 }
 
 #[test]

@@ -33,14 +33,24 @@ EXE_PATH="target/$TARGET/release/$EXE_NAME"
 APP_DIR="build/$APP_NAME.app"
 
 echo "==> Building (release, $TARGET)"
-cargo build --release -p tvc-app --target "$TARGET"
+cargo build --release --locked -p tvc-app --target "$TARGET"
+
+echo "==> Third-party notices"
+mkdir -p build
+rm -f build/THIRD-PARTY-NOTICES.txt
+if cargo about --version >/dev/null 2>&1; then
+    cargo about generate --fail -o build/THIRD-PARTY-NOTICES.txt about.hbs
+else
+    echo "warning: cargo-about not found (cargo install cargo-about --locked); the app has no THIRD-PARTY-NOTICES.txt" >&2
+fi
 
 echo "==> Assembling $APP_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$EXE_PATH" "$APP_DIR/Contents/MacOS/"
 cp "$ICON_SRC" "$APP_DIR/Contents/Resources/$ICON_NAME"
-cp LICENSE crates/tvc-app/ui/fonts/LICENSE-FluentSystemIcons.txt "$APP_DIR/Contents/Resources/"
+cp LICENSE LICENSE-GPL-3.0.txt crates/tvc-app/ui/fonts/LICENSE-FluentSystemIcons.txt "$APP_DIR/Contents/Resources/"
+[ ! -e build/THIRD-PARTY-NOTICES.txt ] || cp build/THIRD-PARTY-NOTICES.txt "$APP_DIR/Contents/Resources/"
 chmod +x "$APP_DIR/Contents/MacOS/$EXE_NAME"
 
 # LSUIElement = menu-bar app: no Dock icon and no app menu, from the first frame of launch.

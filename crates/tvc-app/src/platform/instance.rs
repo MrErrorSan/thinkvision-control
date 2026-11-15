@@ -1,19 +1,30 @@
-//! One instance per user (per session on Windows); later launches forward their arguments.
+//! One instance per user (per session on Windows); later launches forward their arguments and wait for the reply.
 //!
-//! Windows: mutex `ThinkVisionControl.SingleInstance` (the installer checks it: keep the names in step) and the pipe
-//! `\\.\pipe\ThinkVisionControl.Commands.{user}.{session}`, current user only. Linux: `flock` on
-//! `$XDG_RUNTIME_DIR/thinkvision-control.lock` with the socket `$XDG_RUNTIME_DIR/tvc-cmd` (fallback
-//! `/tmp/thinkvision-control-{user}.lock`, `/tmp/CoreFxPipe_tvc-cmd`). macOS: `$TMPDIR/thinkvision-control.lock`
-//! and `$TMPDIR/CoreFxPipe_tvc-cmd`. Arguments travel joined with `\n`.
+//! Windows: mutex `ThinkVisionControl.Instance.<user SID>` (the installer checks it: keep the names in step) and the
+//! duplex pipe `\\.\pipe\ThinkVisionControl.Commands.{user}.{session}`, current user only; the client checks that
+//! the pipe's server runs as the same user. Linux: `flock` on `$XDG_RUNTIME_DIR/thinkvision-control.lock` with the
+//! socket `$XDG_RUNTIME_DIR/tvc-cmd`. macOS: `$TMPDIR/thinkvision-control.lock` and `$TMPDIR/CoreFxPipe_tvc-cmd`.
+//! Without either variable both live in `/tmp/tvc-<uid>/` (mode 0700). A launch sends one line,
+//! `wire::encode_request`, and gets one line back, `wire::encode_reply`.
 
 use std::time::{Duration, Instant};
 
 pub use tvc_core::wire::Reply;
 
+/// How long a connected client may take to send its request.
+const READ_WAIT: Duration = Duration::from_secs(2);
+/// How long a launch waits for the running copy's reply.
+const REPLY_WAIT: Duration = Duration::from_secs(15);
+const MAX_LINE: usize = 64 * 1024;
+
 /// Answers one forwarded launch, from any thread. Dropping it without `reply` answers exit 0 with no output.
 pub struct Responder(Option<Box<dyn FnOnce(Reply) + Send>>);
 
 impl Responder {
+    fn new(send: impl FnOnce(Reply) + Send + 'static) -> Self {
+        Self(Some(Box::new(send)))
+    }
+
     pub fn reply(mut self, reply: Reply) {
         if let Some(send) = self.0.take() {
             send(reply);
@@ -50,8 +61,8 @@ pub struct Listener {
 
 impl Listener {
     /// Serves forwarded launches on a new thread for the rest of the process. `on_args` runs on that thread with the
-    /// non-empty arguments and the launch's responder; post both to the UI thread from it. After an error the
-    /// listener retries in 500 ms.
+    /// launch's arguments and its responder; post both to the UI thread from it. After an error the listener
+    /// retries in 500 ms.
     pub fn listen(self, on_args: impl Fn(Vec<String>, Responder) + Send + 'static) {
         let _ = std::thread::Builder::new()
             .name("tvc-instance".into())
@@ -63,7 +74,7 @@ impl Listener {
 /// (250 ms) with waiting for the lock (250 ms) for up to 5 s: a copy that is still starting its listener gets the
 /// arguments, and one that is shutting down is taken over instead of this launch quitting silently.
 pub fn start(args: &[String]) -> Start {
-    let payload = args.join("\n");
+    let request = tvc_core::wire::encode_request(args);
     let lock = match imp::acquire() {
         imp::Acquire::Owned(listener) => return Start::Primary(Listener { imp: listener }),
         imp::Acquire::Busy(lock) => lock,
@@ -71,45 +82,67 @@ pub fn start(args: &[String]) -> Start {
     let slice = Duration::from_millis(250);
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        if imp::send(&payload, slice) {
-            return Start::Forwarded(Some(Reply::default()));
+        if let Some(reply) = imp::send(&request, slice) {
+            return Start::Forwarded(reply);
         }
         if let Some(listener) = imp::wait(&lock, slice) {
             return Start::Primary(Listener { imp: listener });
         }
     }
-    Start::Forwarded(Some(Reply::default()))
+    Start::Forwarded(None)
 }
 
-fn split_args(text: &str) -> Vec<String> {
-    text.split('\n').filter(|s| !s.is_empty()).map(str::to_owned).collect()
+/// Reads up to the first `\n` (at most 64 KiB) within `timeout`. `read` fills the buffer within the time left and
+/// returns the byte count (0 at the end), or None on an error or timeout.
+fn read_line(timeout: Duration, mut read: impl FnMut(&mut [u8], Duration) -> Option<usize>) -> Option<String> {
+    let deadline = Instant::now() + timeout;
+    let mut data = Vec::new();
+    let mut buf = [0u8; 4096];
+    while !data.contains(&b'\n') && data.len() < MAX_LINE {
+        let left = deadline.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())?;
+        match read(&mut buf, left)? {
+            0 => break,
+            n => data.extend_from_slice(&buf[..n]),
+        }
+    }
+    let end = data.iter().position(|&b| b == b'\n').unwrap_or(data.len());
+    Some(String::from_utf8_lossy(&data[..end]).into_owned())
+}
+
+fn reply_line(reply: &Reply) -> String {
+    format!("{}\n", tvc_core::wire::encode_reply(reply))
 }
 
 #[cfg(windows)]
 mod imp {
     use crate::platform::wide;
-    use std::ptr::null;
+    use std::ptr::{null, null_mut};
     use std::thread;
     use std::time::Duration;
+    use tvc_core::wire::{decode_reply, decode_request, Reply};
+    use windows_sys::core::BOOL;
     use windows_sys::Win32::Foundation::{
-        CloseHandle, GetLastError, LocalFree, ERROR_ALREADY_EXISTS, ERROR_PIPE_CONNECTED, GENERIC_WRITE, HANDLE,
-        INVALID_HANDLE_VALUE, WAIT_ABANDONED, WAIT_OBJECT_0,
+        CloseHandle, GetLastError, LocalFree, ERROR_ALREADY_EXISTS, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED,
+        GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_ABANDONED, WAIT_OBJECT_0,
     };
     use windows_sys::Win32::Security::Authorization::{
         ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
     };
     use windows_sys::Win32::Security::{GetTokenInformation, TokenUser, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER};
     use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, ReadFile, WriteFile, OPEN_EXISTING, PIPE_ACCESS_INBOUND,
+        CreateFileW, ReadFile, WriteFile, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, OPEN_EXISTING,
+        PIPE_ACCESS_DUPLEX,
     };
     use windows_sys::Win32::System::Pipes::{
-        ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId, WaitNamedPipeW,
-        PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
+        ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeServerProcessId, WaitNamedPipeW, PIPE_REJECT_REMOTE_CLIENTS,
+        PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
     };
     use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
     use windows_sys::Win32::System::Threading::{
-        CreateMutexW, GetCurrentProcess, GetCurrentProcessId, OpenProcessToken, WaitForSingleObject,
+        CreateEventW, CreateMutexW, GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
+        WaitForSingleObject, INFINITE, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
     use windows_sys::Win32::System::WindowsProgramming::GetUserNameW;
     use windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
 
@@ -130,9 +163,11 @@ mod imp {
             unsafe { CloseHandle(self.0) };
         }
     }
+    // SAFETY: a kernel handle may be used and closed from any thread.
+    unsafe impl Send for Handle {}
 
     pub fn acquire() -> Acquire {
-        let name = wide("ThinkVisionControl.SingleInstance");
+        let name = wide(&format!("ThinkVisionControl.Instance.{}", user_of(None).unwrap_or_default()));
         // SAFETY: NUL-terminated name, default security.
         let (handle, existed) = unsafe {
             let h = CreateMutexW(null(), 1, name.as_ptr());
@@ -170,38 +205,27 @@ mod imp {
         wide(&format!(r"\\.\pipe\ThinkVisionControl.Commands.{user}.{session}"))
     }
 
-    pub fn send(payload: &str, timeout: Duration) -> bool {
-        let name = pipe_name();
-        // SAFETY: NUL-terminated name; the handle is closed by `Handle`; the write buffer outlives the call.
+    /// The string SID of the user a process runs as: `pid`, or this process when None.
+    fn user_of(pid: Option<u32>) -> Option<String> {
+        // SAFETY: handles are closed by `Handle` (the current-process pseudo-handle needs no close); the token
+        // buffer is sized by the API; the SID string is LocalAlloc'd by the API and freed here.
         unsafe {
-            if WaitNamedPipeW(name.as_ptr(), timeout.as_millis() as u32) == 0 {
-                return false;
-            }
-            let h = CreateFileW(name.as_ptr(), GENERIC_WRITE, 0, null(), OPEN_EXISTING, 0, std::ptr::null_mut());
-            if h == INVALID_HANDLE_VALUE {
-                return false;
-            }
-            let pipe = Handle(h);
-            // This launch came from the user, so it may take the foreground; pass that on, or Windows opens the
-            // running copy's window behind the active one.
-            let mut pid = 0u32;
-            if GetNamedPipeServerProcessId(pipe.0, &mut pid) != 0 {
-                AllowSetForegroundWindow(pid);
-            }
-            let bytes = payload.as_bytes();
-            let mut written = 0u32;
-            WriteFile(pipe.0, bytes.as_ptr(), bytes.len() as u32, &mut written, std::ptr::null_mut()) != 0
-                && written as usize == bytes.len()
-        }
-    }
-
-    /// `D:P(A;;GA;;;<current user SID>)`: only this user may open the pipe.
-    fn current_user_only() -> Option<SECURITY_ATTRIBUTES> {
-        // SAFETY: token and buffers are sized by the API; the SID string and descriptor are LocalAlloc'd by the
-        // API — the string is freed here, the descriptor lives for the process (reused by every pipe instance).
-        unsafe {
-            let mut token = std::ptr::null_mut();
-            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            let opened = match pid {
+                Some(pid) => {
+                    let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+                    if h.is_null() {
+                        return None;
+                    }
+                    Some(Handle(h))
+                }
+                None => None,
+            };
+            let process = match &opened {
+                Some(h) => h.0,
+                None => GetCurrentProcess(),
+            };
+            let mut token = null_mut();
+            if OpenProcessToken(process, TOKEN_QUERY, &mut token) == 0 {
                 return None;
             }
             let token = Handle(token);
@@ -212,16 +236,104 @@ mod imp {
                 return None;
             }
             let sid = (*buf.as_ptr().cast::<TOKEN_USER>()).User.Sid;
-            let mut sid_str = std::ptr::null_mut();
+            let mut sid_str = null_mut();
             if ConvertSidToStringSidW(sid, &mut sid_str) == 0 {
                 return None;
             }
             let sid_len = (0..).take_while(|&i| *sid_str.add(i) != 0).count();
-            let sid_text = String::from_utf16_lossy(std::slice::from_raw_parts(sid_str, sid_len));
+            let text = String::from_utf16_lossy(std::slice::from_raw_parts(sid_str, sid_len));
             LocalFree(sid_str.cast());
-            let sddl = wide(&format!("D:P(A;;GA;;;{sid_text})"));
-            let mut sd = std::ptr::null_mut();
-            let (rev, null) = (SDDL_REVISION_1, std::ptr::null_mut());
+            Some(text)
+        }
+    }
+
+    /// Runs one overlapped `call` on `pipe` and waits up to `ms` for it: the bytes moved, or None on an error or
+    /// timeout (the call is then cancelled).
+    unsafe fn overlapped(pipe: HANDLE, ms: u32, call: impl FnOnce(*mut OVERLAPPED) -> BOOL) -> Option<u32> {
+        let event = CreateEventW(null(), 1, 0, null());
+        if event.is_null() {
+            return None;
+        }
+        let event = Handle(event);
+        let mut ov = OVERLAPPED { hEvent: event.0, ..Default::default() };
+        let ptr: *mut OVERLAPPED = &mut ov;
+        if call(ptr) == 0 {
+            match GetLastError() {
+                // A client connected between CreateNamedPipeW and ConnectNamedPipe.
+                ERROR_PIPE_CONNECTED => return Some(0),
+                ERROR_IO_PENDING => {
+                    if WaitForSingleObject(event.0, ms) != WAIT_OBJECT_0 {
+                        CancelIoEx(pipe, &ov);
+                    }
+                }
+                _ => return None,
+            }
+        }
+        let mut moved = 0u32;
+        // Waits for the cancelled call too, so `ov` outlives it.
+        (GetOverlappedResult(pipe, &ov, &mut moved, 1) != 0).then_some(moved)
+    }
+
+    fn write(pipe: &Handle, bytes: &[u8]) -> bool {
+        let ms = super::READ_WAIT.as_millis() as u32;
+        // SAFETY: `bytes` outlives the call, which `overlapped` waits for.
+        let written = unsafe {
+            overlapped(pipe.0, ms, |ov| WriteFile(pipe.0, bytes.as_ptr(), bytes.len() as u32, null_mut(), ov))
+        };
+        written == Some(bytes.len() as u32)
+    }
+
+    fn read(pipe: &Handle, timeout: Duration) -> Option<String> {
+        super::read_line(timeout, |buf, left| {
+            let ms = left.as_millis() as u32;
+            // SAFETY: `buf` outlives the call, which `overlapped` waits for.
+            let got = unsafe {
+                overlapped(pipe.0, ms, |ov| ReadFile(pipe.0, buf.as_mut_ptr(), buf.len() as u32, null_mut(), ov))
+            };
+            got.map(|n| n as usize)
+        })
+    }
+
+    pub fn send(request: &str, timeout: Duration) -> Option<Option<Reply>> {
+        let name = pipe_name();
+        // SAFETY: NUL-terminated name; the handle is closed by `Handle`.
+        let pipe = unsafe {
+            if WaitNamedPipeW(name.as_ptr(), timeout.as_millis() as u32) == 0 {
+                return None;
+            }
+            let access = GENERIC_READ | GENERIC_WRITE;
+            let h = CreateFileW(name.as_ptr(), access, 0, null(), OPEN_EXISTING, FILE_FLAG_OVERLAPPED, null_mut());
+            if h == INVALID_HANDLE_VALUE {
+                return None;
+            }
+            Handle(h)
+        };
+        // Only a server running as this user gets the arguments (another account could have squatted the name).
+        let mut pid = 0u32;
+        // SAFETY: plain out-parameter on our pipe handle.
+        if unsafe { GetNamedPipeServerProcessId(pipe.0, &mut pid) } == 0 {
+            return None;
+        }
+        if !user_of(None).is_some_and(|me| user_of(Some(pid)) == Some(me)) {
+            return None;
+        }
+        // This launch came from the user, so it may take the foreground; pass that on, or Windows opens the
+        // running copy's window behind the active one.
+        // SAFETY: no pointers.
+        unsafe { AllowSetForegroundWindow(pid) };
+        if !write(&pipe, format!("{request}\n").as_bytes()) {
+            return None;
+        }
+        Some(read(&pipe, super::REPLY_WAIT).and_then(|line| decode_reply(&line)))
+    }
+
+    /// `D:P(A;;GA;;;<current user SID>)`: only this user may open the pipe.
+    fn current_user_only() -> Option<SECURITY_ATTRIBUTES> {
+        let sddl = wide(&format!("D:P(A;;GA;;;{})", user_of(None)?));
+        // SAFETY: the descriptor is LocalAlloc'd by the API and lives for the process (reused by every instance).
+        unsafe {
+            let mut sd = null_mut();
+            let (rev, null) = (SDDL_REVISION_1, null_mut());
             if ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.as_ptr(), rev, &mut sd, null) == 0 {
                 return None;
             }
@@ -233,53 +345,58 @@ mod imp {
         }
     }
 
+    /// A new pipe instance. `first`: fail if the name already exists, so nobody else's pipe is joined.
+    fn create(name: &[u16], sa: Option<&SECURITY_ATTRIBUTES>, first: bool) -> Option<Handle> {
+        let mut mode = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED;
+        if first {
+            mode |= FILE_FLAG_FIRST_PIPE_INSTANCE;
+        }
+        // SAFETY: NUL-terminated name; `sa` (if any) outlives the call.
+        let h = unsafe {
+            CreateNamedPipeW(
+                name.as_ptr(),
+                mode,
+                PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                PIPE_UNLIMITED_INSTANCES,
+                super::MAX_LINE as u32,
+                4096,
+                0,
+                sa.map_or(null(), |s| s as *const _),
+            )
+        };
+        (h != INVALID_HANDLE_VALUE).then_some(Handle(h))
+    }
+
     impl Listener {
         pub fn serve(self, on_args: &dyn Fn(Vec<String>, super::Responder)) {
             let name = pipe_name();
             let sa = current_user_only();
+            let mut next = None;
             loop {
-                match receive(&name, sa.as_ref()) {
-                    Some(text) => on_args(super::split_args(&text), super::Responder::none()),
-                    None => thread::sleep(Duration::from_millis(500)),
+                // With no instance of ours open, the name must be new.
+                let Some(pipe) = next.take().or_else(|| create(&name, sa.as_ref(), true)) else {
+                    thread::sleep(Duration::from_millis(500));
+                    continue;
+                };
+                // SAFETY: our pipe handle; `overlapped` waits for the call.
+                if unsafe { overlapped(pipe.0, INFINITE, |ov| ConnectNamedPipe(pipe.0, ov)) }.is_none() {
+                    continue;
                 }
+                // Open the next instance while this one is still ours, so the name is never free.
+                next = create(&name, sa.as_ref(), false);
+                let Some(args) = read(&pipe, super::READ_WAIT).and_then(|line| decode_request(&line)) else {
+                    continue;
+                };
+                let responder = super::Responder::new(move |reply| {
+                    let _ = thread::Builder::new().name("tvc-reply".into()).spawn(move || {
+                        // Then wait for the client to hang up: closing first could drop the unread reply.
+                        if write(&pipe, super::reply_line(&reply).as_bytes()) {
+                            let _ = read(&pipe, super::READ_WAIT);
+                        }
+                    });
+                });
+                on_args(args, responder);
             }
-        }
-    }
-
-    /// One pipe instance, one client, read to EOF.
-    fn receive(name: &[u16], sa: Option<&SECURITY_ATTRIBUTES>) -> Option<String> {
-        // SAFETY: NUL-terminated name; `sa` (if any) outlives the call; the handle is closed by `Handle`.
-        unsafe {
-            let h = CreateNamedPipeW(
-                name.as_ptr(),
-                PIPE_ACCESS_INBOUND,
-                PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                1,
-                0,
-                4096,
-                0,
-                sa.map_or(null(), |s| s as *const _),
-            );
-            if h == INVALID_HANDLE_VALUE {
-                return None;
-            }
-            let pipe = Handle(h);
-            if ConnectNamedPipe(pipe.0, std::ptr::null_mut()) == 0 && GetLastError() != ERROR_PIPE_CONNECTED {
-                return None;
-            }
-            let mut data = Vec::new();
-            let mut buf = [0u8; 1024];
-            loop {
-                let mut read = 0u32;
-                let ok = ReadFile(pipe.0, buf.as_mut_ptr(), buf.len() as u32, &mut read, std::ptr::null_mut()) != 0;
-                data.extend_from_slice(&buf[..read as usize]);
-                // EOF (ERROR_BROKEN_PIPE) once the client closes; that's the normal end.
-                if !ok || read == 0 {
-                    break;
-                }
-            }
-            DisconnectNamedPipe(pipe.0);
-            Some(String::from_utf8_lossy(&data).into_owned())
         }
     }
 }
@@ -288,17 +405,18 @@ mod imp {
 mod imp {
     use std::fs::{File, OpenOptions};
     use std::io::{Read, Write};
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
     use std::os::unix::io::AsRawFd;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::PathBuf;
     use std::thread;
     use std::time::Duration;
+    use tvc_core::wire::{decode_reply, decode_request, Reply};
 
-    /// The lock file, open for the life of the process so the `flock` holds.
-    pub struct Lock(File);
+    /// The lock file, open for the life of the process so the `flock` holds, and the socket path.
+    pub struct Lock(File, PathBuf);
 
-    /// `socket` None: the lock file belongs to someone else, so run as primary without forwarding.
+    /// `socket` None: the lock file or folder belongs to someone else, so run as primary without forwarding.
     pub struct Listener {
         socket: Option<PathBuf>,
     }
@@ -308,26 +426,34 @@ mod imp {
         Busy(Lock),
     }
 
-    fn paths() -> (PathBuf, PathBuf) {
+    /// The lock file and socket paths; None when the `/tmp` fallback folder isn't ours.
+    fn paths() -> Option<(PathBuf, PathBuf)> {
         #[cfg(target_os = "macos")]
-        {
-            let tmp = std::env::var_os("TMPDIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-            (tmp.join("thinkvision-control.lock"), tmp.join("CoreFxPipe_tvc-cmd"))
-        }
+        let (var, socket) = ("TMPDIR", "CoreFxPipe_tvc-cmd");
         #[cfg(not(target_os = "macos"))]
-        {
-            let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-            match runtime.filter(|d| !d.as_os_str().is_empty() && d.is_dir()) {
-                Some(run) => (run.join("thinkvision-control.lock"), run.join("tvc-cmd")),
-                None => {
-                    let user = std::env::var("USER").unwrap_or_default();
-                    (
-                        PathBuf::from(format!("/tmp/thinkvision-control-{user}.lock")),
-                        PathBuf::from("/tmp/CoreFxPipe_tvc-cmd"),
-                    )
-                }
-            }
+        let (var, socket) = ("XDG_RUNTIME_DIR", "tvc-cmd");
+        let dir = std::env::var_os(var).map(PathBuf::from).filter(|d| !d.as_os_str().is_empty() && d.is_dir());
+        let dir = match dir {
+            Some(dir) => dir,
+            None => private_tmp()?,
+        };
+        Some((dir.join("thinkvision-control.lock"), dir.join(socket)))
+    }
+
+    /// `/tmp/tvc-<uid>`, created at mode 0700; None when it exists but isn't a folder of ours.
+    fn private_tmp() -> Option<PathBuf> {
+        // SAFETY: no preconditions.
+        let uid = unsafe { libc::getuid() };
+        let dir = PathBuf::from(format!("/tmp/tvc-{uid}"));
+        let _ = std::fs::DirBuilder::new().mode(0o700).create(&dir);
+        let meta = std::fs::symlink_metadata(&dir).ok()?;
+        if !meta.is_dir() || meta.uid() != uid {
+            return None;
         }
+        if meta.mode() & 0o777 != 0o700 {
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).ok()?;
+        }
+        Some(dir)
     }
 
     fn try_lock(file: &File) -> bool {
@@ -336,38 +462,48 @@ mod imp {
     }
 
     /// Holds the lock: keep the file open for the process lifetime and clear a socket left by a crashed primary.
-    fn owned(file: File) -> Listener {
+    fn owned(file: File, socket: PathBuf) -> Listener {
         std::mem::forget(file);
-        let socket = paths().1;
         let _ = std::fs::remove_file(&socket);
         Listener { socket: Some(socket) }
     }
 
     pub fn acquire() -> Acquire {
-        let opened = OpenOptions::new().read(true).write(true).create(true).truncate(false).mode(0o600).open(paths().0);
+        let Some((lock, socket)) = paths() else { return Acquire::Owned(Listener { socket: None }) };
+        let opened = OpenOptions::new().read(true).write(true).create(true).truncate(false).mode(0o600).open(lock);
         let file = match opened {
             Ok(f) => f,
             // Lock file owned by someone else: don't block startup, run without forwarding.
             Err(_) => return Acquire::Owned(Listener { socket: None }),
         };
         if try_lock(&file) {
-            Acquire::Owned(owned(file))
+            Acquire::Owned(owned(file, socket))
         } else {
-            Acquire::Busy(Lock(file))
+            Acquire::Busy(Lock(file, socket))
         }
     }
 
     pub fn wait(lock: &Lock, timeout: Duration) -> Option<Listener> {
         if try_lock(&lock.0) {
             let file = lock.0.try_clone().ok()?;
-            return Some(owned(file));
+            return Some(owned(file, lock.1.clone()));
         }
         thread::sleep(timeout);
         None
     }
 
-    pub fn send(payload: &str, _timeout: Duration) -> bool {
-        UnixStream::connect(paths().1).and_then(|mut s| s.write_all(payload.as_bytes())).is_ok()
+    fn read(stream: &mut UnixStream, timeout: Duration) -> Option<String> {
+        super::read_line(timeout, |buf, left| {
+            stream.set_read_timeout(Some(left)).ok()?;
+            stream.read(buf).ok()
+        })
+    }
+
+    pub fn send(request: &str, _timeout: Duration) -> Option<Option<Reply>> {
+        let mut stream = UnixStream::connect(paths()?.1).ok()?;
+        stream.set_write_timeout(Some(super::READ_WAIT)).ok()?;
+        stream.write_all(format!("{request}\n").as_bytes()).ok()?;
+        Some(read(&mut stream, super::REPLY_WAIT).and_then(|line| decode_reply(&line)))
     }
 
     impl Listener {
@@ -384,11 +520,18 @@ mod imp {
                 };
                 let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
                 for stream in listener.incoming() {
-                    let mut text = String::new();
-                    match stream.and_then(|mut s| s.read_to_string(&mut text)) {
-                        Ok(_) => on_args(super::split_args(&text), super::Responder::none()),
-                        Err(_) => thread::sleep(Duration::from_millis(500)),
-                    }
+                    let Ok(mut stream) = stream else {
+                        thread::sleep(Duration::from_millis(500));
+                        continue;
+                    };
+                    let Some(args) = read(&mut stream, super::READ_WAIT).and_then(|line| decode_request(&line)) else {
+                        continue;
+                    };
+                    let _ = stream.set_write_timeout(Some(super::READ_WAIT));
+                    let responder = super::Responder::new(move |reply| {
+                        let _ = stream.write_all(super::reply_line(&reply).as_bytes());
+                    });
+                    on_args(args, responder);
                 }
             }
         }
@@ -397,9 +540,22 @@ mod imp {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    /// Feeds `chunks` to `read_line` one read at a time, then the end of the stream.
+    fn read_chunks(chunks: &[&str]) -> Option<String> {
+        let mut chunks = chunks.iter();
+        super::read_line(Duration::from_secs(1), |buf, _| {
+            let chunk = chunks.next().map_or(&b""[..], |c| c.as_bytes());
+            buf[..chunk.len()].copy_from_slice(chunk);
+            Some(chunk.len())
+        })
+    }
+
     #[test]
-    fn splits_forwarded_lines() {
-        assert_eq!(super::split_args("--preset\nday\n\n"), ["--preset", "day"]);
-        assert!(super::split_args("").is_empty());
+    fn reads_one_line() {
+        assert_eq!(read_chunks(&["[\"--pre", "set\",\"day\"]\nrest"]).as_deref(), Some(r#"["--preset","day"]"#));
+        assert_eq!(read_chunks(&["no newline"]).as_deref(), Some("no newline"));
+        assert_eq!(read_chunks(&[]).as_deref(), Some(""));
     }
 }

@@ -1,4 +1,4 @@
-//! EDID base-block identification. Pure: no I/O.
+//! EDID identification (base block, plus names in CTA-861 extensions). Pure: no I/O.
 
 const HEADER: [u8; 8] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
 
@@ -36,14 +36,12 @@ pub fn id(edid: &[u8]) -> Option<String> {
     manufacturer(edid).map(|m| format!("{m}{:04X}", u16::from_le_bytes([edid[10], edid[11]])))
 }
 
-/// The monitor's own name: the display product name descriptor (tag 0xFC) of the base block, up to 13 characters
-/// ended by a line feed. None when there is none.
+/// The monitor's own name: the first display product name descriptor (tag 0xFC) in the base block or a CTA-861
+/// extension, up to 13 characters ended by a line feed. None when there is none.
 pub fn display_name(edid: &[u8]) -> Option<String> {
-    (0..4)
-        .map(|i| 54 + i * 18)
-        .filter_map(|at| edid.get(at..at + 18))
+    descriptors(edid)
         // A display descriptor starts 00 00 00 <tag> 00; a detailed timing starts with a non-zero pixel clock.
-        .find(|d| d[..3] == [0, 0, 0] && d[3] == 0xFC)
+        .find(|d| d[..3] == [0, 0, 0] && d[3] == 0xFC && d[4] == 0)
         .map(|d| {
             let text = &d[5..];
             let end = text.iter().position(|&b| b == 0x0A).unwrap_or(text.len());
@@ -51,6 +49,23 @@ pub fn display_name(edid: &[u8]) -> Option<String> {
         })
         .map(|name| name.trim().to_owned())
         .filter(|name| !name.is_empty())
+}
+
+/// True when the 128-byte base block sums to zero, as byte 127 makes it.
+pub fn checksum_ok(edid: &[u8]) -> bool {
+    edid.len() >= 128 && edid[..128].iter().fold(0u8, |sum, &b| sum.wrapping_add(b)) == 0
+}
+
+/// The four 18-byte descriptors of the base block, then the detailed-timing area of each CTA-861 extension block
+/// (tag 0x02; byte 2 is where that area starts, and it ends before the checksum byte).
+fn descriptors(edid: &[u8]) -> impl Iterator<Item = &[u8]> + '_ {
+    let base = (0..4).filter_map(move |i| edid.get(54 + i * 18..72 + i * 18));
+    let cta = edid
+        .chunks_exact(128)
+        .skip(1)
+        .filter(|block| block[0] == 0x02 && (4..127).contains(&block[2]))
+        .flat_map(|block| block[usize::from(block[2])..127].chunks_exact(18));
+    base.chain(cta)
 }
 
 /// Packs three PNP letters into the vendor number CoreGraphics reports: "LEN" → 0x30AE. None unless three ASCII letters.

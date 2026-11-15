@@ -5,7 +5,7 @@
 //! close and rebuilt on open; values are pushed into it only while it is shown; the OSD window is kept.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
-use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget};
+use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget, Parsed};
 use tvc_core::engine::{
     Command, EngineHandle, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
 };
@@ -24,11 +24,13 @@ use tvc_core::hotkey::{Action, Gesture};
 use tvc_core::link::{AttachedDisplay, LinkFailure, VcpReading};
 use tvc_core::profile::{ControlDefinition, ControlKind, Profile, SafetyClass, Section};
 use tvc_core::store::{Preset, Settings, SettingsStore};
+use tvc_core::crash::LeftOver;
 use tvc_core::log;
 
 use crate::osd::{Content, OsdHost};
 use crate::localtime;
 use crate::platform;
+use crate::platform::instance::{Reply, Responder};
 use crate::platform::monitor_events::SystemEvent;
 use crate::view::{self, glyph, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT};
 use crate::{App, Dialog, MainWindow, Severity, ShortcutEditor, Tray};
@@ -39,6 +41,13 @@ const KEY_DEBOUNCE: Duration = Duration::from_millis(300);
 const TOAST_FOR: Duration = Duration::from_millis(2500);
 const HOTKEY_STEP: i32 = 5;
 const AUTO_EVERY: Duration = Duration::from_secs(60);
+/// How long a one-shot command-line run may take from dispatch; longer when it must read the capabilities first.
+const HEADLESS_BUDGET: Duration = Duration::from_secs(10);
+const HEADLESS_COLD_BUDGET: Duration = Duration::from_secs(20);
+const RETRY_FOR: Duration = Duration::from_secs(16);
+const TIMED_OUT: &str = "Timed out: the monitor didn't answer in time";
+const NEEDS_YES: &str = "Switching the input needs confirmation: run it again with --yes";
+const NOT_CONFIRMED: &str = "The input switch wasn't confirmed on screen";
 
 thread_local! {
     static APP: RefCell<Option<Rc<Controller>>> = const { RefCell::new(None) };
@@ -86,6 +95,8 @@ pub struct State {
     pub profile: Arc<Profile>,
     pub controls: Option<Arc<ResolvedControls>>,
     pub values: BTreeMap<u8, VcpReading>,
+    /// The monitor was lost since `values` were read; cleared once a connect has re-read them.
+    pub values_stale: bool,
     pub status: MonitorStatus,
     pub failure: Option<LinkFailure>,
     /// The displays the OS reported at the last failed connect; None = unknown.
@@ -138,8 +149,38 @@ impl State {
 
 type Pending = Box<dyn FnOnce(&Rc<Controller>)>;
 
+/// A command-line verb being run: this process's own, or one forwarded by a later launch.
+pub struct CliJob {
+    command: CliCommand,
+    json: bool,
+    yes: bool,
+    /// The forwarding launch's responder; None for this process's own verb.
+    reply: Option<Responder>,
+}
+
+impl CliJob {
+    pub fn own(parsed: &Parsed) -> Self {
+        Self { command: parsed.command, json: parsed.json, yes: parsed.yes, reply: None }
+    }
+}
+
+/// A command-line `--input` waiting for the on-screen confirm. Dropped unconfirmed (Cancel, the window closed,
+/// another dialog already open), it answers exit 3.
+struct AwaitingConfirm(Option<CliJob>);
+
+impl Drop for AwaitingConfirm {
+    fn drop(&mut self) {
+        if let Some(CliJob { command, json, reply: Some(reply), .. }) = self.0.take() {
+            log::write(&format!("CLI {} (forwarded): exit {}, {NOT_CONFIRMED}", describe(&command), tvc_cli::EXIT_NEEDS_CONFIRMATION));
+            let line = failure_line(&command, json, "NeedsConfirmation", NOT_CONFIRMED);
+            reply.reply(Reply { exit: tvc_cli::EXIT_NEEDS_CONFIRMATION as u8, stdout: format!("{line}\n") });
+        }
+    }
+}
+
 pub struct Controller {
-    engine: EngineHandle,
+    /// Taken at exit by `into_engine`.
+    engine: RefCell<Option<EngineHandle>>,
     store: SettingsStore,
     st: RefCell<State>,
     window: RefCell<Option<MainWindow>>,
@@ -157,32 +198,42 @@ pub struct Controller {
     demo: bool,
     /// A one-shot CLI run with no resident app: exit after the OSD.
     headless: Cell<bool>,
+    /// The headless run's own verb and `--json`, for its timeout line.
+    headless_job: Cell<Option<(CliCommand, bool)>>,
+    /// The headless run's own verb has printed its result.
+    done: Cell<bool>,
     /// Verbs that arrived before the first connect attempt finished.
-    pending_cli: RefCell<Vec<CliCommand>>,
+    pending_cli: RefCell<Vec<CliJob>>,
+    /// Verbs sent to the engine, oldest first: the engine answers `Origin::Cli` commands in order.
+    waiting: RefCell<VecDeque<CliJob>>,
     watcher: RefCell<Option<platform::monitor_events::Watcher>>,
-    /// `--json` for command-line output.
-    json: Cell<bool>,
     /// Process exit code for a headless run.
     exit_code: Cell<i32>,
+    /// Crash markers of dead processes: this run is in safe mode because of them. A resident start clears them.
+    left_over: RefCell<Vec<LeftOver>>,
+    retry_timer: slint::Timer,
     auto_timer: slint::Timer,
     /// The Day/Night phase last applied by the schedule; a preset is applied only when it changes.
     auto_phase: Cell<Option<Phase>>,
-    /// The one live capability read per run has been asked for.
-    caps_requested: Cell<bool>,
+    /// A `Controls` event after the first one (from the cache or the profile) came: the capabilities are live.
+    caps_live: Cell<bool>,
 }
 
 impl Controller {
-    pub fn new(engine: EngineHandle, profile: Arc<Profile>, data_dir: PathBuf, scheme: i32, demo: bool) -> Rc<Self> {
+    pub fn new(engine: EngineHandle, profile: Arc<Profile>, data_dir: PathBuf, scheme: i32, demo: bool,
+        left_over: Vec<LeftOver>) -> Rc<Self> {
         let store = SettingsStore::new(&data_dir);
         let settings = store.load();
+        let last_phase = settings.last_applied_phase;
         Rc::new(Self {
-            engine,
+            engine: RefCell::new(Some(engine)),
             store,
             st: RefCell::new(State {
                 settings,
                 profile,
                 controls: None,
                 values: BTreeMap::new(),
+                values_stale: false,
                 status: MonitorStatus::Connecting,
                 failure: None,
                 displays: None,
@@ -213,13 +264,17 @@ impl Controller {
             scheme,
             demo,
             headless: Cell::new(false),
+            headless_job: Cell::new(None),
+            done: Cell::new(false),
             pending_cli: RefCell::new(vec![]),
+            waiting: RefCell::new(VecDeque::new()),
             watcher: RefCell::new(None),
-            json: Cell::new(false),
             exit_code: Cell::new(0),
+            left_over: RefCell::new(left_over),
+            retry_timer: slint::Timer::default(),
             auto_timer: slint::Timer::default(),
-            auto_phase: Cell::new(None),
-            caps_requested: Cell::new(false),
+            auto_phase: Cell::new(last_phase),
+            caps_live: Cell::new(false),
         })
     }
 
@@ -228,15 +283,17 @@ impl Controller {
     }
 
     pub fn send(&self, command: Command) {
-        self.engine.send(command);
+        if let Some(engine) = self.engine.borrow().as_ref() {
+            engine.send(command);
+        }
     }
 
     pub fn exit_code(&self) -> i32 {
         self.exit_code.get()
     }
 
-    pub fn into_engine(self: Rc<Self>) -> Option<EngineHandle> {
-        Rc::try_unwrap(self).ok().map(|c| c.engine)
+    pub fn into_engine(&self) -> Option<EngineHandle> {
+        self.engine.borrow_mut().take()
     }
 
     // ---------------------------------------------------------------------------------------------------------
@@ -245,30 +302,39 @@ impl Controller {
     /// A resident start: tray and hotkeys per settings, connect, then the window unless starting to the tray.
     pub fn start_resident(self: &Rc<Self>, show_window: bool) {
         self.headless.set(false);
+        for stale in self.left_over.take() {
+            stale.clear(); // the safe-mode banner now speaks for it
+        }
         if self.watcher.borrow().is_none() {
             // First resident start (also a headless run turned resident): retry burst and display/power events.
             self.send(Command::RequestReconnect);
-            let tx = self.engine.sender();
+            let tx = self.engine.borrow().as_ref().map(EngineHandle::sender);
             let watcher = platform::monitor_events::watch(move |event| {
                 let command = match event {
                     SystemEvent::DisplayChanged => Command::RecheckAfterEvent,
+                    #[cfg(any(windows, target_os = "macos"))]
                     SystemEvent::DisplayOff => Command::Power(PowerState::DisplayOff),
+                    #[cfg(any(windows, target_os = "macos"))]
                     SystemEvent::DisplayOn => Command::Power(PowerState::DisplayOn),
                     SystemEvent::Locked => Command::Power(PowerState::Locked),
                     SystemEvent::Unlocked => Command::Power(PowerState::Unlocked),
                     SystemEvent::Suspending => Command::Power(PowerState::Suspending),
                     SystemEvent::Resumed => Command::Power(PowerState::Resumed),
+                    #[cfg(windows)]
                     SystemEvent::ThemeChanged => {
                         let _ = slint::invoke_from_event_loop(|| with(|c| c.update_tray()));
                         return;
                     }
+                    #[cfg(windows)]
                     SystemEvent::SessionEnding => {
                         log::write("Closing: Windows asked (sign-out, shutdown or an installer)");
                         let _ = slint::invoke_from_event_loop(|| with(|c| c.quit()));
                         return;
                     }
                 };
-                let _ = tx.send(command);
+                if let Some(tx) = &tx {
+                    let _ = tx.send(command);
+                }
             });
             *self.watcher.borrow_mut() = Some(watcher);
             if !self.demo {
@@ -284,47 +350,102 @@ impl Controller {
         self.arm_banner_hold();
     }
 
-    /// One CLI command without a resident app: connect once, run, show the OSD, exit.
-    pub fn start_headless(self: &Rc<Self>, command: CliCommand, json: bool) {
+    /// One CLI command without a resident app: connect once, run, show the OSD, exit. The budget runs from here;
+    /// `cold` (no cached capabilities, so the connect reads them first) gets the longer one.
+    pub fn start_headless(self: &Rc<Self>, job: CliJob, cold: bool) {
         self.headless.set(true);
-        self.json.set(json);
-        self.pending_cli.borrow_mut().push(command);
-        // Safety net: never linger if the monitor never answers.
-        slint::Timer::single_shot(Duration::from_secs(5), || with(|c| c.quit_if_headless()));
+        self.headless_job.set(Some((job.command, job.json)));
+        self.pending_cli.borrow_mut().push(job);
+        let budget = if cold { HEADLESS_COLD_BUDGET } else { HEADLESS_BUDGET };
+        slint::Timer::single_shot(budget, || with(|c| c.headless_timeout()));
+    }
+
+    /// A verb to run once the first connect attempt finishes (`--demo` runs resident).
+    pub fn queue_cli(&self, job: CliJob) {
+        self.pending_cli.borrow_mut().push(job);
+    }
+
+    fn own_job(&self) -> Option<CliJob> {
+        let (command, json) = self.headless_job.get()?;
+        Some(CliJob { command, json, yes: false, reply: None })
+    }
+
+    /// The budget ran out before the headless verb's result: say so and exit 8.
+    fn headless_timeout(&self) {
+        if !self.headless.get() || self.done.get() {
+            return;
+        }
+        if let Some(job) = self.own_job() {
+            let json = failure_json(&job.command, "TimedOut", TIMED_OUT);
+            self.finish(job, tvc_cli::exit_code(None, true), TIMED_OUT, json, false);
+        }
     }
 
     fn quit_if_headless(&self) {
         if self.headless.get() {
-            if !self.pending_cli.borrow().is_empty() {
-                self.exit_code.set(tvc_cli::exit_code(None, true)); // never got past connecting: timed out
-            }
-            let _ = slint::quit_event_loop();
+            self.quit();
         }
     }
 
-    /// Exit code for a headless run that ended without a result: not found or not responding.
-    fn exit_for_status(&self) {
+    /// Answers a finished verb: replies to the launch that forwarded it, or prints this process's own result
+    /// and exits (once the OSD has faded, with `osd`).
+    fn finish(&self, job: CliJob, exit: i32, text: &str, json: String, osd: bool) {
+        let line = if job.json { json } else { text.to_string() };
+        let args = describe(&job.command);
+        let logged = text.replace('\n', ", ");
+        match job.reply {
+            Some(reply) => {
+                log::write(&format!("CLI {args} (forwarded): exit {exit}, {logged}"));
+                reply.reply(Reply { exit: exit as u8, stdout: format!("{line}\n") });
+            }
+            None if self.headless.get() => {
+                if self.done.replace(true) {
+                    return;
+                }
+                log::write(&format!("CLI {args}: exit {exit}, {logged}"));
+                println!("{line}");
+                self.exit_code.set(exit);
+                if osd {
+                    self.quit_after_osd();
+                } else {
+                    self.quit();
+                }
+            }
+            None => log::write(&format!("CLI {args}: {logged}")),
+        }
+    }
+
+    /// Not connected: the verb ends with the text the OSD shows, exit 1 (not found) or 5.
+    fn finish_unreachable(&self, job: CliJob) {
         let kind = match self.st.borrow().status {
             MonitorStatus::NotFound => ResultKind::NotFound,
             _ => ResultKind::NotResponding,
         };
-        self.exit_code.set(tvc_cli::exit_code(Some(kind), true));
+        let text = self.not_connected_text();
+        let json = failure_json(&job.command, &format!("{kind:?}"), &text);
+        let osd = !matches!(job.command, CliCommand::Get(_));
+        self.finish(job, tvc_cli::exit_code(Some(kind), true), &text, json, osd);
     }
 
-    /// Prints a command-line line (or JSON object) in headless runs; main attached the console.
-    fn print_result(&self, text: &str, json: String) {
-        if self.headless.get() {
-            println!("{}", if self.json.get() { json } else { text.to_string() });
+    /// `--get`. This process's own run prints what its connect just read; a forwarded one re-reads the codes
+    /// first, since a resident copy's values can be old.
+    fn run_get(self: &Rc<Self>, job: CliJob, target: GetTarget) {
+        if job.reply.is_none() || self.st.borrow().status != MonitorStatus::Connected {
+            self.answer_get(job, target);
+            return;
         }
+        self.send(Command::Refresh(get_codes(target)));
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.send(Command::Flush(tx));
+        std::thread::spawn(move || {
+            let _ = rx.recv_timeout(HEADLESS_BUDGET);
+            let _ = slint::invoke_from_event_loop(move || with(|c| c.answer_get(job, target)));
+        });
     }
 
-    /// `--get`: prints the values the connect just read. Headless: then exits. Forwarded link: OSD.
-    fn print_get(&self, target: GetTarget) {
+    fn answer_get(&self, job: CliJob, target: GetTarget) {
         if self.st.borrow().status != MonitorStatus::Connected {
-            self.exit_for_status();
-            let msg = self.not_connected_text();
-            self.print_result(&msg, format!("{{\"error\":{}}}", json_str(&msg)));
-            self.quit_if_headless();
+            self.finish_unreachable(job);
             return;
         }
         let st = self.st.borrow();
@@ -346,22 +467,32 @@ impl Controller {
         let text = fields.iter().map(|(k, v, _)| format!("{k}: {v}")).collect::<Vec<_>>().join("\n");
         let json = format!("{{{}}}", fields.iter().map(|(k, _, j)| format!("\"{k}\":{j}")).collect::<Vec<_>>().join(","));
         let kind = if fields.is_empty() { ResultKind::Unsupported } else { ResultKind::Ok };
-        self.exit_code.set(tvc_cli::exit_code(Some(kind), true));
-        if self.headless.get() {
-            self.print_result(&text, json);
-            self.quit_if_headless();
-        } else {
+        if !self.headless.get() {
             OsdHost::show(&self.osd, Content::Message(&text.replace('\n', " · ")));
         }
+        self.finish(job, tvc_cli::exit_code(Some(kind), true), &text, json, false);
     }
 
     fn not_connected_text(&self) -> String {
         view::unreachable_text(&self.st.borrow())
     }
 
-    /// Args forwarded by a second launch.
-    pub fn on_forwarded(self: &Rc<Self>, args: Vec<String>) {
-        let parsed = tvc_core::cli::parse(&args).unwrap_or_default();
+    /// Args forwarded by a second launch; `responder` gets the verb's exit code and output.
+    pub fn on_forwarded(self: &Rc<Self>, args: Vec<String>, responder: Responder) {
+        let parsed = match tvc_cli::parse(&args) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                log::write(&format!("CLI (forwarded): {}", e.message));
+                let stdout = format!("{}\n\n{}\n", e.message, tvc_cli::help());
+                responder.reply(Reply { exit: tvc_cli::EXIT_USAGE as u8, stdout });
+                return;
+            }
+        };
+        if parsed.command == CliCommand::Help || parsed.version {
+            let text = if parsed.command == CliCommand::Help { tvc_cli::help().to_string() } else { tvc_cli::version_line() };
+            responder.reply(Reply { exit: 0, stdout: format!("{text}\n") });
+            return;
+        }
         // A forward during a headless run makes this process the resident app. A verb with Run in
         // background off stays headless: resident without a window or tray would linger invisibly.
         if self.headless.get() && (parsed.command == CliCommand::Show || self.background_mode()) {
@@ -373,52 +504,77 @@ impl Controller {
                     self.show_window();
                 }
             }
-            command => self.run_cli(command),
+            _ => self.run_cli(CliJob { reply: Some(responder), ..CliJob::own(&parsed) }),
         }
     }
 
-    pub fn run_cli(self: &Rc<Self>, command: CliCommand) {
-        let st = self.st.borrow();
-        if st.status == MonitorStatus::Connecting && command != CliCommand::Show {
-            drop(st);
-            self.pending_cli.borrow_mut().push(command);
+    pub fn run_cli(self: &Rc<Self>, job: CliJob) {
+        let status = self.st.borrow().status;
+        if status == MonitorStatus::Connecting {
+            self.pending_cli.borrow_mut().push(job);
             return;
         }
         let origin = Origin::Cli;
+        let command = job.command;
         let cmd = match command {
-            CliCommand::Show => {
-                drop(st);
+            CliCommand::Show | CliCommand::Help => {
                 self.show_window();
                 return;
             }
+            CliCommand::Get(target) => {
+                self.run_get(job, target);
+                return;
+            }
             CliCommand::Preset { night } => {
+                let st = self.st.borrow();
                 let preset = if night { st.settings.night.clone() } else { st.settings.day.clone() };
                 Command::ApplyPreset { preset, origin }
             }
             CliCommand::Input(code) => {
-                let value = code.unwrap_or(st.settings.this_machine_input) as u16;
+                let value = code.unwrap_or(self.st.borrow().settings.this_machine_input) as u16;
+                if !job.yes && status == MonitorStatus::Connected {
+                    self.confirm_cli_input(job, value);
+                    return;
+                }
                 platform::wake::nudge();
-                Command::Set { code: INPUT, value, confirmed: false, origin }
+                Command::Set { code: INPUT, value, confirmed: true, origin }
             }
             CliCommand::Step { code, delta } => Command::Step { code, delta, origin },
-            CliCommand::Get(target) => {
-                drop(st);
-                self.print_get(target);
-                return;
-            }
-            CliCommand::Help => {
-                drop(st);
-                self.show_window();
-                return;
-            }
         };
-        let connected = st.status == MonitorStatus::Connected;
-        drop(st);
-        if connected {
+        self.dispatch(job, cmd);
+    }
+
+    /// Sends a verb's command and waits for its result, or ends it at once when the monitor isn't connected.
+    fn dispatch(&self, job: CliJob, cmd: Command) {
+        if self.st.borrow().status == MonitorStatus::Connected {
             self.send(cmd);
+            self.waiting.borrow_mut().push_back(job);
         } else {
             self.osd_not_connected();
+            self.finish_unreachable(job);
         }
+    }
+
+    /// `--input` without `--yes`: a resident copy asks on screen; a headless run exits 3.
+    fn confirm_cli_input(self: &Rc<Self>, job: CliJob, value: u16) {
+        if self.headless.get() && job.reply.is_none() {
+            OsdHost::show(&self.osd, Content::Message(NEEDS_YES));
+            let json = failure_json(&job.command, "NeedsConfirmation", NEEDS_YES);
+            self.finish(job, tvc_cli::EXIT_NEEDS_CONFIRMATION, NEEDS_YES, json, true);
+            return;
+        }
+        self.show_window();
+        let pending = AwaitingConfirm(Some(job));
+        self.ask(
+            self.input_dialog(value),
+            Box::new(move |c: &Rc<Controller>| {
+                let mut pending = pending;
+                if let Some(job) = pending.0.take() {
+                    platform::wake::nudge();
+                    c.dispatch(job, Command::Set { code: INPUT, value, confirmed: true, origin: Origin::Cli });
+                }
+            }),
+        );
     }
 
     fn quit(&self) {
@@ -569,7 +725,12 @@ impl Controller {
         match event {
             Event::Status { status, failure } => self.on_status(status, failure),
             Event::Controls(rc) => {
-                self.st.borrow_mut().controls = Some(rc);
+                let mut st = self.st.borrow_mut();
+                if st.controls.is_some() {
+                    self.caps_live.set(true);
+                }
+                st.controls = Some(rc);
+                drop(st);
                 self.render();
             }
             Event::Value { code, reading } => {
@@ -609,9 +770,19 @@ impl Controller {
             }
             st.status = status;
             st.failure = failure;
-            if status == MonitorStatus::Connected {
-                st.shown_status = (Some(status), None);
-                self.banner_hold.stop();
+            match status {
+                MonitorStatus::Connected => {
+                    st.shown_status = (Some(status), None);
+                    st.values_stale = false; // the connect re-read them
+                    self.banner_hold.stop();
+                }
+                MonitorStatus::NotFound | MonitorStatus::NotResponding => {
+                    st.range_note.clear();
+                    st.notes.clear();
+                    st.finder = FinderState::default();
+                    st.values_stale = true;
+                }
+                MonitorStatus::Connecting => {}
             }
         }
         if status != MonitorStatus::Connected {
@@ -619,17 +790,21 @@ impl Controller {
         }
         if status != MonitorStatus::Connecting {
             let pending = std::mem::take(&mut *self.pending_cli.borrow_mut());
-            for cmd in pending {
-                self.run_cli(cmd);
+            for job in pending {
+                self.run_cli(job);
             }
-            if self.headless.get() && status != MonitorStatus::Connected {
-                self.exit_for_status();
-                self.quit_after_osd();
+            // Lost mid-verb (or the engine stopped): end the headless run now rather than at the timeout.
+            if self.headless.get() && status != MonitorStatus::Connected && !self.done.get() {
+                if let Some(job) = self.own_job() {
+                    self.osd_not_connected();
+                    self.finish_unreachable(job);
+                }
             }
             if status == MonitorStatus::Connected {
                 self.auto_tick();
-                if !self.headless.get() && !self.caps_requested.replace(true) {
+                if !self.headless.get() && !self.caps_live.get() {
                     // Connected on the cached capabilities; refresh them from the monitor once things are quiet.
+                    // Asked again on each connect until a live read lands (the engine ignores it after one).
                     slint::Timer::single_shot(Duration::from_secs(2), || with(|c| c.send(Command::ReadCapabilities)));
                 }
             }
@@ -654,7 +829,12 @@ impl Controller {
     }
 
     fn on_result(self: &Rc<Self>, origin: Origin, code: Option<u8>, preset: Option<String>, result: WriteResult) {
-        log::write(&format!("{origin:?} {code:?} {preset:?}: {:?} {}", result.outcome, result.message));
+        let what = match (code, &preset) {
+            (Some(c), _) => format!("0x{c:02X}"),
+            (None, Some(name)) => format!("preset {name}"),
+            (None, None) => "restore".into(),
+        };
+        log::write(&format!("{} {what}: {:?}, {}", origin_name(origin), result.kind, result.message));
         match origin {
             Origin::Window => self.result_in_window(code, preset, &result),
             // automatic presets stay quiet; only a failure is worth a word, and only in an open window.
@@ -662,19 +842,21 @@ impl Controller {
                 if result.outcome != WriteOutcome::Ok {
                     self.auto_phase.set(None); // try again on the next tick
                     self.show_toast(&format!("Automatic Day/Night: {}", result.message));
+                } else {
+                    self.remember_phase();
                 }
             }
-            _ => {
+            Origin::Cli => {
                 self.osd_result(code, &result);
-                if self.headless.get() {
-                    self.exit_code.set(tvc_cli::exit_code(Some(result.kind), true));
+                let job = self.waiting.borrow_mut().pop_front();
+                if let Some(job) = job {
                     let ok = result.outcome == WriteOutcome::Ok;
-                    let kind = format!("{:?}", result.kind);
-                    let json = format!("{{\"ok\":{ok},\"kind\":{},\"message\":{}}}", json_str(&kind), json_str(&result.message));
-                    self.print_result(&result.message, json);
-                    self.quit_after_osd();
+                    let text = self.result_text(code, &result);
+                    let json = result_json(ok, &format!("{:?}", result.kind), &text);
+                    self.finish(job, tvc_cli::exit_code(Some(result.kind), true), &text, json, true);
                 }
             }
+            Origin::Hotkey | Origin::Tray => self.osd_result(code, &result),
         }
     }
 
@@ -751,10 +933,20 @@ impl Controller {
                 OsdHost::show(&self.osd, Content::Level { glyph, label, value: v, max });
             }
             _ => {
-                let msg = result.message.clone();
                 drop(st);
-                OsdHost::show(&self.osd, Content::Message(&msg));
+                OsdHost::show(&self.osd, Content::Message(&self.result_text(code, result)));
             }
+        }
+    }
+
+    /// A result's text, plus the profile's lock note when the monitor kept its brightness.
+    fn result_text(&self, code: Option<u8>, result: &WriteResult) -> String {
+        let st = self.st.borrow();
+        let note = &st.profile.brightness_lock_note;
+        if result.kind == ResultKind::Kept && code == Some(BRIGHTNESS) && !note.is_empty() {
+            format!("{}{note}", result.message.trim_end_matches('.'))
+        } else {
+            result.message.clone()
         }
     }
 
@@ -796,6 +988,16 @@ impl Controller {
         }
         self.refresh_setup_hints();
         self.render();
+        // The Linux facts behind the hints are looked up on a worker thread: show them once they're in.
+        #[cfg(target_os = "linux")]
+        slint::Timer::single_shot(Duration::from_millis(1500), || {
+            with(|c| {
+                if c.window.borrow().is_some() {
+                    c.refresh_setup_hints();
+                    c.render();
+                }
+            })
+        });
         if let Some(ui) = self.window.borrow().as_ref() {
             let _ = ui.show();
             ui.window().set_minimized(false);
@@ -888,30 +1090,34 @@ impl Controller {
     // ---------------------------------------------------------------------------------------------------------
     // Window actions
 
+    /// The engine reads the input first and skips a switch that is already done, so a stale value can't block one.
     fn select_input(self: &Rc<Self>, code: u16) {
         let st = self.st.borrow();
-        if st.status != MonitorStatus::Connected || st.value(INPUT) == Some(code) {
+        if st.status != MonitorStatus::Connected {
             return;
         }
+        let this_pc = code == st.settings.this_machine_input as u16;
+        drop(st);
         let set = move |c: &Rc<Controller>| {
             platform::wake::nudge();
             c.send(Command::Set { code: INPUT, value: code, confirmed: false, origin: Origin::Window });
         };
-        if code == st.settings.this_machine_input as u16 {
-            drop(st);
+        if this_pc {
             set(self);
             return;
         }
+        self.ask(self.input_dialog(code), Box::new(set));
+    }
+
+    /// "Switch to HDMI?", from the profile's input definition.
+    fn input_dialog(&self, code: u16) -> Dialog {
+        let st = self.st.borrow();
         let label = st.input_label(code);
         let def = st.def(INPUT);
         let title = def.and_then(|d| d.confirm_title.clone()).unwrap_or_else(|| "Switch to {label}?".into()).replace("{label}", &label);
         let body = def.and_then(|d| d.confirm_body.clone()).unwrap_or_default();
         let button = def.and_then(|d| d.confirm_button.clone()).unwrap_or_else(|| "Switch".into());
-        drop(st);
-        self.ask(
-            Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true },
-            Box::new(set),
-        );
+        Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true }
     }
 
     fn range_changed(&self, code: u8, value: u16) {
@@ -974,6 +1180,11 @@ impl Controller {
 
     fn save_preset(self: &Rc<Self>, index: usize) {
         let mut st = self.st.borrow_mut();
+        if st.values_stale || st.status != MonitorStatus::Connected {
+            drop(st);
+            self.show_toast("Connect the monitor to save its current settings");
+            return;
+        }
         let cached = |code| st.values.get(&code).map(|r: &VcpReading| r.current);
         let (b, c, m) = (cached(BRIGHTNESS), cached(CONTRAST), cached(COLOUR_MODE));
         let old = if index == 0 { &st.settings.day } else { &st.settings.night };
@@ -1265,6 +1476,9 @@ impl Controller {
 impl Controller {
     /// Runs the 60 s schedule tick while a mode is on; stops it otherwise.
     fn arm_auto(&self) {
+        if self.headless.get() {
+            return; // a one-shot run never applies Day/Night
+        }
         if self.st.borrow().settings.auto_day_night == AutoMode::Off {
             self.auto_timer.stop();
             self.auto_phase.set(None);
@@ -1277,7 +1491,7 @@ impl Controller {
     /// before now wins, so a change missed during sleep is caught up on wake.
     fn auto_tick(&self) {
         let st = self.st.borrow();
-        if st.status != MonitorStatus::Connected || st.asleep || st.safe_mode {
+        if self.headless.get() || st.status != MonitorStatus::Connected || st.asleep || st.safe_mode {
             return;
         }
         let Some(phase) = schedule::current(&st.settings.auto_day_night, localtime::unix_now(), localtime::utc_offset()) else {
@@ -1290,6 +1504,19 @@ impl Controller {
         drop(st);
         self.auto_phase.set(Some(phase));
         self.send(Command::ApplyPreset { preset, origin: Origin::Schedule });
+    }
+
+    /// Saves the phase the schedule just applied, so the next start catches up only when it changed.
+    fn remember_phase(&self) {
+        let mut st = self.st.borrow_mut();
+        let phase = self.auto_phase.get();
+        if phase.is_none() || st.settings.last_applied_phase == phase {
+            return;
+        }
+        st.settings.last_applied_phase = phase;
+        if let Err(e) = self.store.save(&st.settings) {
+            log::write(&format!("Settings save failed: {e}"));
+        }
     }
 
     /// 0 = off, 1 = at set times, 2 = at sunrise and sunset (uses the remembered times or place).
@@ -1364,6 +1591,48 @@ fn parse_hhmm(text: &str) -> Option<u16> {
     (h < 24 && m < 60).then_some(h * 60 + m)
 }
 
+/// The codes `--get` reads.
+pub fn get_codes(target: GetTarget) -> Vec<u8> {
+    match target {
+        GetTarget::Brightness => vec![BRIGHTNESS],
+        GetTarget::Contrast => vec![CONTRAST],
+        GetTarget::Input => vec![INPUT],
+        GetTarget::ColourMode => vec![COLOUR_MODE],
+        GetTarget::All => vec![BRIGHTNESS, CONTRAST, INPUT, COLOUR_MODE],
+    }
+}
+
+/// A failed verb's line: `text`, or with `--json` the verb's JSON shape (`{"error":…}` for `--get`).
+pub fn failure_line(command: &CliCommand, json: bool, kind: &str, text: &str) -> String {
+    if json { failure_json(command, kind, text) } else { text.to_string() }
+}
+
+fn failure_json(command: &CliCommand, kind: &str, text: &str) -> String {
+    match command {
+        CliCommand::Get(_) => format!("{{\"error\":{}}}", json_str(text)),
+        _ => result_json(false, kind, text),
+    }
+}
+
+fn result_json(ok: bool, kind: &str, message: &str) -> String {
+    format!("{{\"ok\":{ok},\"kind\":{},\"message\":{}}}", json_str(kind), json_str(message))
+}
+
+/// A verb as its canonical arguments, for log lines.
+fn describe(command: &CliCommand) -> String {
+    tvc_cli::format(command).map(|args| args.join(" ")).unwrap_or_default()
+}
+
+fn origin_name(origin: Origin) -> &'static str {
+    match origin {
+        Origin::Window => "Window",
+        Origin::Hotkey => "Shortcut",
+        Origin::Tray => "Tray",
+        Origin::Cli => "CLI",
+        Origin::Schedule => "Automatic Day/Night",
+    }
+}
+
 /// A JSON string literal.
 fn json_str(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
@@ -1394,14 +1663,7 @@ fn vk_of(text: &str) -> Option<u16> {
     if chars.next().is_some() {
         return None;
     }
-    // With Shift held, Slint reports the shifted character ("!" for Shift+1): map the US-layout symbols back to
-    // their digit keys so Shift+digit shortcuts can be recorded.
-    if let Some(i) = ")!@#$%^&*(".find(c) {
-        return Some(0x30 + i as u16);
-    }
-    Some(match c {
-        'a'..='z' => c.to_ascii_uppercase() as u16,
-        'A'..='Z' | '0'..='9' => c as u16,
+    let named = match c {
         '\u{F700}' => 0x26, // Up
         '\u{F701}' => 0x28, // Down
         '\u{F702}' => 0x25, // Left
@@ -1413,8 +1675,35 @@ fn vk_of(text: &str) -> Option<u16> {
         '\u{F72B}' => 0x23, // End
         '\u{F72C}' => 0x21, // PageUp
         '\u{F72D}' => 0x22, // PageDown
-        _ => return None,
+        _ => 0,
+    };
+    if named != 0 {
+        return Some(named);
+    }
+    // Slint reports the character the key typed ("!" for Shift+1, "&" for 1 on AZERTY): ask the layout which key.
+    layout_vk(c).or(match c {
+        'a'..='z' => Some(c.to_ascii_uppercase() as u16),
+        'A'..='Z' | '0'..='9' => Some(c as u16),
+        _ => None,
     })
+}
+
+/// The letter or digit key that types `c` on the active keyboard layout (`VkKeyScanExW`).
+#[cfg(windows)]
+fn layout_vk(c: char) -> Option<u16> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayout, VkKeyScanExW};
+    let mut buf = [0u16; 2];
+    let &mut [unit] = c.encode_utf16(&mut buf) else { return None };
+    // SAFETY: plain Win32 calls with no pointers; layout 0 = this thread's.
+    let scan = unsafe { VkKeyScanExW(unit, GetKeyboardLayout(0)) };
+    let vk = (scan as u16) & 0xFF;
+    (scan != -1 && matches!(vk, 0x30..=0x39 | 0x41..=0x5A)).then_some(vk)
+}
+
+/// No layout API here: the US layout's shifted digits map back to their digit keys.
+#[cfg(not(windows))]
+fn layout_vk(c: char) -> Option<u16> {
+    ")!@#$%^&*(".find(c).map(|i| 0x30 + i as u16)
 }
 
 // -------------------------------------------------------------------------------------------------------------
@@ -1439,7 +1728,7 @@ fn wire(ui: &MainWindow) {
                 c.st.borrow_mut().retrying = true;
                 c.render();
                 c.send(Command::RequestReconnect);
-                slint::Timer::single_shot(Duration::from_secs(16), || {
+                c.retry_timer.start(slint::TimerMode::SingleShot, RETRY_FOR, || {
                     with(|c| {
                         c.st.borrow_mut().retrying = false;
                         c.render();

@@ -8,11 +8,18 @@ export global App {
     in property <string> status-glyph;
     in property <string> status-text;
     in property <bool> connected;
+    in property <bool> values-stale;            // read before the monitor was lost; not saved into presets
     in property <Banner> banner;
+    in property <bool> loading;                 // looking for the monitor: the banner shows progress
+    in property <string> disabled-reason;       // why cards are greyed out; "" = they aren't
+    in property <bool> has-controls;            // the monitor's controls are known
+    in property <string> empty-title;           // a tab with no controls shows this card
+    in property <string> empty-message;
 
     // Display tab
     in property <[InputItem]> inputs;
     in property <int> active-input: -1;
+    in property <string> input-note;            // the last input switch failed, and why
     in property <[RangeRow]> main-ranges;      // brightness, contrast
     in property <string> range-note;            // e.g. "This colour mode locks brightness"
     in property <[PresetRow]> presets;
@@ -21,11 +28,12 @@ export global App {
     in property <int> colour-revision;
     in property <bool> custom-colour-available;
     in property <string> custom-colour-hint;
+    in property <string> colour-note;           // the last colour change failed, and why
     in property <[RangeRow]> custom-colour;     // red, green, blue gain
 
     // Monitor tab
     in property <[ControlGroup]> monitor-groups;
-    in property <string> restore-text: "Put back the settings saved before the last reset";
+    in property <string> restore-text;
 
     // Finder sub-page (Monitor tab)
     in-out property <bool> finder-open;

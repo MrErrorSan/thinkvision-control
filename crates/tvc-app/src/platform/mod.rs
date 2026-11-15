@@ -18,13 +18,36 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-/// The 0.0.4 data folder, so settings carry over: `%APPDATA%\ThinkVisionControl` on Windows,
-/// `$XDG_CONFIG_HOME/ThinkVisionControl` or `~/.config/ThinkVisionControl` on Linux and macOS.
-/// Whether a process with this id is running (for stale crash markers). Stub: always true until w1-platform.
-pub fn process_alive(_pid: u32) -> bool {
-    true
+/// Whether a process with this id is running (for stale crash markers).
+#[cfg(windows)]
+pub fn process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ACCESS_DENIED, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    // SAFETY: the handle is checked and closed; plain out-parameter.
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() {
+            // It exists but isn't ours to query (a protected process).
+            return GetLastError() == ERROR_ACCESS_DENIED;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(process, &mut code) != 0;
+        CloseHandle(process);
+        ok && code == STILL_ACTIVE as u32
+    }
 }
 
+/// Whether a process with this id is running (for stale crash markers).
+#[cfg(unix)]
+pub fn process_alive(pid: u32) -> bool {
+    // 0 and negative ids would address process groups.
+    let Some(pid) = libc::pid_t::try_from(pid).ok().filter(|&p| p > 0) else { return false };
+    // SAFETY: signal 0 only checks that the process exists and may be signalled.
+    unsafe { libc::kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) }
+}
+
+/// The 0.0.4 data folder, so settings carry over: `%APPDATA%\ThinkVisionControl` on Windows,
+/// `$XDG_CONFIG_HOME/ThinkVisionControl` or `~/.config/ThinkVisionControl` on Linux and macOS.
 pub fn data_dir() -> PathBuf {
     #[cfg(windows)]
     let base = std::env::var_os("APPDATA")
