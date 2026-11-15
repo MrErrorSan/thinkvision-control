@@ -1,33 +1,27 @@
 //! DDC/CI over the kernel's i2c-dev nodes. A link from discovery is bound to one bus and checks on connect that its
-//! connector still shows the same EDID in sysfs; a [`MonitorMatch`] link finds the target by EDID (manufacturer +
-//! product code) at 0x50 on every bus. Either then talks MCCS at 0x37 with plain write/read. Each write–sleep–read
+//! connector still shows the same EDID in sysfs, then talks MCCS at 0x37 with plain write/read. Each write–sleep–read
 //! sequence holds an advisory `flock` on the device file (what ddcutil 2.x locks too), so cooperating DDC clients
 //! don't interleave on the bus.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
-use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use tvc_core::link::{AttachedDisplay, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
+use tvc_core::link::{LinkError, LinkFailure, MonitorLink, VcpReading};
 
-use super::discovery::{connector, connectors};
-use super::{bus_name, candidate_buses, connector_kind, edid_identity, is_ignorable_adapter, writes_once};
-use crate::{ascii, edid, not_connected, packet};
+use super::discovery::connector;
+use super::{bus_name, edid_identity, writes_once};
+use crate::{ascii, not_connected, packet};
 
 const REPLY_DELAY: Duration = Duration::from_millis(50); // spec minimum is 40 ms between request and reply
 const RETRY_GAP: Duration = Duration::from_millis(50);
 const READ_ATTEMPTS: u32 = 10; // ddcutil's write-read default
 const WRITE_ATTEMPTS: u32 = 4; // ddcutil's write-only default; 1 for `writes_once` codes
 const FRAGMENT_ATTEMPTS: u32 = 8; // ddcutil's multi-part default
-const PROBE_ATTEMPTS: u32 = 3;
 const MAX_CAPABILITIES_LEN: usize = 8192;
 const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
-const PROBE_CODE: u8 = 0x10; // brightness: every MCCS monitor answers it
-const EDID_ADDRESS: u16 = 0x50;
-const EDID_LEN: usize = 128;
 
 // <linux/i2c-dev.h>
 const I2C_SLAVE: u32 = 0x0703;
@@ -35,14 +29,8 @@ const I2C_SLAVE_FORCE: u32 = 0x0706;
 
 /// The i2c-dev link: one open device node while connected.
 pub(crate) struct I2cLink {
-    target: Target,
+    binding: Binding,
     held: Option<Bus>,
-}
-
-enum Target {
-    /// Any bus whose EDID matches (the pre-discovery path).
-    Match(MonitorMatch),
-    Bound(Binding),
 }
 
 /// One connector's bus as discovery listed it, with the identity it showed then.
@@ -62,12 +50,8 @@ struct Bus {
 }
 
 impl I2cLink {
-    pub(crate) fn new(target: MonitorMatch) -> Self {
-        I2cLink { target: Target::Match(target), held: None }
-    }
-
     pub(super) fn bound(binding: Binding) -> Self {
-        I2cLink { target: Target::Bound(binding), held: None }
+        I2cLink { binding, held: None }
     }
 
     /// Runs `op` on the held bus; a `Gone` result drops the fd so the next connect opens it afresh.
@@ -83,10 +67,7 @@ impl I2cLink {
 impl MonitorLink for I2cLink {
     fn connect(&mut self) -> Result<(), LinkFailure> {
         self.held = None;
-        self.held = Some(match &self.target {
-            Target::Match(target) => connect_matching(target)?,
-            Target::Bound(binding) => connect_bound(binding)?,
-        });
+        self.held = Some(connect_bound(&self.binding)?);
         Ok(())
     }
 
@@ -104,26 +85,6 @@ impl MonitorLink for I2cLink {
 
     fn write(&mut self, code: u8, value: u16) -> Result<(), LinkError> {
         self.with_bus(|bus| write_vcp(bus, code, value))
-    }
-
-    /// The connected DRM connectors, named from the EDID the kernel already read (no bus traffic, no permissions).
-    /// None when DRM lists no connectors (no KMS driver, e.g. nvidia without `modeset=1`).
-    fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
-        let wanted = match &self.target {
-            Target::Match(target) => &target.edid_id,
-            Target::Bound(binding) => &binding.edid_id,
-        };
-        let displays = connectors()?
-            .into_iter()
-            .map(|c| {
-                let edid_id = edid::id(&c.edid).unwrap_or_default();
-                let kind = connector_kind(&c.name, &edid_id);
-                let name = edid::display_name(&c.edid).unwrap_or_default();
-                let target = !edid_id.is_empty() && edid_id.eq_ignore_ascii_case(wanted);
-                AttachedDisplay { name, edid_id, kind, target }
-            })
-            .collect();
-        Some(displays)
     }
 }
 
@@ -145,58 +106,6 @@ fn connect_bound(binding: &Binding) -> Result<Bus, LinkFailure> {
         Err(e) if is_permission(errno_of(&e)) => Err(LinkFailure::PermissionDenied),
         Err(_) if device_nodes().is_empty() => Err(LinkFailure::ModuleMissing),
         Err(_) => Err(LinkFailure::NotFound),
-    }
-}
-
-/// Probes every candidate bus for `target`'s EDID at 0x50.
-fn connect_matching(target: &MonitorMatch) -> Result<Bus, LinkFailure> {
-    let Some((pnp, product)) = target.pnp_and_product() else {
-        return Err(LinkFailure::NotFound);
-    };
-
-    let nodes = device_nodes();
-    if nodes.is_empty() {
-        return Err(LinkFailure::ModuleMissing);
-    }
-
-    let linked = drm_ddc_links();
-    let probe: Vec<&String> = nodes
-        .iter()
-        .filter(|d| linked.iter().any(|l| l == bus_name(d)) || !is_ignorable_adapter(&adapter_name(d)))
-        .collect();
-
-    let mut permission_denied = false;
-    let mut matches = Vec::new();
-    for bus in candidate_buses(&probe, &linked) {
-        match read_edid(&bus) {
-            Ok(Some(data)) if edid::matches(&data, pnp, product) => matches.push(bus),
-            Err(e) if is_permission(e) => permission_denied = true,
-            _ => {}
-        }
-    }
-
-    // Behind an MST hub the same EDID can show up on more than one bus while only one carries DDC/CI:
-    // keep the first that answers a brightness read, else the first that opened.
-    let mut opened = Vec::new();
-    for path in &matches {
-        let file = match open_rw(path) {
-            Ok(f) => f,
-            Err(e) => {
-                permission_denied |= is_permission(errno_of(&e));
-                continue;
-            }
-        };
-        let bus = Bus { file, path: path.clone() };
-        if matches.len() == 1 || probe_bus(&bus) {
-            return Ok(bus);
-        }
-        opened.push(bus);
-    }
-    // The rest close on drop.
-    match opened.into_iter().next() {
-        Some(bus) => Ok(bus),
-        None if permission_denied => Err(LinkFailure::PermissionDenied),
-        None => Err(LinkFailure::NotFound),
     }
 }
 
@@ -332,19 +241,6 @@ fn read_capabilities(bus: &Bus) -> Result<String, LinkError> {
     Ok(ascii(&text).trim_end_matches('\0').to_owned())
 }
 
-/// Does the bus answer a Get VCP brightness? Used only to choose between buses with the same EDID.
-fn probe_bus(bus: &Bus) -> bool {
-    let Ok(_lock) = lock(bus) else { return false };
-    let request = request(&packet::get_vcp(PROBE_CODE, true));
-    let mut reply = [0u8; packet::VCP_REPLY_LEN];
-    (1..=PROBE_ATTEMPTS).any(|attempt| {
-        if attempt > 1 {
-            sleep(RETRY_GAP);
-        }
-        transaction(&bus.file, &request, &mut reply).is_ok() && packet::parse_vcp_reply(&reply, PROBE_CODE).is_some()
-    })
-}
-
 /// A command that ran out of attempts. A final bus error means the bus stopped acknowledging or vanished: `Gone`, so
 /// the link drops the fd and the engine reconnects. Anything else is worth retrying.
 fn fail(message: String, last_errno: i32) -> LinkError {
@@ -429,26 +325,7 @@ fn lock(bus: &Bus) -> Result<BusLock<'_>, LinkError> {
     }
 }
 
-/// Reads the 128-byte EDID base block at 0x50: `I2C_SLAVE 0x50`, write offset `00`, read 128. A bad checksum (a noisy
-/// bus) is read once more; the second read is used as it comes, since some monitors ship a wrong checksum. `Ok(None)`
-/// on a short read; `Err(errno)` when a call fails.
-fn read_edid(device: &str) -> Result<Option<Vec<u8>>, i32> {
-    let file = open_rw(device).map_err(|e| errno_of(&e))?;
-    let mut data = vec![0u8; EDID_LEN];
-    for _ in 0..2 {
-        set_slave(&file, EDID_ADDRESS)?;
-        write_all(&file, &[0x00])?;
-        if (&file).read(&mut data).map_err(|e| errno_of(&e))? != EDID_LEN {
-            return Ok(None);
-        }
-        if edid::checksum_ok(&data) {
-            break;
-        }
-    }
-    Ok(Some(data))
-}
-
-// ----- discovery -----
+// ----- device nodes -----
 
 /// All `/dev/i2c-*` nodes; none means the i2c-dev module isn't loaded.
 fn device_nodes() -> Vec<String> {
@@ -459,22 +336,6 @@ fn device_nodes() -> Vec<String> {
         .filter(|name| name.starts_with("i2c-"))
         .map(|name| format!("/dev/{name}"))
         .collect()
-}
-
-/// The adapter names (`i2c-N`) that `/sys/class/drm/*/ddc` symlinks point at.
-fn drm_ddc_links() -> Vec<String> {
-    let Ok(entries) = fs::read_dir("/sys/class/drm") else { return Vec::new() };
-    entries
-        .flatten()
-        .filter_map(|e| fs::read_link(e.path().join("ddc")).ok())
-        .filter_map(|target| target.file_name()?.to_str().map(str::to_owned))
-        .filter(|name| name.starts_with("i2c-"))
-        .collect()
-}
-
-fn adapter_name(device: &str) -> String {
-    let path = Path::new("/sys/bus/i2c/devices").join(bus_name(device)).join("name");
-    fs::read_to_string(path).map(|s| s.trim().to_owned()).unwrap_or_default()
 }
 
 // ----- errno helpers -----

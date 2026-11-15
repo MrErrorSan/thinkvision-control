@@ -5,7 +5,10 @@ use std::collections::BTreeMap;
 use crate::hotkey::{Action, Gesture};
 use crate::profile::{ControlDefinition, ControlKind, ProfileStore, SafetyClass, Section};
 use crate::schedule::{AutoMode, Phase};
-use crate::store::{BackupStore, CapabilitiesCache, Preset, Settings, SettingsStore, DEFAULT_AUTO_TIMES};
+use crate::identity::{MonitorId, MonitorIdentity};
+use crate::store::{
+    BackupStore, CapabilitiesCache, HotkeyTarget, MonitorSettings, Preset, Settings, SettingsStore, DEFAULT_AUTO_TIMES,
+};
 
 use super::TempDir;
 
@@ -490,4 +493,175 @@ fn linux_old_default_shortcuts_migrate() {
 
     assert_eq!(loaded.hotkeys[&Action::InputHdmi], "Ctrl+Win+1");
     assert_eq!(loaded.hotkeys[&Action::InputDp], "Ctrl+Shift+Win+D");
+}
+
+fn id(s: &str) -> MonitorId {
+    MonitorId(s.into())
+}
+
+fn len62a2() -> MonitorIdentity {
+    MonitorIdentity { edid_id: "LEN62A2".into(), serial: Some("V1".into()), connector: None }
+}
+
+/// A 0.0.8 file: no `"LegacyAdopted"`, an input and preset colour modes set for the P32p-20.
+fn legacy_settings() -> Settings {
+    let dir = TempDir::new();
+    let mut s = Settings { this_machine_input: 0x0F, ..Settings::default() };
+    s.day.colour_mode = Some(0x0B);
+    s.night.colour_mode = Some(0x08);
+    SettingsStore::new(dir.path()).save(&s).unwrap();
+    let path = dir.path().join("settings.json");
+    let mut json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    json.as_object_mut().unwrap().remove("LegacyAdopted");
+    std::fs::write(&path, json.to_string()).unwrap();
+    SettingsStore::new(dir.path()).load()
+}
+
+#[test]
+fn monitor_inherits_without_colour_mode() {
+    let mut s = Settings { this_machine_input: 0x31, ..Settings::default() };
+    s.day = Preset { name: "Day".into(), brightness: 55, contrast: 65, colour_mode: Some(0x0B) };
+
+    let m = s.monitor(&id("DEL4321-SX"));
+
+    assert_eq!(m, MonitorSettings {
+        name: None,
+        this_machine_input: 0x31,
+        day: Preset { name: "Day".into(), brightness: 55, contrast: 65, colour_mode: None },
+        night: s.night.clone(),
+        included: true,
+        offset: 0,
+        last_applied_phase: None,
+    });
+}
+
+#[test]
+fn monitors_round_trip() {
+    let dir = TempDir::new();
+    let store = SettingsStore::new(dir.path());
+    let mut saved = Settings { hotkey_target: HotkeyTarget::UnderPointer, legacy_adopted: false, ..Settings::default() };
+    let entry = MonitorSettings {
+        name: Some("Left".into()),
+        this_machine_input: 0x0F,
+        day: Preset { name: "Day".into(), brightness: 80, contrast: 60, colour_mode: Some(0x0B) },
+        night: Preset { name: "Night".into(), brightness: 10, contrast: 50, colour_mode: None },
+        included: false,
+        offset: -15,
+        last_applied_phase: Some(Phase::Night),
+    };
+    saved.monitors.insert(id("LEN62A2-SV1"), entry.clone());
+    saved.monitors.insert(id("DEL4321-PDP-2"), saved.monitor(&id("DEL4321-PDP-2")));
+    let mut with_unstable = saved.clone();
+    with_unstable.monitors.insert(id("ACR0001-N1"), entry);
+    store.save(&with_unstable).unwrap();
+
+    let loaded = store.load();
+
+    assert_eq!(loaded, saved);
+    let text = std::fs::read_to_string(dir.path().join("settings.json")).unwrap();
+    assert!(!text.contains("ACR0001-N1"), "{text}");
+    assert!(text.contains(r#""HotkeyTarget": "UnderPointer""#) && text.contains(r#""LegacyAdopted": false"#), "{text}");
+}
+
+#[test]
+fn malformed_monitor_entry_is_skipped_never_corrupt() {
+    for value in ["42", "null", "[]", r#""LEN62A2-SV1""#] {
+        let (dir, s) = load_with_field("Monitors", value);
+        assert!(s.monitors.is_empty(), "{value}");
+        assert_eq!(s.day, Settings::default().day, "{value}");
+        assert!(!dir.path().join("settings.json.bak").exists(), "{value}");
+    }
+    let (dir, s) = load_with_field("Monitors",
+        r#"{ "LEN62A2-SV1": 42, "DEL4321-SX": { "Offset": "far" }, "": {}, "DEL4321-SY": { "Offset": 5 } }"#);
+    assert_eq!(s.monitors.keys().cloned().collect::<Vec<_>>(), [id("DEL4321-SY")]);
+    assert_eq!(s.monitors[&id("DEL4321-SY")].offset, 5);
+    assert!(!dir.path().join("settings.json.bak").exists());
+}
+
+#[test]
+fn partial_monitor_entry_inherits_missing_fields() {
+    let dir = TempDir::new();
+    let json = r#"{ "ThisMachineInput": "0x31",
+        "Day": { "Name": "Day", "Brightness": 33, "Contrast": 44, "ColourMode": "0x0B" },
+        "Monitors": { "DEL4321-SX": { "Name": "Right", "Offset": 7, "LastAppliedPhase": "day" } } }"#;
+    std::fs::write(dir.path().join("settings.json"), json).unwrap();
+
+    let s = SettingsStore::new(dir.path()).load();
+
+    let m = &s.monitors[&id("DEL4321-SX")];
+    assert_eq!((m.name.as_deref(), m.offset, m.last_applied_phase), (Some("Right"), 7, Some(Phase::Day)));
+    assert_eq!((m.this_machine_input, m.included), (0x31, true));
+    assert_eq!(m.day, Preset { name: "Day".into(), brightness: 33, contrast: 44, colour_mode: None });
+    assert_eq!(m.night, Settings::default().night);
+}
+
+#[test]
+fn hotkey_target_lenient() {
+    let cases = [(r#""UnderPointer""#, HotkeyTarget::UnderPointer), (r#"" underpointer ""#, HotkeyTarget::UnderPointer),
+        (r#""All""#, HotkeyTarget::All), (r#""Mouse""#, HotkeyTarget::All), ("3", HotkeyTarget::All),
+        ("null", HotkeyTarget::All)];
+    for (value, expected) in cases {
+        let (dir, s) = load_with_field("HotkeyTarget", value);
+        assert_eq!(s.hotkey_target, expected, "{value}");
+        assert!(!dir.path().join("settings.json.bak").exists(), "{value}");
+    }
+}
+
+#[test]
+fn adopt_legacy_once_into_first_len62a2() {
+    let mut s = legacy_settings();
+    assert!(!s.legacy_adopted);
+
+    assert!(s.adopt_legacy(&id("LEN62A2-SV1"), &len62a2()));
+
+    let m = &s.monitors[&id("LEN62A2-SV1")];
+    assert_eq!((m.this_machine_input, m.day.colour_mode, m.night.colour_mode), (0x0F, Some(0x0B), Some(0x08)));
+    assert!(s.legacy_adopted);
+    assert_eq!((s.this_machine_input, s.day.colour_mode), (0x0F, Some(0x0B))); // the app-wide fields stay
+    let second = MonitorIdentity { serial: Some("V2".into()), ..len62a2() };
+    assert!(!s.adopt_legacy(&id("LEN62A2-SV2"), &second));
+    assert!(!s.monitors.contains_key(&id("LEN62A2-SV2")));
+}
+
+#[test]
+fn adopt_legacy_keeps_the_rest_of_an_existing_entry() {
+    let mut s = legacy_settings();
+    let mut entry = s.monitor(&id("LEN62A2-SV1"));
+    entry.name = Some("Desk".into());
+    entry.offset = 4;
+    s.monitors.insert(id("LEN62A2-SV1"), entry);
+
+    assert!(s.adopt_legacy(&id("LEN62A2-SV1"), &len62a2()));
+
+    let m = &s.monitors[&id("LEN62A2-SV1")];
+    assert_eq!((m.name.as_deref(), m.offset, m.day.colour_mode), (Some("Desk"), 4, Some(0x0B)));
+}
+
+#[test]
+fn adopt_legacy_skips_unstable_and_other_models() {
+    let mut s = legacy_settings();
+    let unstable = MonitorIdentity { serial: None, ..len62a2() };
+    assert!(!s.adopt_legacy(&id("LEN62A2-N1"), &unstable));
+    let dell = MonitorIdentity { edid_id: "DEL4321".into(), ..len62a2() };
+    assert!(!s.adopt_legacy(&id("DEL4321-SV1"), &dell));
+    let lenovo = MonitorIdentity { edid_id: "LEN66B1".into(), ..len62a2() };
+    assert!(!s.adopt_legacy(&id("LEN66B1-SV1"), &lenovo));
+
+    assert!(s.monitors.is_empty());
+    assert!(!s.legacy_adopted);
+    assert!(s.adopt_legacy(&id("LEN62A2-PDP-1"), &len62a2())); // still waiting for a stable LEN62A2
+}
+
+#[test]
+fn new_install_needs_no_adoption() {
+    let dir = TempDir::new();
+    let store = SettingsStore::new(dir.path());
+    assert!(store.load().legacy_adopted);
+    store.save(&Settings::default()).unwrap();
+
+    let mut s = store.load();
+
+    assert!(s.legacy_adopted);
+    assert!(!s.adopt_legacy(&id("LEN62A2-SV1"), &len62a2()));
+    assert!(s.monitors.is_empty());
 }

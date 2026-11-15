@@ -1,5 +1,5 @@
 //! Per-OS DDC/CI backends behind `tvc_core::link::MonitorLink`: dxva2 on Windows, i2c-dev on Linux, IOAVService on
-//! macOS (Apple Silicon). [`open`] picks the one for the OS this was built for.
+//! macOS (Apple Silicon). [`discovery`] picks the one for the OS this was built for.
 //!
 //! The pure parts (packet framing, EDID, Linux bus ordering, macOS service rules) compile everywhere so their tests run
 //! on any OS; only the FFI modules are `cfg`-gated.
@@ -12,9 +12,13 @@ pub mod packet;
 
 #[cfg(windows)]
 mod dxva2;
+// The pure half of the Windows join, so its tests run on every OS.
+#[cfg(all(test, not(windows)))]
+#[path = "dxva2/join.rs"]
+mod dxva2_join;
 
 use tvc_core::identity::{BackendKind, Discovery, DisplayInfo, ListError};
-use tvc_core::link::{DisplayKind, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading};
+use tvc_core::link::{DisplayKind, LinkError, LinkFailure, MonitorLink};
 
 /// Every display this OS reports, external monitors through the OS's DDC backend plus built-in panels through
 /// [`backlight`]. Targets starting with [`backlight::TARGET_PREFIX`] belong to the backlight backend.
@@ -73,22 +77,6 @@ impl Discovery for NoDiscovery {
     }
 }
 
-/// The DDC link for this OS. Never fails: [`MonitorLink::connect`] reports what's wrong.
-pub fn open(target: MonitorMatch) -> Box<dyn MonitorLink> {
-    #[cfg(windows)]
-    let link = dxva2::Dxva2Link::new(target);
-    #[cfg(target_os = "linux")]
-    let link = linux::I2cLink::new(target);
-    #[cfg(target_os = "macos")]
-    let link = macos::IoAvLink::new(target);
-    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-    let link = {
-        let _ = target;
-        NoLink
-    };
-    Box::new(link)
-}
-
 /// The error every backend returns while it holds no connection.
 pub(crate) fn not_connected() -> LinkError {
     LinkError::Gone("monitor not connected".into())
@@ -99,35 +87,15 @@ pub(crate) fn ascii(bytes: &[u8]) -> String {
     bytes.iter().map(|&b| if b.is_ascii() { b as char } else { '?' }).collect()
 }
 
-/// The link on an OS without a backend: never finds the monitor.
-#[allow(dead_code)]
-struct NoLink;
-
-impl MonitorLink for NoLink {
-    fn connect(&mut self) -> Result<(), LinkFailure> {
-        Err(LinkFailure::NotFound)
-    }
-    fn disconnect(&mut self) {}
-    fn capabilities(&mut self) -> Result<String, LinkError> {
-        Err(not_connected())
-    }
-    fn read(&mut self, _code: u8) -> Result<VcpReading, LinkError> {
-        Err(not_connected())
-    }
-    fn write(&mut self, _code: u8, _value: u16) -> Result<(), LinkError> {
-        Err(not_connected())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn no_link_is_never_found() {
-        let mut link = NoLink;
-        assert_eq!(link.connect(), Err(LinkFailure::NotFound));
-        assert!(matches!(link.read(0x10), Err(LinkError::Gone(_))));
+    fn no_discovery_lists_and_opens_nothing() {
+        let mut d = NoDiscovery;
+        assert_eq!(d.enumerate(), Err(ListError::Unsupported));
+        assert!(matches!(d.open("x"), Err(LinkFailure::NotFound)));
     }
 
     #[test]

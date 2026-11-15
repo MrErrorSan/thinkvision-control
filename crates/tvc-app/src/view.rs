@@ -155,6 +155,30 @@ pub fn header_name(st: &State) -> String {
     }
 }
 
+/// A display the OS reports, for explaining why the monitor can't be used.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttachedDisplay {
+    /// The name the display gives itself; empty when it gives none.
+    pub name: String,
+    /// PNP manufacturer id + product code ("LEN62A2"); empty when unknown.
+    pub edid_id: String,
+    pub kind: DisplayKind,
+    /// True for the monitor the window controls: there, but it couldn't be reached.
+    pub tracked: bool,
+}
+
+impl AttachedDisplay {
+    /// The name the display gives, else what kind it is (with its EDID id when known).
+    pub fn label(&self) -> String {
+        match (self.name.trim(), self.edid_id.as_str(), self.kind) {
+            ("", _, DisplayKind::BuiltIn) => "the built-in display".into(),
+            ("", "", _) => "an unnamed display".into(),
+            ("", id, _) => format!("a display ({id})"),
+            (name, _, _) => name.into(),
+        }
+    }
+}
+
 /// What a `NotFound` means, worked out from the displays the OS reports.
 pub struct NotFound {
     /// The header's title when no monitor name is known.
@@ -176,7 +200,7 @@ pub fn not_found(st: &State) -> NotFound {
             message: "Connect a display that supports DDC/CI and it will be found automatically.".into(),
         };
     };
-    if let Some(found) = displays.iter().find(|d| d.target) {
+    if let Some(found) = displays.iter().find(|d| d.tracked) {
         let label = if name.is_empty() { found.label() } else { name };
         return NotFound {
             header: "Display can't be reached",
@@ -243,7 +267,7 @@ pub fn status_line(st: &State) -> (&'static str, String) {
 
 /// About: the display's own name (as it reported it over DDC/CI, else its EDID name) and how far the app supports it.
 fn about_text(st: &State) -> String {
-    let edid = st.displays.iter().flatten().find(|d| d.target).map(|d| d.name.trim().to_owned());
+    let edid = st.displays.iter().flatten().find(|d| d.tracked).map(|d| d.name.trim().to_owned());
     let name = Some(monitor_name(st)).into_iter().chain(edid).find(|n| !n.is_empty());
     // Every display is Verified until support levels are worked out per display.
     name.into_iter()

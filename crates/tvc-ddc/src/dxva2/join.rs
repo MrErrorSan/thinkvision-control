@@ -60,6 +60,75 @@ mod tests {
     #[test]
     fn edid_id_is_the_second_path_segment() {
         assert_eq!(edid_id_from_path(PATH).as_deref(), Some("LEN62A2"));
+        assert_eq!(edid_id_from_path(r"\\?\display#len62a2#5&1&0&UID1#{x}").as_deref(), Some("LEN62A2"));
+        assert_eq!(edid_id_from_path(r"\\?\DISPLAY#Default_Monitor#1&2&0&UID0#{x}"), None);
+        assert_eq!(edid_id_from_path(r"\\?\DISPLAY#LEN62G2#1&2&0&UID0#{x}"), None); // G isn't hex
+        assert_eq!(edid_id_from_path(r"\\?\DISPLAY#LE162A2#1&2&0&UID0#{x}"), None); // digit in the vendor
+        assert_eq!(edid_id_from_path(r"\\?\DISPLAY#LEN62A20#1&2&0&UID0#{x}"), None); // five-digit product
         assert_eq!(edid_id_from_path("garbage"), None);
+    }
+
+    #[test]
+    fn instance_key_is_the_registry_path_of_the_device() {
+        assert_eq!(instance_key(PATH).as_deref(), Some(r"DISPLAY\LEN62A2\5&2a1b&0&UID4352"));
+        assert_eq!(instance_key(r"DISPLAY#LEN62A2#5&2a1b&0&UID4352#{x}"), None); // no \\?\ prefix
+        assert_eq!(instance_key(r"\\?\DISPLAY#LEN62A2#5&2a1b&0&UID4352"), None); // no interface segment
+        assert_eq!(instance_key(r"\\?\DISPLAY#LEN62A2#5&2a1b#0#{x}"), None); // too many segments
+        assert_eq!(instance_key(r"\\?\DISPLAY##5&2a1b&0&UID4352#{x}"), None); // empty segment
+        assert_eq!(instance_key(r"\\?\DISPLAY#..\..\SAM#5&2a1b&0&UID4352#{x}"), None); // can't climb the key
+    }
+
+    #[test]
+    fn connector_is_the_instance_segment() {
+        assert_eq!(connector(PATH).as_deref(), Some("5&2a1b&0&UID4352"));
+        assert_eq!(connector(r"\\?\DISPLAY#DEL4123#5&2a1b&0&UID4353#{x}").as_deref(), Some("5&2a1b&0&UID4353"));
+        assert_eq!(connector("garbage"), None);
+        assert_eq!(connector(""), None);
+    }
+
+    #[test]
+    fn edid_ids_swap_the_vendor_bytes_only() {
+        // EDID bytes 8–11 of the P32p-20 are 30 AE A2 62; DisplayConfig reads both pairs little-endian.
+        assert_eq!(edid_id_from_ids(u16::from_le_bytes([0x30, 0xAE]), u16::from_le_bytes([0xA2, 0x62])).as_deref(), Some("LEN62A2"));
+        assert_eq!(edid_id_from_ids(0xAE30, 0x0001).as_deref(), Some("LEN0001"));
+        assert_eq!(edid_id_from_ids(0xAC10, 0x4123).as_deref(), Some("DEL4123"));
+        assert_eq!(edid_id_from_ids(0, 0x62A2), None); // no letters
+    }
+
+    fn strings(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn one_physical_monitor_for_one_target_pairs_directly() {
+        assert_eq!(pick_physical(&strings(&["Generic PnP Monitor"]), &["P32p-20"], "P32p-20"), Some(0));
+        assert_eq!(pick_physical(&strings(&["Generic PnP Monitor"]), &[""], ""), Some(0));
+    }
+
+    #[test]
+    fn a_clone_pairs_by_its_unique_description() {
+        let descriptions = strings(&["DELL U2720Q", "P32p-20"]);
+        assert_eq!(pick_physical(&descriptions, &["DELL U2720Q", "P32p-20"], "P32p-20"), Some(1));
+        assert_eq!(pick_physical(&descriptions, &["DELL U2720Q", "P32p-20"], "DELL U2720Q"), Some(0));
+        // Case and surrounding spaces don't matter.
+        assert_eq!(pick_physical(&strings(&["dell u2720q ", "p32p-20"]), &["DELL U2720Q", " P32p-20"], " P32P-20 "), Some(1));
+        // One physical monitor shared by two targets: only the name that is its description pairs.
+        assert_eq!(pick_physical(&strings(&["P32p-20"]), &["P32p-20", "DELL U2720Q"], "P32p-20"), Some(0));
+        assert_eq!(pick_physical(&strings(&["P32p-20"]), &["P32p-20", "DELL U2720Q"], "DELL U2720Q"), None);
+    }
+
+    #[test]
+    fn an_ambiguous_clone_gives_none() {
+        // Two identical monitors cloned: the name isn't unique among the targets.
+        let twins = strings(&["P32p-20", "P32p-20"]);
+        assert_eq!(pick_physical(&twins, &["P32p-20", "P32p-20"], "P32p-20"), None);
+        // Unique names, but two descriptions match.
+        assert_eq!(pick_physical(&twins, &["P32p-20", "DELL U2720Q"], "P32p-20"), None);
+        // No description matches.
+        let generic = strings(&["Generic PnP Monitor", "Generic PnP Monitor"]);
+        assert_eq!(pick_physical(&generic, &["P32p-20", "DELL U2720Q"], "P32p-20"), None);
+        // No name to go by.
+        assert_eq!(pick_physical(&strings(&["A", "B"]), &["", "B"], ""), None);
+        assert_eq!(pick_physical(&[], &["P32p-20"], "P32p-20"), None);
     }
 }

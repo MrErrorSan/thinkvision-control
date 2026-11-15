@@ -1,4 +1,4 @@
-//! Linux i2c-dev backend. The bus-selection rules here are pure and compile on every OS; the link itself is Linux-only.
+//! Linux i2c-dev backend. The connector and bus rules here are pure and compile on every OS; the link itself is Linux-only.
 
 #[cfg(target_os = "linux")]
 mod discovery;
@@ -6,8 +6,6 @@ mod discovery;
 mod i2c;
 #[cfg(target_os = "linux")]
 pub(crate) use discovery::LinuxDiscovery;
-#[cfg(target_os = "linux")]
-pub(crate) use i2c::I2cLink;
 
 use std::cmp::Ordering;
 
@@ -15,30 +13,6 @@ use tvc_core::identity::{BackendKind, DisplayInfo, MonitorIdentity};
 use tvc_core::link::{is_virtual_vendor, DisplayKind};
 
 use crate::edid;
-
-/// Adapter-name prefixes (`/sys/bus/i2c/devices/i2c-N/name`) that are never a display's DDC lines, as ddcutil matches
-/// them. Probing these would write an address byte to unrelated chips (SPD EEPROMs sit at 0x50 on SMBus).
-const IGNORABLE_ADAPTER_PREFIXES: [&str; 8] =
-    ["SMBus", "i2c-designware", "Synopsys DesignWare", "AMDGPU SMU", "smu", "soc:i2cdsi", "mac-io", "u4"];
-
-/// True for adapter names that are never a display's DDC bus (SMBus controllers and the like).
-pub fn is_ignorable_adapter(adapter_name: &str) -> bool {
-    IGNORABLE_ADAPTER_PREFIXES.iter().any(|p| adapter_name.starts_with(p))
-}
-
-/// Orders the buses to probe: those named by a `/sys/class/drm/*/ddc` link first, then the rest; each group sorted by
-/// bus number. `devices` are device nodes (`/dev/i2c-4`, or a bare `i2c-4`) and are returned as given, deduplicated;
-/// `linked` are the adapter names the drm `ddc` links point at (`i2c-4`).
-pub fn candidate_buses<D: AsRef<str>, L: AsRef<str>>(devices: &[D], linked: &[L]) -> Vec<String> {
-    let is_linked = |device: &str| linked.iter().any(|l| bus_name(l.as_ref()) == bus_name(device));
-    let mut buses: Vec<String> = devices.iter().map(|d| d.as_ref().to_owned()).collect();
-    buses.sort_by(|a, b| {
-        let key = |d: &str| (!is_linked(d), bus_number(d).unwrap_or(u32::MAX));
-        key(a).cmp(&key(b)).then_with(|| a.cmp(b))
-    });
-    buses.dedup();
-    buses
-}
 
 /// `/dev/i2c-4` → `i2c-4`.
 pub fn bus_name(device_or_name: &str) -> &str {
@@ -142,15 +116,7 @@ fn bus_number(device: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn bus_order_prefers_drm_ddc_links_then_numeric() {
-        let buses = candidate_buses(
-            &["/dev/i2c-10", "/dev/i2c-2", "/dev/i2c-1", "/dev/i2c-7", "/dev/i2c-3", "/dev/i2c-2"],
-            &["i2c-7", "i2c-3", "i2c-99"],
-        );
-        assert_eq!(buses, ["/dev/i2c-3", "/dev/i2c-7", "/dev/i2c-1", "/dev/i2c-2", "/dev/i2c-10"]);
-    }
+    use crate::edid::testing::p32p20;
 
     #[test]
     fn connectors_sort_into_built_in_external_and_virtual() {
@@ -162,9 +128,111 @@ mod tests {
     }
 
     #[test]
-    fn memory_and_sensor_buses_are_skipped() {
-        assert!(is_ignorable_adapter("SMBus I801 adapter at efa0"));
-        assert!(!is_ignorable_adapter("i915 gmbus dpb"));
-        assert!(!is_ignorable_adapter("AMDGPU DM i2c hw bus 1"));
+    fn connector_port_is_the_name_after_the_card() {
+        assert_eq!(connector_port("card0-DP-2"), Some("DP-2"));
+        assert_eq!(connector_port("card1-eDP-1"), Some("eDP-1"));
+        assert_eq!(connector_port("card10-HDMI-A-1"), Some("HDMI-A-1"));
+        assert_eq!(connector_port("card0"), None);
+        assert_eq!(connector_port("renderD128"), None);
+        assert_eq!(connector_port("version"), None);
+        assert_eq!(connector_port("card-DP-1"), None);
+        assert_eq!(connector_port("cardX-DP-1"), None);
+        assert_eq!(connector_port("card0-"), None);
+        assert_eq!(connector_port("eDP-1"), None);
+    }
+
+    #[test]
+    fn connector_label_keeps_the_card_only_when_the_port_repeats() {
+        let one_gpu = ["card0-DP-1", "card0-DP-2", "card0-HDMI-A-1", "card0", "renderD128"];
+        assert_eq!(connector_label("card0-DP-1", &one_gpu), "DP-1");
+        assert_eq!(connector_label("card0-HDMI-A-1", &one_gpu), "HDMI-A-1");
+        let two_gpus = ["card0-DP-1", "card1-DP-1", "card1-eDP-1"];
+        assert_eq!(connector_label("card0-DP-1", &two_gpus), "card0-DP-1");
+        assert_eq!(connector_label("card1-DP-1", &two_gpus), "card1-DP-1");
+        assert_eq!(connector_label("card1-eDP-1", &two_gpus), "eDP-1");
+        // The connector itself needn't be in the list, and `all` may be empty (a reconnect check).
+        assert_eq!(connector_label("card2-DP-3", &[]), "DP-3");
+        assert_eq!(connector_label("card2-DP-1", &two_gpus), "card2-DP-1");
+    }
+
+    #[test]
+    fn bus_from_link_takes_only_an_i2c_adapter() {
+        assert_eq!(bus_from_link("../../../i2c-5"), Some("i2c-5"));
+        assert_eq!(bus_from_link("../../../../devices/pci0000:00/0000:00:02.0/i2c-12"), Some("i2c-12"));
+        assert_eq!(bus_from_link("../../i2c-5/"), Some("i2c-5"));
+        assert_eq!(bus_from_link("../../i2c-dev"), None);
+        assert_eq!(bus_from_link("../../card0"), None);
+        assert_eq!(bus_from_link(""), None);
+    }
+
+    #[test]
+    fn bus_from_children_takes_the_lowest_numbered_adapter() {
+        let entries = ["edid", "i2c-7", "status", "i2c-3", "drm_dp_aux0", "ddc"];
+        assert_eq!(bus_from_children(entries), Some("i2c-3"));
+        assert_eq!(bus_from_children(["i2c-10", "i2c-9"]), Some("i2c-9"));
+        assert_eq!(bus_from_children(["edid", "i2c-dev", "status"]), None);
+        assert_eq!(bus_from_children([]), None);
+    }
+
+    #[test]
+    fn edid_identity_needs_a_header() {
+        assert_eq!(edid_identity(&p32p20(1234, None)), ("LEN62A2".into(), Some("1234".into())));
+        assert_eq!(edid_identity(&p32p20(0, None)), ("LEN62A2".into(), None));
+        assert_eq!(edid_identity(&[]), (String::new(), None));
+        let mut no_header = p32p20(1234, None);
+        no_header[0] = 0x01;
+        assert_eq!(edid_identity(&no_header), (String::new(), None));
+    }
+
+    #[test]
+    fn display_info_drives_an_external_display_with_a_bus() {
+        let info = display_info("card0-DP-2", "DP-2".into(), &p32p20(1234, Some("P32p-20")), Some("i2c-5"));
+        assert_eq!(info.target, "/dev/i2c-5");
+        let identity =
+            MonitorIdentity { edid_id: "LEN62A2".into(), serial: Some("1234".into()), connector: Some("DP-2".into()) };
+        assert_eq!(info.identity, identity);
+        assert_eq!(info.name, "P32p-20");
+        assert_eq!(info.kind, DisplayKind::External);
+        assert_eq!(info.backend, BackendKind::Ddc);
+    }
+
+    #[test]
+    fn display_info_without_a_bus_targets_the_connector() {
+        let info = display_info("card0-DP-2", "DP-2".into(), &[], None);
+        assert_eq!(info.target, "card0-DP-2");
+        assert_eq!(info.identity, MonitorIdentity { edid_id: String::new(), serial: None, connector: Some("DP-2".into()) });
+        assert_eq!(info.name, "");
+        assert_eq!(info.kind, DisplayKind::External);
+        assert_eq!(info.backend, BackendKind::None);
+    }
+
+    #[test]
+    fn built_in_and_virtual_displays_are_not_ddc() {
+        let panel = display_info("card1-eDP-1", "eDP-1".into(), &[], Some("i2c-2"));
+        assert_eq!((panel.kind, panel.backend), (DisplayKind::BuiltIn, BackendKind::None));
+        assert_eq!(panel.target, "/dev/i2c-2");
+        let virtio = display_info("card0-Virtual-1", "Virtual-1".into(), &[], Some("i2c-0"));
+        assert_eq!((virtio.kind, virtio.backend), (DisplayKind::Virtual, BackendKind::None));
+        // A hypervisor's EDID on an ordinary-looking port.
+        let qemu = edid::testing::edid([0x49, 0x14, 0x34, 0x12], 0, None); // RHT1234
+        let vm = display_info("card0-HDMI-A-1", "HDMI-A-1".into(), &qemu, Some("i2c-1"));
+        assert_eq!(vm.identity.edid_id, "RHT1234");
+        assert_eq!((vm.kind, vm.backend), (DisplayKind::Virtual, BackendKind::None));
+    }
+
+    #[test]
+    fn writes_once_covers_input_and_resets() {
+        for code in [0x04, 0x05, 0x08, 0x60] {
+            assert!(writes_once(code), "0x{code:02X}");
+        }
+        assert!(!writes_once(0x10));
+        assert!(!writes_once(0x12));
+    }
+
+    #[test]
+    fn connectors_sort_naturally() {
+        let mut names = vec!["card0-DP-10", "card1-DP-1", "card0-DP-2", "card0-HDMI-A-1"];
+        names.sort_by(|a, b| connector_order(a, b));
+        assert_eq!(names, ["card0-DP-2", "card0-DP-10", "card0-HDMI-A-1", "card1-DP-1"]);
     }
 }

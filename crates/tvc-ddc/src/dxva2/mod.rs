@@ -1,6 +1,6 @@
 //! DDC/CI over dxva2. One enumeration finds every display: each active QueryDisplayConfig target, its GDI source
-//! (`\\.\DISPLAY1`), the HMONITOR with that device name, and that HMONITOR's physical monitor. A link is bound either
-//! to a monitor device path ([`Dxva2Discovery`]) or, until the app moves to discovery, to a [`MonitorMatch`].
+//! (`\\.\DISPLAY1`), the HMONITOR with that device name, and that HMONITOR's physical monitor. [`Dxva2Discovery`]
+//! binds each link to one monitor device path.
 //! dxva2 has no permission or driver failure modes worth surfacing: the monitor is either there or not.
 
 mod join;
@@ -9,9 +9,7 @@ use std::mem::size_of;
 use std::ptr::{null, null_mut};
 
 use tvc_core::identity::{BackendKind, Discovery, DisplayInfo, ListError, MonitorIdentity};
-use tvc_core::link::{
-    is_virtual_vendor, AttachedDisplay, DisplayKind, LinkError, LinkFailure, MonitorLink, MonitorMatch, VcpReading,
-};
+use tvc_core::link::{is_virtual_vendor, DisplayKind, LinkError, LinkFailure, MonitorLink, VcpReading};
 use windows_sys::core::BOOL;
 use windows_sys::Win32::Devices::Display::{
     CapabilitiesRequestAndCapabilitiesReply, DestroyPhysicalMonitors, DisplayConfigGetDeviceInfo,
@@ -41,16 +39,9 @@ const EDID_IDS_VALID: u32 = 1 << 2;
 
 /// The dxva2 link: one physical-monitor handle while connected.
 pub(crate) struct Dxva2Link {
-    target: Bind,
+    /// The monitor device path `connect` reopens.
+    path: String,
     held: Option<Handle>,
-}
-
-/// What a link reopens on `connect`.
-enum Bind {
-    /// The first display with this EDID id, else the one physical monitor whose description holds the hint.
-    Match(MonitorMatch),
-    /// Exactly this monitor device path.
-    Path(String),
 }
 
 /// An owned physical-monitor handle, destroyed on drop.
@@ -66,12 +57,8 @@ impl Drop for Handle {
 }
 
 impl Dxva2Link {
-    pub(crate) fn new(target: MonitorMatch) -> Self {
-        Dxva2Link { target: Bind::Match(target), held: None }
-    }
-
     fn bound(path: String) -> Self {
-        Dxva2Link { target: Bind::Path(path), held: None }
+        Dxva2Link { path, held: None }
     }
 
     fn handle(&self) -> Result<HANDLE, LinkError> {
@@ -79,10 +66,7 @@ impl Dxva2Link {
     }
 
     fn is_target(&self, display: &Joined) -> bool {
-        match &self.target {
-            Bind::Match(m) => !display.edid_id.is_empty() && display.edid_id.eq_ignore_ascii_case(&m.edid_id),
-            Bind::Path(path) => !path.is_empty() && display.path.eq_ignore_ascii_case(path),
-        }
+        !self.path.is_empty() && display.path.eq_ignore_ascii_case(&self.path)
     }
 }
 
@@ -90,29 +74,12 @@ impl MonitorLink for Dxva2Link {
     fn connect(&mut self) -> Result<(), LinkFailure> {
         self.held = None;
         let all = joined().unwrap_or_default();
-        let opened = all.iter().filter(|d| self.is_target(d)).find_map(|d| open_physical(d, &all));
-        self.held = match &self.target {
-            Bind::Match(m) => opened.or_else(|| by_description(m.description_hint.as_deref())),
-            Bind::Path(_) => opened,
-        };
+        self.held = all.iter().filter(|d| self.is_target(d)).find_map(|d| open_physical(d, &all));
         if self.held.is_some() {
             Ok(())
         } else {
             Err(LinkFailure::NotFound)
         }
-    }
-
-    fn displays(&mut self) -> Option<Vec<AttachedDisplay>> {
-        joined().map(|all| {
-            all.iter()
-                .map(|d| AttachedDisplay {
-                    name: d.friendly.clone(),
-                    edid_id: d.edid_id.clone(),
-                    kind: display_kind(d.technology, &d.edid_id),
-                    target: self.is_target(d),
-                })
-                .collect()
-        })
     }
 
     fn disconnect(&mut self) {
@@ -223,23 +190,6 @@ fn physical_monitors(monitor: HMONITOR) -> Vec<PHYSICAL_MONITOR> {
         return Vec::new();
     }
     monitors
-}
-
-/// The one physical monitor, on any HMONITOR, whose dxva2 description holds `hint`. None for an empty hint (it would
-/// name them all) or when several match.
-fn by_description(hint: Option<&str>) -> Option<Handle> {
-    let hint = hint.map(str::trim).filter(|h| !h.is_empty())?.to_lowercase();
-    let mut all: Vec<PHYSICAL_MONITOR> = enumerate_monitors().into_iter().flat_map(physical_monitors).collect();
-    let target = {
-        let mut matching = all.iter().enumerate().filter(|(_, m)| description(m).to_lowercase().contains(&hint));
-        match (matching.next(), matching.next()) {
-            (Some((i, _)), None) => Some(i),
-            _ => None,
-        }
-    };
-    let held = target.map(|i| Handle(all.remove(i).hPhysicalMonitor));
-    destroy(&all);
-    held
 }
 
 fn description(monitor: &PHYSICAL_MONITOR) -> String {

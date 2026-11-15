@@ -1,13 +1,30 @@
-//! Read-only smoke test against the attached monitor: connect, print capabilities, read brightness, contrast, input.
-//! Never writes. `cargo run -p tvc-ddc --example probe [EDID_ID] [DESCRIPTION_HINT]`
-
-use tvc_core::link::MonitorMatch;
+//! Read-only smoke test against an attached monitor: list the displays, connect to the first one with that EDID id,
+//! print capabilities, read brightness, contrast, input. Never writes. `cargo run -p tvc-ddc --example probe [EDID_ID]`
 
 fn main() {
-    let mut args = std::env::args().skip(1);
-    let edid_id = args.next().unwrap_or_else(|| "LEN62A2".into());
-    let description_hint = Some(args.next().unwrap_or_else(|| "P32p-20".into()));
-    let mut link = tvc_ddc::open(MonitorMatch { edid_id, description_hint });
+    let edid_id = std::env::args().nth(1).unwrap_or_else(|| "LEN62A2".into());
+    let mut discovery = tvc_ddc::discovery();
+    let displays = match discovery.enumerate() {
+        Ok(displays) => displays,
+        Err(e) => {
+            println!("enumerate: {e:?}");
+            return;
+        }
+    };
+    for d in &displays {
+        println!("display: {:?} {:?} {:?} {:?} target {}", d.name, d.identity, d.kind, d.backend, d.target);
+    }
+    let Some(display) = displays.iter().find(|d| d.identity.edid_id.eq_ignore_ascii_case(&edid_id)) else {
+        println!("no display with EDID id {edid_id}");
+        return;
+    };
+    let mut link = match discovery.open(&display.target) {
+        Ok(link) => link,
+        Err(failure) => {
+            println!("open: {failure:?}");
+            return;
+        }
+    };
     let t = std::time::Instant::now();
     let ms = |t: &std::time::Instant| t.elapsed().as_millis();
 

@@ -2,16 +2,6 @@
 
 const HEADER: [u8; 8] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
 
-/// True when `edid` starts with a valid EDID header and carries PNP manufacturer id `pnp` (bytes 8–9, big-endian,
-/// three 5-bit letters, 'A' = 1; compared case-insensitively) and product code `product` (bytes 10–11,
-/// little-endian). LEN / 0x62A2 is `30 AE A2 62` in bytes 8–11.
-pub fn matches(edid: &[u8], pnp: &str, product: u16) -> bool {
-    edid.len() >= 12
-        && edid[..8] == HEADER
-        && manufacturer(edid).is_some_and(|m| m.eq_ignore_ascii_case(pnp))
-        && u16::from_le_bytes([edid[10], edid[11]]) == product
-}
-
 /// The three-letter PNP id from bytes 8–9; None if too short or a letter is out of range.
 pub fn manufacturer(edid: &[u8]) -> Option<String> {
     (edid.len() >= 10).then(|| u16::from_be_bytes([edid[8], edid[9]])).and_then(pnp_letters)
@@ -28,7 +18,8 @@ pub fn pnp_letters(packed: u16) -> Option<String> {
         .collect()
 }
 
-/// The id `MonitorMatch::edid_id` uses: manufacturer + product code in hex, e.g. "LEN62A2". None without a header.
+/// The EDID id identity uses: manufacturer (bytes 8–9, big-endian, three 5-bit letters, 'A' = 1) + product code
+/// (bytes 10–11, little-endian) in hex, e.g. "LEN62A2" from `30 AE A2 62`. None without a header.
 pub fn id(edid: &[u8]) -> Option<String> {
     if edid.len() < 12 || edid[..8] != HEADER {
         return None;
@@ -96,6 +87,34 @@ pub fn pack_pnp(pnp: &str) -> Option<u16> {
     Some(bytes.iter().fold(0u16, |acc, b| acc << 5 | u16::from(b.to_ascii_uppercase() - b'A' + 1)))
 }
 
+/// EDIDs for other modules' tests.
+#[cfg(test)]
+pub(crate) mod testing {
+    /// A 128-byte base block with vendor/product bytes 8–11, the 32-bit serial in bytes 12–15, and, when given, a name
+    /// descriptor (tag 0xFC) in the first descriptor slot. The checksum byte is left at 0.
+    pub(crate) fn edid(vendor_product: [u8; 4], serial: u32, name: Option<&str>) -> Vec<u8> {
+        let mut edid = vec![0u8; 128];
+        edid[..8].copy_from_slice(&[0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00]);
+        edid[8..12].copy_from_slice(&vendor_product);
+        edid[12..16].copy_from_slice(&serial.to_le_bytes());
+        if let Some(name) = name {
+            edid[54..59].copy_from_slice(&[0, 0, 0, 0xFC, 0]);
+            let mut text = [b' '; 13];
+            text[..name.len()].copy_from_slice(name.as_bytes());
+            if name.len() < 13 {
+                text[name.len()] = 0x0A;
+            }
+            edid[59..72].copy_from_slice(&text);
+        }
+        edid
+    }
+
+    /// LEN62A2 (the P32p-20) with that serial and name.
+    pub(crate) fn p32p20(serial: u32, name: Option<&str>) -> Vec<u8> {
+        edid([0x30, 0xAE, 0xA2, 0x62], serial, name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,15 +137,14 @@ mod tests {
     }
 
     #[test]
-    fn edid_matches_the_p32p20_and_nothing_else() {
-        assert!(matches(&edid_header(0x30, 0xAE, 0xA2, 0x62), "LEN", 0x62A2));
+    fn edid_id_needs_the_header_and_reads_vendor_and_product() {
         assert_eq!(manufacturer(&edid_header(0x30, 0xAE, 0xA2, 0x62)).as_deref(), Some("LEN"));
-        assert!(!matches(&edid_header(0x30, 0xAE, 0xA3, 0x62), "LEN", 0x62A2)); // other product
-        assert!(!matches(&edid_header(0x10, 0xAC, 0xA2, 0x62), "LEN", 0x62A2)); // DEL vendor
+        assert_eq!(id(&edid_header(0x30, 0xAE, 0xA3, 0x62)).as_deref(), Some("LEN62A3"));
+        assert_eq!(id(&edid_header(0x10, 0xAC, 0xA2, 0x62)).as_deref(), Some("DEL62A2"));
         let mut bad_header = edid_header(0x30, 0xAE, 0xA2, 0x62);
         bad_header[0] = 0x01;
-        assert!(!matches(&bad_header, "LEN", 0x62A2));
-        assert!(!matches(&[0u8; 11], "LEN", 0x62A2));
+        assert_eq!(id(&bad_header), None);
+        assert_eq!(id(&[0u8; 11]), None);
     }
 
     #[test]

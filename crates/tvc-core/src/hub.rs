@@ -69,8 +69,8 @@ pub enum HubCommand {
 
 #[derive(Clone, Debug)]
 pub enum HubEvent {
-    /// The current list after every rescan, every display (uncontrollable ones too) in enumeration order; replaces
-    /// `Event::Displays`. Sent after the rescan's `Detached` events and before its `Attached` ones.
+    /// The current list after every rescan, every display (uncontrollable ones too) in enumeration order. Sent
+    /// after the rescan's `Detached` events and before its `Attached` ones.
     Monitors(Result<Vec<Monitor>, ListError>),
     Attached(Monitor),
     Detached(MonitorId),

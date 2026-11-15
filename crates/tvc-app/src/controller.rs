@@ -23,7 +23,7 @@ use tvc_core::result::ResultKind;
 use tvc_core::schedule::{self, AutoMode, Phase};
 use tvc_core::finder::CodeChange;
 use tvc_core::hotkey::{Action, Gesture};
-use tvc_core::link::{AttachedDisplay, LinkFailure, VcpReading};
+use tvc_core::link::{LinkFailure, VcpReading};
 use tvc_core::profile::{ControlDefinition, ControlKind, Profile, SafetyClass, Section};
 use tvc_core::store::{Preset, Settings, SettingsStore};
 use tvc_core::crash::LeftOver;
@@ -34,7 +34,7 @@ use crate::localtime;
 use crate::platform;
 use crate::platform::instance::{Reply, Responder};
 use crate::platform::monitor_events::SystemEvent;
-use crate::view::{self, glyph, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT};
+use crate::view::{self, glyph, AttachedDisplay, BRIGHTNESS, COLOUR_MODE, CONTRAST, DISPLAY_CODES, INPUT};
 use crate::{App, Dialog, MainWindow, Severity, ShortcutEditor, Tray};
 
 const POLL_EVERY: Duration = Duration::from_secs(3);
@@ -101,7 +101,7 @@ pub struct State {
     pub values_stale: bool,
     pub status: MonitorStatus,
     pub failure: Option<LinkFailure>,
-    /// The displays the OS reported at the last failed connect; None = unknown.
+    /// The displays the OS reported at the last rescan; None = the backend can't list them.
     pub displays: Option<Vec<AttachedDisplay>>,
     /// What the banner shows: non-connected states wait `BANNER_HOLD` so the bar never flashes.
     pub shown_status: (Option<MonitorStatus>, Option<LinkFailure>),
@@ -790,12 +790,6 @@ impl Controller {
     fn on_monitors(self: &Rc<Self>, list: Result<Vec<Monitor>, ListError>) {
         let monitors = list.ok();
         let edid = self.st.borrow().profile.edid_id.clone();
-        self.st.borrow_mut().displays = monitors.as_ref().map(|list| list.iter().map(|m| AttachedDisplay {
-            name: m.info.name.clone(),
-            edid_id: m.info.identity.edid_id.clone(),
-            kind: m.info.kind,
-            target: m.info.identity.edid_id == edid,
-        }).collect());
         if self.tracked.borrow().is_none() {
             let ddc: Vec<&Monitor> = monitors.iter().flatten().filter(|m| m.info.backend == BackendKind::Ddc).collect();
             let pick = ddc.iter().find(|m| m.info.identity.edid_id == edid).or(ddc.first());
@@ -816,6 +810,17 @@ impl Controller {
                 }
             }
         }
+        let tracked = self.tracked.borrow().clone();
+        self.st.borrow_mut().displays = monitors.map(|list| {
+            list.iter()
+                .map(|m| AttachedDisplay {
+                    name: m.info.name.clone(),
+                    edid_id: m.info.identity.edid_id.clone(),
+                    kind: m.info.kind,
+                    tracked: tracked.as_ref() == Some(&m.id),
+                })
+                .collect()
+        });
         self.render();
     }
 
@@ -850,8 +855,6 @@ impl Controller {
                 self.update_tray();
                 self.render();
             }
-            // `HubEvent::Monitors` says what is attached now.
-            Event::Displays(_) => {}
             Event::SafeMode(on) => {
                 self.st.borrow_mut().safe_mode = on;
                 self.render();

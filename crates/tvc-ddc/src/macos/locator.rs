@@ -1,9 +1,10 @@
-//! Finds the IOAVService (DDC endpoint) of the target monitor on Apple Silicon. Approach from m1ddc (MIT): the display's
-//! IODisplayLocation names its framebuffer (AppleCLCD2 / IOMobileFramebufferShim); in the recursive IOService-plane walk
-//! the DCPAVServiceProxy with Location = "External" that follows that framebuffer is the display's DDC service.
+//! Lists the IOAVServices (DDC endpoints) on Apple Silicon and re-finds one by registry id. Approach from m1ddc (MIT):
+//! the display's IODisplayLocation names its framebuffer (AppleCLCD2 / IOMobileFramebufferShim); in the recursive
+//! IOService-plane walk the DCPAVServiceProxy with Location = "External" that follows that framebuffer is the
+//! display's DDC service. Discovery pairs displays with services through `choose_service`.
 
 use super::ffi::{self, cf_dict_get, cf_to_i64, cf_to_string, Cf, IoObject};
-use super::{choose_service, classify_port, is_target, MacPort, ProxyCandidate};
+use super::{classify_port, MacPort, ProxyCandidate};
 
 const MAX_DISPLAYS: usize = 16;
 const PROXY_NAME: &str = "DCPAVServiceProxy";
@@ -13,38 +14,6 @@ pub(crate) struct Lookup {
     pub(crate) service: Cf,
     pub(crate) port: MacPort,
     pub(crate) mcdp29xx: bool,
-}
-
-/// Finds the target's DDC service. Err says why not (for logs).
-pub(crate) fn locate(io_av: ffi::IoAv, vendor: u16, model: u16, pnp: &str) -> Result<Lookup, String> {
-    let displays = online_displays().unwrap_or_default();
-    let target = displays
-        .iter()
-        .copied()
-        .find(|&id| {
-            // SAFETY: plain CoreGraphics queries on an online display id.
-            unsafe {
-                ffi::CGDisplayIsBuiltin(id) == 0
-                    && is_target(ffi::CGDisplayVendorNumber(id), ffi::CGDisplayModelNumber(id), vendor, model)
-            }
-        })
-        .ok_or_else(|| {
-            format!("No external display with vendor 0x{vendor:04X} model 0x{model:04X} among {} online.", displays.len())
-        })?;
-
-    let adapter_id = io_display_location(target).and_then(|path| IoObject::from_path(&path).registry_id());
-    let proxies = walk_external_proxies();
-    let candidates: Vec<ProxyCandidate> = proxies.iter().map(|(_, c)| c.clone()).collect();
-    let Some((index, _method)) = choose_service(&candidates, adapter_id, pnp, model) else {
-        return Err(if proxies.is_empty() {
-            "No external DCPAVServiceProxy (DisplayLink, Intel Mac, or a dock that hides DDC?).".into()
-        } else {
-            format!("{} external DCPAVServiceProxy entries, none tied to display {target}.", proxies.len())
-        });
-    };
-
-    let (entry, info) = &proxies[index];
-    lookup(io_av, entry, info)
 }
 
 /// Re-finds a service [`walk_external_proxies`] listed, by its IORegistry entry id.
@@ -77,12 +46,6 @@ pub(super) fn online_displays() -> Result<Vec<u32>, i32> {
         return Err(error);
     }
     Ok(ids[..(count as usize).min(MAX_DISPLAYS)].to_vec())
-}
-
-/// CoreDisplay's IODisplayLocation for the display: the IOService path of its framebuffer.
-fn io_display_location(display: u32) -> Option<String> {
-    let info = ffi::display_info_dictionary(display);
-    cf_to_string(cf_dict_get(info.0, "IODisplayLocation"))
 }
 
 /// Recursive IOService-plane walk from the root: every external DCPAVServiceProxy, with the facts of the framebuffer
