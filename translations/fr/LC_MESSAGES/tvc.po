@@ -1,5 +1,1432 @@
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "Language: fr\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: crates/tvc-app/src/controller.rs:379 crates/tvc-app/src/view.rs:231
+msgid "Built-in display"
+msgstr "Écran intégré"
+
+#: crates/tvc-app/src/controller.rs:444
+msgid "No display is included"
+msgstr "Aucun écran n'est inclus"
+
+#: crates/tvc-app/src/controller.rs:446
+msgid "No included display is connected"
+msgstr "Aucun écran inclus n'est connecté"
+
+#: crates/tvc-app/src/controller.rs:448
+msgid "No included display has it"
+msgstr "Aucun écran inclus ne le prend en charge"
+
+#: crates/tvc-app/src/controller.rs:450
+msgid "{0} doesn't have it"
+msgstr "{0} ne le prend pas en charge"
+
+#: crates/tvc-app/src/controller.rs:1740
+msgid "Automatic Day/Night: {0}"
+msgstr "Jour/Nuit automatique : {0}"
+
+#: crates/tvc-app/src/controller.rs:1796
+msgid "Your monitor kept brightness at {0}{1}"
+msgstr "Votre moniteur a maintenu la luminosité à {0}{1}"
+
+#: crates/tvc-app/src/controller.rs:1798
+msgid "Your monitor kept contrast at {0}"
+msgstr "Votre moniteur a maintenu le contraste à {0}"
+
+#: crates/tvc-app/src/controller.rs:1839 crates/tvc-core/src/engine.rs:1206
+msgid "Backup restored"
+msgstr "Sauvegarde restaurée"
+
+#: crates/tvc-app/src/controller.rs:1866
+msgid "{0} display"
+msgid_plural "{0} displays"
+msgstr[0] "{0} écran"
+msgstr[1] "{0} écrans"
+
+#: crates/tvc-app/src/controller.rs:1874 crates/tvc-app/src/controller.rs:1902
+#: crates/tvc-app/src/view.rs:50
+msgid "{0}: {1}"
+msgstr "{0} : {1}"
+
+#: crates/tvc-app/src/controller.rs:1962
+msgid "Working…"
+msgstr "En cours…"
+
+#: crates/tvc-app/src/controller.rs:1982
+msgid "Checking…"
+msgstr "Vérification…"
+
+#: crates/tvc-app/src/controller.rs:2016
+msgid "Setup done"
+msgstr "Configuration terminée"
+
+#: crates/tvc-app/src/controller.rs:2210
+#: crates/tvc-core/src/profile/generic-mccs.json:36
+#: crates/tvc-core/src/profile/p32p20.json:42
+msgid "Switch to {label}?"
+msgstr "Basculer vers {label} ?"
+
+#: crates/tvc-app/src/controller.rs:2213 crates/tvc-app/src/controller.rs:2223
+#: crates/tvc-core/src/profile/generic-mccs.json:38
+#: crates/tvc-core/src/profile/p32p20.json:44
+msgid "Switch"
+msgstr "Basculer"
+
+#: crates/tvc-app/src/controller.rs:2214 crates/tvc-app/src/controller.rs:2224
+#: crates/tvc-app/src/controller.rs:2316
+msgid "Cancel"
+msgstr "Annuler"
+
+#: crates/tvc-app/src/controller.rs:2221
+msgid "Switch the input on {0} display?"
+msgid_plural "Switch the input on {0} displays?"
+msgstr[0] "Changer l'entrée de {0} écran ?"
+msgstr[1] "Changer l'entrée de {0} écrans ?"
+
+#: crates/tvc-app/src/controller.rs:2313 crates/tvc-core/src/safety.rs:69
+msgid "Change {0}?"
+msgstr "Modifier {0} ?"
+
+#: crates/tvc-app/src/controller.rs:2315
+msgid "Continue"
+msgstr "Continuer"
+
+#: crates/tvc-app/src/controller.rs:2346
+msgid "Connect the monitor to save its current settings"
+msgstr "Connectez le moniteur pour enregistrer ses paramètres actuels"
+
+#: crates/tvc-app/src/controller.rs:2351
+msgid "Saved as {0}"
+msgstr "Enregistré comme {0}"
+
+#: crates/tvc-app/src/controller.rs:2351
+msgid "Couldn't save {0}"
+msgstr "Impossible d'enregistrer {0}"
+
+#: crates/tvc-app/src/controller.rs:2359
+msgid "Couldn't save settings: {0}"
+msgstr "Impossible d'enregistrer les paramètres : {0}"
+
+#: crates/tvc-app/src/controller.rs:2430
+msgid "Capability report copied"
+msgstr "Rapport de capacités copié"
+
+#: crates/tvc-app/src/controller.rs:2430 crates/tvc-app/src/controller.rs:3156
+msgid "Couldn't copy"
+msgstr "Impossible de copier"
+
+#: crates/tvc-app/src/controller.rs:2513
+msgid "This key can't be used"
+msgstr "Cette touche ne peut pas être utilisée"
+
+#: crates/tvc-app/src/controller.rs:2514
+msgid ""
+"Use a letter, number, arrow, Home, End, Page Up, Page Down, Insert, Delete or function key."
+msgstr "Utilisez une lettre, un chiffre, une flèche, Home, End, Page Up, Page Down, Insert, Delete ou une touche de fonction."
+
+#: crates/tvc-app/src/controller.rs:2519
+msgid "This shortcut isn't valid"
+msgstr "Ce raccourci n'est pas valide"
+
+#: crates/tvc-app/src/controller.rs:2519
+msgid "Start with {0}."
+msgstr "Commencez par {0}."
+
+#: crates/tvc-app/src/controller.rs:2528
+msgid "{0} already uses this shortcut"
+msgstr "{0} utilise déjà ce raccourci"
+
+#: crates/tvc-app/src/controller.rs:2529
+msgid "Choose a different combination."
+msgstr "Choisissez une autre combinaison."
+
+#: crates/tvc-app/src/controller.rs:2569
+msgid "Shortcuts start with {0}, and can include Shift."
+msgstr "Les raccourcis commencent par {0} et peuvent inclure Shift."
+
+#: crates/tvc-app/src/controller.rs:2608
+msgid "{0} can't use its default shortcut"
+msgstr "{0} ne peut pas utiliser son raccourci par défaut"
+
+#: crates/tvc-app/src/controller.rs:2609
+msgid "{0} already uses {1}. Change that shortcut first."
+msgstr "{0} utilise déjà {1}. Modifiez d'abord ce raccourci."
+
+#: crates/tvc-app/src/controller.rs:2615
+msgid "OK"
+msgstr "OK"
+
+#: crates/tvc-app/src/controller.rs:2652
+msgid "Take a snapshot first."
+msgstr "Prenez d'abord un instantané."
+
+#: crates/tvc-app/src/controller.rs:2655
+msgid ""
+"Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first."
+msgstr "Le mode sans échec est activé, l'outil de recherche ne lit donc pas le moniteur. Quittez d'abord le mode sans échec."
+
+#: crates/tvc-app/src/controller.rs:2656
+msgid "The monitor is asleep or this PC is locked. Try again once it's awake."
+msgstr "Le moniteur est en veille ou ce PC est verrouillé. Réessayez une fois qu'il est réveillé."
+
+#: crates/tvc-app/src/controller.rs:2657
+msgid "The monitor didn't answer. Try again."
+msgstr "Le moniteur n'a pas répondu. Réessayez."
+
+#: crates/tvc-app/src/controller.rs:2663
+msgid ""
+"Nothing changed. Make sure the setting really changed on screen, then compare again."
+msgstr "Aucun changement. Vérifiez que le paramètre a bien changé à l'écran, puis comparez à nouveau."
+
+#: crates/tvc-app/src/controller.rs:2665
+msgid "Select a change to name it."
+msgstr "Sélectionnez une modification pour la nommer."
+
+#: crates/tvc-app/src/controller.rs:2675
+msgid "Saved \"{0}\" ({1}). It now appears in Monitor settings."
+msgstr "\"{0}\" ({1}) enregistré. Il apparaît maintenant dans les paramètres du moniteur."
+
+#: crates/tvc-app/src/controller.rs:2677
+msgid "Couldn't save: {0}"
+msgstr "Impossible d'enregistrer : {0}"
+
+#: crates/tvc-app/src/controller.rs:2706
+msgid "{0} (before)"
+msgstr "{0} (avant)"
+
+#: crates/tvc-app/src/controller.rs:2708
+msgid "{0} (now)"
+msgstr "{0} (actuel)"
+
+#: crates/tvc-app/src/controller.rs:2733
+msgid "Enter a name for the setting first."
+msgstr "Saisissez d'abord un nom pour le paramètre."
+
+#: crates/tvc-app/src/controller.rs:2832
+msgid "Enter your latitude and longitude, then Save."
+msgstr "Saisissez votre latitude et votre longitude, puis Enregistrer."
+
+#: crates/tvc-app/src/controller.rs:2846
+msgid "Use 24-hour times like 07:00 and 19:30."
+msgstr "Utilisez le format 24 heures, comme 07:00 et 19:30."
+
+#: crates/tvc-app/src/controller.rs:2851
+msgid "Day and Night need different times."
+msgstr "Jour et Nuit doivent avoir des heures différentes."
+
+#: crates/tvc-app/src/controller.rs:2870
+msgid ""
+"Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive)."
+msgstr "La latitude va de -90 à 90 et la longitude de -180 à 180, en degrés (le nord et l'est sont positifs)."
+
+#: crates/tvc-app/src/controller.rs:2924 crates/tvc-app/src/view.rs:622
+#: crates/tvc-core/src/tests/i18n_tests.rs:81
+#: crates/tvc-core/src/tests/i18n_tests.rs:83
+#: crates/tvc-core/src/profile/builtin-backlight.json:6
+#: crates/tvc-core/src/profile/generic-mccs.json:7
+#: crates/tvc-core/src/profile/p32p20.json:17
+msgid "Brightness"
+msgstr "Luminosité"
+
+#: crates/tvc-app/src/controller.rs:2924 crates/tvc-app/src/view.rs:622
+#: crates/tvc-core/src/profile/generic-mccs.json:9
+#: crates/tvc-core/src/profile/p32p20.json:19
+msgid "Contrast"
+msgstr "Contraste"
+
+#: crates/tvc-app/src/controller.rs:2935
+msgid "Control, Option or Command"
+msgstr "Contrôle, Option ou Commande"
+
+#: crates/tvc-app/src/controller.rs:2937
+msgid "Ctrl, Alt or Super"
+msgstr "Ctrl, Alt ou Super"
+
+#: crates/tvc-app/src/controller.rs:2939
+msgid "Ctrl, Alt or the Windows key"
+msgstr "Ctrl, Alt ou la touche Windows"
+
+#: crates/tvc-app/src/controller.rs:2962
+msgid "unknown"
+msgstr "inconnu"
+
+#: crates/tvc-app/src/controller.rs:2964
+msgid "{0} capability report"
+msgstr "Rapport de capacités de {0}"
+
+#: crates/tvc-app/src/controller.rs:2965
+msgid "Display: {0}"
+msgstr "Écran : {0}"
+
+#: crates/tvc-app/src/controller.rs:2966
+msgid "Id: {0}"
+msgstr "ID : {0}"
+
+#: crates/tvc-app/src/controller.rs:2967
+msgid "EDID id: {0}"
+msgstr "ID EDID : {0}"
+
+#: crates/tvc-app/src/controller.rs:2968
+msgid "Serial: {0}"
+msgstr "N° de série : {0}"
+
+#: crates/tvc-app/src/controller.rs:2969
+msgid "Connector: {0}"
+msgstr "Connecteur : {0}"
+
+#: crates/tvc-app/src/controller.rs:2970
+msgid "Support: {0} ({1})"
+msgstr "Prise en charge : {0} ({1})"
+
+#: crates/tvc-app/src/controller.rs:2974
+msgid "Model: {0}"
+msgstr "Modèle : {0}"
+
+#: crates/tvc-app/src/controller.rs:2975
+msgid "MCCS version: {0}"
+msgstr "Version MCCS : {0}"
+
+#: crates/tvc-app/src/controller.rs:2978
+msgid "Warnings: none"
+msgstr "Avertissements : aucun"
+
+#: crates/tvc-app/src/controller.rs:2980
+msgid "Warnings:"
+msgstr "Avertissements :"
+
+#: crates/tvc-app/src/controller.rs:2984
+msgid "Capabilities:"
+msgstr "Capacités :"
+
+#: crates/tvc-app/src/controller.rs:2985
+msgid "(not read from the display yet)"
+msgstr "(pas encore lues depuis l'écran)"
+
+#: crates/tvc-app/src/controller.rs:3156
+msgid "Copied"
+msgstr "Copié"
+
+#: crates/tvc-app/src/osd.rs:361
+msgid "{0} {1}"
+msgstr "{0} {1}"
+
+#: crates/tvc-app/src/osd.rs:363
+msgid "{0} {1} · {2}"
+msgstr "{0} {1} · {2}"
+
+#: crates/tvc-app/src/tray.rs:12
+msgid "Connecting"
+msgstr "Connexion"
+
+#: crates/tvc-app/src/tray.rs:13 crates/tvc-app/src/view.rs:285
+msgid "Not connected"
+msgstr "Non connecté"
+
+#: crates/tvc-app/src/tray.rs:14 crates/tvc-app/src/view.rs:354
+msgid "Not responding"
+msgstr "Ne répond pas"
+
+#: crates/tvc-app/src/tray.rs:16
+msgid "ThinkVision Control – {0}"
+msgstr "ThinkVision Control – {0}"
+
+#: crates/tvc-app/src/view.rs:60
+msgid "All displays"
+msgstr "Tous les écrans"
+
+#: crates/tvc-app/src/view.rs:62
+msgid "{0} of {1} included · the sliders move them together"
+msgstr "{0} sur {1} inclus · les curseurs les règlent ensemble"
+
+#: crates/tvc-app/src/view.rs:117 crates/tvc-app/src/view.rs:800
+msgid "Unknown {0}"
+msgstr "Inconnu {0}"
+
+#: crates/tvc-app/src/view.rs:119
+msgid "Mode {0}"
+msgstr "Mode {0}"
+
+#: crates/tvc-app/src/view.rs:121
+msgid "Input {0}"
+msgstr "Entrée {0}"
+
+#: crates/tvc-app/src/view.rs:232 crates/tvc-app/src/view.rs:467
+msgid "Your display"
+msgstr "Votre écran"
+
+#: crates/tvc-app/src/view.rs:234
+msgid "Display"
+msgstr "Écran"
+
+#: crates/tvc-app/src/view.rs:254
+msgid "the built-in display"
+msgstr "l'écran intégré"
+
+#: crates/tvc-app/src/view.rs:255
+msgid "an unnamed display"
+msgstr "un écran sans nom"
+
+#: crates/tvc-app/src/view.rs:256
+msgid "a display ({0})"
+msgstr "un écran ({0})"
+
+#: crates/tvc-app/src/view.rs:276
+msgid ""
+"NVIDIA's driver isn't offering display controls for it. See Settings → System setup."
+msgstr "Le pilote NVIDIA ne propose pas de contrôles d'écran pour celui-ci. Voir Paramètres → Configuration du système."
+
+#: crates/tvc-app/src/view.rs:278
+msgid "No supported display found"
+msgstr "Aucun écran compatible trouvé"
+
+#: crates/tvc-app/src/view.rs:279
+msgid "{0} isn't connected"
+msgstr "{0} n'est pas connecté"
+
+#: crates/tvc-app/src/view.rs:284 crates/tvc-app/src/view.rs:311
+msgid "No supported display"
+msgstr "Aucun écran compatible"
+
+#: crates/tvc-app/src/view.rs:290
+msgid ""
+"Connect a display that supports DDC/CI and it will be found automatically."
+msgstr "Connectez un écran compatible DDC/CI ; il sera détecté automatiquement."
+
+#: crates/tvc-app/src/view.rs:297
+msgid "Display can't be reached"
+msgstr "Écran inaccessible"
+
+#: crates/tvc-app/src/view.rs:298
+msgid "Can't be reached"
+msgstr "Inaccessible"
+
+#: crates/tvc-app/src/view.rs:299
+msgid "{0} can't be reached"
+msgstr "{0} est inaccessible"
+
+#: crates/tvc-app/src/view.rs:300
+msgid ""
+"The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu."
+msgstr "Le système le voit, mais ne propose pas de contrôles d'écran pour celui-ci. Essayez un autre câble ou port, et vérifiez que DDC/CI est activé dans le menu de l'écran."
+
+#: crates/tvc-app/src/view.rs:306
+msgid ""
+"This PC is only showing a virtual display, such as a remote session or a virtual machine. Display controls need a display connected to this PC."
+msgstr "Ce PC n'affiche qu'un écran virtuel, comme une session à distance ou une machine virtuelle. Les contrôles d'écran nécessitent un écran connecté à ce PC."
+
+#: crates/tvc-app/src/view.rs:307
+msgid ""
+"No display is connected. Connect a display that supports DDC/CI and it will be found automatically."
+msgstr "Aucun écran n'est connecté. Connectez un écran compatible DDC/CI ; il sera détecté automatiquement."
+
+#: crates/tvc-app/src/view.rs:308
+msgid "{0} is connected, but this app has no profile for it."
+msgstr "{0} est connecté, mais cette application n'a pas de profil pour lui."
+
+#: crates/tvc-app/src/view.rs:309
+msgid "{0} and {1} are connected, but this app has no profile for them."
+msgstr "{0} et {1} sont connectés, mais cette application n'a pas de profil pour eux."
+
+#: crates/tvc-app/src/view.rs:330
+msgid "Your display isn't responding"
+msgstr "Votre écran ne répond pas"
+
+#: crates/tvc-app/src/view.rs:331
+msgid "{0} isn't responding"
+msgstr "{0} ne répond pas"
+
+#: crates/tvc-app/src/view.rs:337
+msgid "Asleep"
+msgstr "En veille"
+
+#: crates/tvc-app/src/view.rs:340
+msgid "Brightness through the system"
+msgstr "Luminosité via le système"
+
+#: crates/tvc-app/src/view.rs:345
+msgid "Input: {0}"
+msgstr "Entrée : {0}"
+
+#: crates/tvc-app/src/view.rs:346
+msgid "Connected"
+msgstr "Connecté"
+
+#: crates/tvc-app/src/view.rs:348 crates/tvc-app/src/view.rs:378
+msgid "Firmware {0}"
+msgstr "Micrologiciel {0}"
+
+#: crates/tvc-app/src/view.rs:349
+msgid "No verified profile"
+msgstr "Aucun profil vérifié"
+
+#: crates/tvc-app/src/view.rs:352 crates/tvc-app/src/view.rs:387
+#: crates/tvc-app/src/view.rs:425 crates/tvc-app/src/view.rs:431
+msgid "Looking for your monitor…"
+msgstr "Recherche de votre moniteur…"
+
+#: crates/tvc-app/src/view.rs:361
+msgid "Verified"
+msgstr "Vérifié"
+
+#: crates/tvc-app/src/view.rs:362 crates/tvc-app/src/view.rs:479
+msgid "Experimental"
+msgstr "Expérimental"
+
+#: crates/tvc-app/src/view.rs:363
+msgid "Read-only"
+msgstr "Lecture seule"
+
+#: crates/tvc-app/src/view.rs:377
+msgid "Support: {0}"
+msgstr "Prise en charge : {0}"
+
+#: crates/tvc-app/src/view.rs:379
+msgid "Built with Slint"
+msgstr "Conçu avec Slint"
+
+#: crates/tvc-app/src/view.rs:387
+msgid "This usually takes a second or two."
+msgstr "Cela prend généralement une ou deux secondes."
+
+#: crates/tvc-app/src/view.rs:388
+msgid "No controls to show"
+msgstr "Aucun contrôle à afficher"
+
+#: crates/tvc-app/src/view.rs:388
+msgid "The monitor didn't report any setting this app can change."
+msgstr "Le moniteur n'a signalé aucun paramètre que cette application peut modifier."
+
+#: crates/tvc-app/src/view.rs:389
+msgid "No controls yet"
+msgstr "Pas encore de contrôles"
+
+#: crates/tvc-app/src/view.rs:389
+msgid "They appear here once the monitor answers."
+msgstr "Ils apparaîtront ici dès que le moniteur répondra."
+
+#: crates/tvc-app/src/view.rs:396
+msgid "Read only on this display"
+msgstr "Lecture seule sur cet écran"
+
+#: crates/tvc-app/src/view.rs:398
+msgid "Available once the monitor answers"
+msgstr "Disponible dès que le moniteur répond"
+
+#: crates/tvc-app/src/view.rs:399
+msgid "Available when the monitor responds again"
+msgstr "Disponible quand le moniteur répondra à nouveau"
+
+#: crates/tvc-app/src/view.rs:400
+msgid "Available when the monitor is connected"
+msgstr "Disponible quand le moniteur est connecté"
+
+#: crates/tvc-app/src/view.rs:410
+msgid "Safe mode"
+msgstr "Mode sans échec"
+
+#: crates/tvc-app/src/view.rs:411
+msgid ""
+"ThinkVision Control closed while reading the monitor's details last time, so it's using the saved copy and the hidden-settings finder is off."
+msgstr "ThinkVision Control s'est fermé pendant la lecture des informations du moniteur la dernière fois ; il utilise donc la copie enregistrée et l'outil de recherche des paramètres masqués est désactivé."
+
+#: crates/tvc-app/src/view.rs:412
+msgid "Read them now"
+msgstr "Les lire maintenant"
+
+#: crates/tvc-app/src/view.rs:419
+msgid "Your monitor is asleep"
+msgstr "Votre moniteur est en veille"
+
+#: crates/tvc-app/src/view.rs:420
+msgid "Changes wait until it wakes up or you unlock this PC."
+msgstr "Les modifications attendent son réveil ou le déverrouillage de ce PC."
+
+#: crates/tvc-app/src/view.rs:434
+msgid "This app isn't allowed to use the monitor controls"
+msgstr "Cette application n'est pas autorisée à utiliser les contrôles du moniteur"
+
+#: crates/tvc-app/src/view.rs:435
+msgid ""
+"Your system blocks access to the monitor's DDC/CI bus. See Settings → System setup."
+msgstr "Votre système bloque l'accès au bus DDC/CI du moniteur. Voir Paramètres → Configuration du système."
+
+#: crates/tvc-app/src/view.rs:436 crates/tvc-app/src/view.rs:442
+#: crates/tvc-app/src/view.rs:448 crates/tvc-app/src/view.rs:454
+msgid "Try again"
+msgstr "Réessayer"
+
+#: crates/tvc-app/src/view.rs:440
+msgid "Monitor controls aren't turned on in your system"
+msgstr "Les contrôles du moniteur ne sont pas activés sur votre système"
+
+#: crates/tvc-app/src/view.rs:441
+msgid ""
+"The i2c-dev kernel module isn't loaded, so the monitor can't be reached. See Settings → System setup."
+msgstr "Le module noyau i2c-dev n'est pas chargé, le moniteur est donc inaccessible. Voir Paramètres → Configuration du système."
+
+#: crates/tvc-app/src/view.rs:446
+msgid "This port can't control the monitor"
+msgstr "Ce port ne peut pas contrôler le moniteur"
+
+#: crates/tvc-app/src/view.rs:447
+msgid ""
+"Connect the monitor to a USB-C or Thunderbolt port. See Settings → System setup."
+msgstr "Connectez le moniteur à un port USB-C ou Thunderbolt. Voir Paramètres → Configuration du système."
+
+#: crates/tvc-app/src/view.rs:453
+msgid ""
+"It's connected but isn't answering monitor controls (DDC/CI). Check that DDC/CI is turned on in the monitor's own menu, then try again. If this started after a graphics driver update, the previous driver may help."
+msgstr "Il est connecté mais ne répond pas aux contrôles du moniteur (DDC/CI). Vérifiez que DDC/CI est activé dans le menu du moniteur, puis réessayez. Si le problème est apparu après une mise à jour du pilote graphique, le pilote précédent peut aider."
+
+#: crates/tvc-app/src/view.rs:458
+msgid "Check again"
+msgstr "Vérifier à nouveau"
+
+#: crates/tvc-app/src/view.rs:467
+msgid "this display"
+msgstr "cet écran"
+
+#: crates/tvc-app/src/view.rs:473
+msgid "Brightness only"
+msgstr "Luminosité seule"
+
+#: crates/tvc-app/src/view.rs:474
+msgid ""
+"The built-in display isn't controlled over DDC/CI. Its brightness is set through the system, the same way as the brightness keys."
+msgstr "L'écran intégré n'est pas contrôlé via DDC/CI. Sa luminosité est réglée par le système, comme avec les touches de luminosité."
+
+#: crates/tvc-app/src/view.rs:480
+msgid ""
+"There's no verified profile for {0}, so only standard controls are shown. Some may not behave as labelled."
+msgstr "Il n'y a pas de profil vérifié pour {0}, seuls les contrôles standard sont donc affichés. Certains peuvent ne pas se comporter comme indiqué."
+
+#: crates/tvc-app/src/view.rs:484
+msgid "Read only"
+msgstr "Lecture seule"
+
+#: crates/tvc-app/src/view.rs:485
+msgid ""
+"{0} didn't confirm which settings it supports, so its values are shown but nothing is changed."
+msgstr "{0} n'a pas confirmé les paramètres qu'il prend en charge ; ses valeurs sont donc affichées, mais rien n'est modifié."
+
+#: crates/tvc-app/src/view.rs:509
+msgid "Brightness {0}, contrast {1}, {2}"
+msgstr "Luminosité {0}, contraste {1}, {2}"
+
+#: crates/tvc-app/src/view.rs:510
+msgid "Brightness {0}, contrast {1}"
+msgstr "Luminosité {0}, contraste {1}"
+
+#: crates/tvc-app/src/view.rs:522
+msgid "Picture"
+msgstr "Image"
+
+#: crates/tvc-app/src/view.rs:523
+msgid "Ports"
+msgstr "Ports"
+
+#: crates/tvc-app/src/view.rs:524
+msgid "On-screen menu"
+msgstr "Menu à l'écran"
+
+#: crates/tvc-app/src/view.rs:525
+msgid "More settings"
+msgstr "Autres paramètres"
+
+#: crates/tvc-app/src/view.rs:526
+msgid "Reset and restore"
+msgstr "Réinitialisation et restauration"
+
+#: crates/tvc-app/src/view.rs:547 crates/tvc-core/src/profile/p32p20.json:69
+#: crates/tvc-core/src/profile/p32p20.json:73
+#: crates/tvc-core/src/profile/p32p20.json:77
+msgid "Reset"
+msgstr "Réinitialiser"
+
+#: crates/tvc-app/src/view.rs:622
+#: crates/tvc-core/src/profile/generic-mccs.json:39
+msgid "Volume"
+msgstr "Volume"
+
+#: crates/tvc-app/src/view.rs:650
+msgid "Red, green and blue gain"
+msgstr "Gain rouge, vert et bleu"
+
+#: crates/tvc-app/src/view.rs:651
+msgid "Available in {0} colour mode"
+msgstr "Disponible dans le mode couleur {0}"
+
+#: crates/tvc-app/src/view.rs:659
+msgid "Red"
+msgstr "Rouge"
+
+#: crates/tvc-app/src/view.rs:659
+msgid "Green"
+msgstr "Vert"
+
+#: crates/tvc-app/src/view.rs:659
+msgid "Blue"
+msgstr "Bleu"
+
+#: crates/tvc-app/src/view.rs:669
+msgid "Put back the settings saved before the last reset"
+msgstr "Rétablit les paramètres enregistrés avant la dernière réinitialisation"
+
+#: crates/tvc-app/src/view.rs:697
+msgid ""
+"Keep the menu bar icon and keyboard shortcuts running after you close the window"
+msgstr "Garder l'icône de la barre des menus et les raccourcis clavier actifs après la fermeture de la fenêtre"
+
+#: crates/tvc-app/src/view.rs:699
+msgid ""
+"Keep the tray icon and keyboard shortcuts running after you close the window"
+msgstr "Garder l'icône de notification et les raccourcis clavier actifs après la fermeture de la fenêtre"
+
+#: crates/tvc-app/src/view.rs:703
+msgid "Starts in the background when you sign in"
+msgstr "Démarre en arrière-plan à la connexion"
+
+#: crates/tvc-app/src/view.rs:704
+msgid "Starts in the background when you log in"
+msgstr "Démarre en arrière-plan à l'ouverture de session"
+
+#: crates/tvc-app/src/view.rs:705
+msgid "Opens the window when you sign in"
+msgstr "Ouvre la fenêtre à la connexion"
+
+#: crates/tvc-app/src/view.rs:706
+msgid "Opens the window when you log in"
+msgstr "Ouvre la fenêtre à l'ouverture de session"
+
+#: crates/tvc-app/src/view.rs:714
+msgid ""
+"This desktop doesn't let apps register global shortcuts. See System setup above."
+msgstr "Ce bureau ne permet pas aux applications d'enregistrer des raccourcis globaux. Voir Configuration du système ci-dessus."
+
+#: crates/tvc-app/src/view.rs:716
+msgid "Shortcuts work whenever ThinkVision Control is running."
+msgstr "Les raccourcis fonctionnent tant que ThinkVision Control est en cours d'exécution."
+
+#: crates/tvc-app/src/view.rs:718
+msgid "Shortcuts work while Run in background is on. Turn it on to use them."
+msgstr "Les raccourcis fonctionnent quand Exécuter en arrière-plan est activé. Activez-le pour les utiliser."
+
+#: crates/tvc-app/src/view.rs:732
+msgid "System"
+msgstr "Système"
+
+#: crates/tvc-app/src/view.rs:755
+msgid "Another app is using this shortcut"
+msgstr "Une autre application utilise ce raccourci"
+
+#: crates/tvc-app/src/view.rs:786
+msgid "Reading the monitor…"
+msgstr "Lecture du moniteur…"
+
+#: crates/tvc-app/src/view.rs:791
+msgid "Snapshot taken ({0} code)"
+msgid_plural "Snapshot taken ({0} codes)"
+msgstr[0] "Instantané pris ({0} code)"
+msgstr[1] "Instantané pris ({0} codes)"
+
+#: crates/tvc-app/src/view.rs:792
+msgid "Reads the current value of every code the monitor reports"
+msgstr "Lit la valeur actuelle de chaque code signalé par le moniteur"
+
+#: crates/tvc-app/src/view.rs:838
+msgid "Day preset at {0}, Night preset at {1}."
+msgstr "Préréglage Jour à {0}, préréglage Nuit à {1}."
+
+#: crates/tvc-app/src/view.rs:845
+msgid "Today: Day preset at sunrise {0}, Night preset at sunset {1}."
+msgstr "Aujourd'hui : préréglage Jour au lever du soleil à {0}, préréglage Nuit au coucher à {1}."
+
+#: crates/tvc-app/src/view.rs:847
+msgid "No sunrise or sunset there today; nothing changes until there is."
+msgstr "Pas de lever ni de coucher du soleil à cet endroit aujourd'hui ; rien ne change d'ici là."
+
+#: crates/tvc-app/src/platform/autostart.rs:8
+msgid "Start with Windows"
+msgstr "Démarrer avec Windows"
+
+#: crates/tvc-app/src/platform/autostart.rs:10
+msgid "Start when you log in"
+msgstr "Démarrer à l'ouverture de session"
+
+#: crates/tvc-app/src/platform/privileged.rs:33
+msgid "You closed the password prompt."
+msgstr "Vous avez fermé la demande de mot de passe."
+
+#: crates/tvc-app/src/platform/privileged.rs:35
+msgid ""
+"No password prompt is available on this desktop (no polkit agent). Run the command above in a terminal instead."
+msgstr "Aucune demande de mot de passe n'est disponible sur ce bureau (pas d'agent polkit). Exécutez plutôt la commande ci-dessus dans un terminal."
+
+#: crates/tvc-app/src/platform/privileged.rs:40
+msgid ""
+"No password prompt is available (pkexec isn't installed). Run the command above in a terminal instead."
+msgstr "Aucune demande de mot de passe n'est disponible (pkexec n'est pas installé). Exécutez plutôt la commande ci-dessus dans un terminal."
+
+#: crates/tvc-app/src/platform/privileged.rs:44
+msgid "Authentication failed or isn't allowed."
+msgstr "L'authentification a échoué ou n'est pas autorisée."
+
+#: crates/tvc-app/src/platform/privileged.rs:45
+msgid "The command failed."
+msgstr "La commande a échoué."
+
+#: crates/tvc-app/src/platform/privileged.rs:46
+msgid ""
+"The command failed:\n"
+"{0}"
+msgstr ""
+"La commande a échoué :\n"
+"{0}"
+
+#: crates/tvc-app/src/platform/setup.rs:245
+msgid "Use a USB-C or Thunderbolt port for this monitor"
+msgstr "Utilisez un port USB-C ou Thunderbolt pour ce moniteur"
+
+#: crates/tvc-app/src/platform/setup.rs:246
+msgid ""
+"The built-in HDMI port on M1 and base M2 Macs doesn't pass monitor controls through. Connect the monitor with USB-C or Thunderbolt (or a USB-C to DisplayPort cable) instead."
+msgstr "Le port HDMI intégré des Mac M1 et M2 de base ne transmet pas les contrôles du moniteur. Connectez plutôt le moniteur en USB-C ou Thunderbolt (ou avec un câble USB-C vers DisplayPort)."
+
+#: crates/tvc-app/src/platform/setup.rs:288
+msgid "Allow brightness control for the built-in display"
+msgstr "Autoriser le réglage de la luminosité de l'écran intégré"
+
+#: crates/tvc-app/src/platform/setup.rs:289
+msgid ""
+"Your user can't change the built-in display's brightness, and the login manager didn't do it for the app either. Allow access to add your user to the video group, which the app's udev rule lets write the brightness."
+msgstr "Votre utilisateur ne peut pas modifier la luminosité de l'écran intégré, et le gestionnaire de connexion ne l'a pas fait non plus pour l'application. Autorisez l'accès pour ajouter votre utilisateur au groupe video, que la règle udev de l'application autorise à écrire la luminosité."
+
+#: crates/tvc-app/src/platform/setup.rs:293
+#: crates/tvc-app/src/platform/setup.rs:308
+msgid "Allow access"
+msgstr "Autoriser l'accès"
+
+#: crates/tvc-app/src/platform/setup.rs:298
+msgid "Your user is in the video group now; log out and back in to use it."
+msgstr "Votre utilisateur fait maintenant partie du groupe video ; fermez puis rouvrez votre session pour l'utiliser."
+
+#: crates/tvc-app/src/platform/setup.rs:304
+msgid "Allow access to monitor controls"
+msgstr "Autoriser l'accès aux contrôles du moniteur"
+
+#: crates/tvc-app/src/platform/setup.rs:305
+msgid ""
+"Your user can't open the monitor's I²C bus. Allow access to install a udev rule that opens it to your login session (your distribution's ddcutil package ships an equivalent rule)."
+msgstr "Votre utilisateur ne peut pas ouvrir le bus I²C du moniteur. Autorisez l'accès pour installer une règle udev qui l'ouvre à votre session (le paquet ddcutil de votre distribution fournit une règle équivalente)."
+
+#: crates/tvc-app/src/platform/setup.rs:310
+msgid ""
+"Access is set up; log out and back in if the monitor still isn't found."
+msgstr "L'accès est configuré ; fermez puis rouvrez votre session si le moniteur reste introuvable."
+
+#: crates/tvc-app/src/platform/setup.rs:317
+msgid "Load the i2c-dev kernel module"
+msgstr "Charger le module noyau i2c-dev"
+
+#: crates/tvc-app/src/platform/setup.rs:318
+msgid ""
+"There are no /dev/i2c-* devices, so the i2c-dev module isn't loaded. Load it now and at every boot."
+msgstr "Il n'y a aucun périphérique /dev/i2c-*, le module i2c-dev n'est donc pas chargé. Chargez-le maintenant et à chaque démarrage."
+
+#: crates/tvc-app/src/platform/setup.rs:320
+msgid "Load the module"
+msgstr "Charger le module"
+
+#: crates/tvc-app/src/platform/setup.rs:322
+msgid ""
+"The module is loaded; restart the computer if the monitor still isn't found."
+msgstr "Le module est chargé ; redémarrez l'ordinateur si le moniteur reste introuvable."
+
+#: crates/tvc-app/src/platform/setup.rs:329
+msgid "Turn on monitor controls in the NVIDIA driver"
+msgstr "Activer les contrôles du moniteur dans le pilote NVIDIA"
+
+#: crates/tvc-app/src/platform/setup.rs:330
+msgid ""
+"NVIDIA's driver isn't offering this monitor's control channel. Check that kernel modesetting is on (the nvidia-drm.modeset=1 kernel option, the default on recent drivers). If the monitor still can't be reached, add the driver option below and restart the computer (on some systems, rebuild the initramfs first)."
+msgstr "Le pilote NVIDIA ne propose pas le canal de contrôle de ce moniteur. Vérifiez que le modesetting du noyau est activé (l'option noyau nvidia-drm.modeset=1, par défaut sur les pilotes récents). Si le moniteur reste inaccessible, ajoutez l'option de pilote ci-dessous et redémarrez l'ordinateur (sur certains systèmes, régénérez d'abord l'initramfs)."
+
+#: crates/tvc-app/src/platform/setup.rs:341
+msgid "The ddcci kernel driver also controls the monitor"
+msgstr "Le pilote noyau ddcci contrôle aussi le moniteur"
+
+#: crates/tvc-app/src/platform/setup.rs:342
+msgid ""
+"The ddcci driver (ddcci-dkms) drives the monitor's brightness itself, so its changes and this app's fight each other. Unload it while you use this app; to keep it from loading at boot, uninstall it or blacklist it in /etc/modprobe.d."
+msgstr "Le pilote ddcci (ddcci-dkms) gère lui-même la luminosité du moniteur, si bien que ses modifications et celles de cette application se contredisent. Déchargez-le pendant que vous utilisez cette application ; pour l'empêcher de se charger au démarrage, désinstallez-le ou mettez-le en liste noire dans /etc/modprobe.d."
+
+#: crates/tvc-app/src/platform/setup.rs:346
+msgid "Unload the driver"
+msgstr "Décharger le pilote"
+
+#: crates/tvc-app/src/platform/setup.rs:348
+msgid "The driver is unloaded; restart the computer if it comes back."
+msgstr "Le pilote est déchargé ; redémarrez l'ordinateur s'il revient."
+
+#: crates/tvc-app/src/platform/setup.rs:355
+msgid "KDE's power manager also controls monitor brightness"
+msgstr "Le gestionnaire d'énergie de KDE contrôle aussi la luminosité du moniteur"
+
+#: crates/tvc-app/src/platform/setup.rs:356
+msgid ""
+"PowerDevil talks to the monitor over DDC/CI too, so the two fight over the bus and brightness changes don't stick. Turn off its DDC control (the same override `systemctl --user edit plasma-powerdevil.service` makes); laptop screen brightness keeps working."
+msgstr "PowerDevil communique aussi avec le moniteur via DDC/CI ; les deux se disputent donc le bus et les changements de luminosité ne tiennent pas. Désactivez son contrôle DDC (la même modification que `systemctl --user edit plasma-powerdevil.service`) ; la luminosité de l'écran du portable continue de fonctionner."
+
+#: crates/tvc-app/src/platform/setup.rs:360
+msgid "Turn off PowerDevil's DDC"
+msgstr "Désactiver le DDC de PowerDevil"
+
+#: crates/tvc-app/src/platform/setup.rs:371
+msgid ""
+"PowerDevil's DDC control is off; log out and back in if brightness changes still don't stick."
+msgstr "Le contrôle DDC de PowerDevil est désactivé ; fermez puis rouvrez votre session si les changements de luminosité ne tiennent toujours pas."
+
+#: crates/tvc-app/src/platform/setup.rs:378
+msgid "Another app also controls the monitor"
+msgstr "Une autre application contrôle aussi le moniteur"
+
+#: crates/tvc-app/src/platform/setup.rs:379
+msgid ""
+"{0} talks to the monitor over DDC/CI too, so the two can fight over the bus and changes may not stick. Quit it, or turn off its monitor control, while you use this app."
+msgstr "{0} communique aussi avec le moniteur via DDC/CI ; les deux peuvent donc se disputer le bus et les changements risquent de ne pas tenir. Quittez-la, ou désactivez son contrôle du moniteur, pendant que vous utilisez cette application."
+
+#: crates/tvc-app/src/platform/setup.rs:397
+msgid "Set desktop shortcuts"
+msgstr "Définir les raccourcis du bureau"
+
+#: crates/tvc-app/src/platform/setup.rs:398
+msgid ""
+"This desktop doesn't let apps register global shortcuts. Add these commands as custom shortcuts instead: GNOME: Settings → Keyboard → Custom Shortcuts; KDE: System Settings → Keyboard → Shortcuts → Add New → Command or Script; COSMIC: Settings → Keyboard → Custom shortcuts."
+msgstr "Ce bureau ne permet pas aux applications d'enregistrer des raccourcis globaux. Ajoutez plutôt ces commandes comme raccourcis personnalisés : GNOME : Paramètres → Clavier → Raccourcis personnalisés ; KDE : Configuration du système → Clavier → Raccourcis → Ajouter un nouveau → Commande ou script ; COSMIC : Paramètres → Clavier → Raccourcis personnalisés."
+
+#: crates/tvc-app/src/platform/setup.rs:406
+msgid ""
+"{0} No password prompt seems to be running on this desktop; if none appears, run the command in a terminal instead."
+msgstr "{0} Aucune demande de mot de passe ne semble active sur ce bureau ; si aucune n'apparaît, exécutez plutôt la commande dans un terminal."
+
+#: crates/tvc-app/src/platform/setup.rs:421
+msgid "Install the AppIndicator extension to see the tray icon"
+msgstr "Installer l'extension AppIndicator pour voir l'icône de notification"
+
+#: crates/tvc-app/src/platform/setup.rs:427
+msgid ""
+"GNOME shows tray icons only through the AppIndicator extension. Ubuntu ships it; turn it back on."
+msgstr "GNOME n'affiche les icônes de la zone de notification que via l'extension AppIndicator. Ubuntu la fournit ; réactivez-la."
+
+#: crates/tvc-app/src/platform/setup.rs:429
+msgid "Turn on"
+msgstr "Activer"
+
+#: crates/tvc-app/src/platform/setup.rs:431
+msgid ""
+"The extension is turned on; log out and back in if the tray icon doesn't appear."
+msgstr "L'extension est activée ; fermez puis rouvrez votre session si l'icône de notification n'apparaît pas."
+
+#: crates/tvc-app/src/platform/setup.rs:440
+msgid ""
+"GNOME shows tray icons only through the AppIndicator extension. Install it with your package manager (usually as gnome-shell-extension-appindicator) or from extensions.gnome.org, log out and back in, then turn it on."
+msgstr "GNOME n'affiche les icônes de la zone de notification que via l'extension AppIndicator. Installez-la avec votre gestionnaire de paquets (généralement sous le nom gnome-shell-extension-appindicator) ou depuis extensions.gnome.org, fermez puis rouvrez votre session, puis activez-la."
+
+#: crates/tvc-app/src/platform/setup.rs:449
+msgid ""
+"GNOME shows tray icons only through the AppIndicator extension. Install it and turn it on."
+msgstr "GNOME n'affiche les icônes de la zone de notification que via l'extension AppIndicator. Installez-la et activez-la."
+
+#: crates/tvc-app/src/platform/setup.rs:451
+msgid "Install and turn on"
+msgstr "Installer et activer"
+
+#: crates/tvc-app/src/platform/setup.rs:453
+msgid ""
+"The extension is installed and turned on; log out and back in to see the tray icon."
+msgstr "L'extension est installée et activée ; fermez puis rouvrez votre session pour voir l'icône de notification."
+
+#: crates/tvc-app/src/platform/setup.rs:463
+msgid ""
+"Add the XApp Status applet to a panel, and check that xapp-sn-watcher is running."
+msgstr "Ajoutez l'applet XApp Status à un panneau et vérifiez que xapp-sn-watcher est en cours d'exécution."
+
+#: crates/tvc-app/src/platform/setup.rs:465
+msgid ""
+"Add the Status Tray plugin to a panel (Panel → Panel Preferences → Items)."
+msgstr "Ajoutez le greffon Status Tray à un tableau de bord (Tableau de bord → Préférences du tableau de bord → Éléments)."
+
+#: crates/tvc-app/src/platform/setup.rs:467
+msgid "Add the System Tray widget to a panel."
+msgstr "Ajoutez le widget Zone de notification à un panneau."
+
+#: crates/tvc-app/src/platform/setup.rs:469
+msgid "Use a bar with a tray, such as Waybar with its tray module."
+msgstr "Utilisez une barre avec zone de notification, comme Waybar avec son module tray."
+
+#: crates/tvc-app/src/platform/setup.rs:471
+msgid "Add a system tray (status notifier) to your panel."
+msgstr "Ajoutez une zone de notification (status notifier) à votre panneau."
+
+#: crates/tvc-app/src/platform/setup.rs:475
+msgid "Add a system tray to see the tray icon"
+msgstr "Ajouter une zone de notification pour voir l'icône"
+
+#: crates/tvc-app/src/platform/setup.rs:476
+msgid ""
+"This desktop has no tray for app icons right now, so the app keeps its window open instead of hiding in the tray. {0}"
+msgstr "Ce bureau n'a pas de zone de notification pour le moment ; l'application garde donc sa fenêtre ouverte au lieu de se réduire dans la zone de notification. {0}"
+
+#: crates/tvc-core/src/engine.rs:177
+msgid "{0} isn't supported by this monitor."
+msgstr "{0} n'est pas pris en charge par ce moniteur."
+
+#: crates/tvc-core/src/engine.rs:698
+msgid "The monitor is asleep or this PC is locked"
+msgstr "Le moniteur est en veille ou ce PC est verrouillé"
+
+#: crates/tvc-core/src/engine.rs:938
+msgid ""
+"Changes are off for this monitor after repeated failed writes; reconnect it to try again."
+msgstr "Les modifications sont désactivées pour ce moniteur après des échecs d'écriture répétés ; reconnectez-le pour réessayer."
+
+#: crates/tvc-core/src/engine.rs:941
+msgid "The monitor's capabilities haven't been read yet."
+msgstr "Les capacités du moniteur n'ont pas encore été lues."
+
+#: crates/tvc-core/src/engine.rs:971
+msgid "Backup failed — {0} cancelled."
+msgstr "Échec de la sauvegarde — action « {0} » annulée."
+
+#: crates/tvc-core/src/engine.rs:994
+msgid "{0} remains {1}; the monitor did not apply {2}."
+msgstr "{0} reste à {1} ; le moniteur n'a pas appliqué {2}."
+
+#: crates/tvc-core/src/engine.rs:1045
+msgid "The monitor stayed on {0}"
+msgstr "Le moniteur est resté sur {0}"
+
+#: crates/tvc-core/src/engine.rs:1170
+msgid "{0} preset"
+msgstr "Préréglage {0}"
+
+#: crates/tvc-core/src/engine.rs:1176
+msgid "No backup found."
+msgstr "Aucune sauvegarde trouvée."
+
+#: crates/tvc-core/src/engine.rs:1177
+msgid "Couldn't read the backup: {0}"
+msgstr "Impossible de lire la sauvegarde : {0}"
+
+#: crates/tvc-core/src/engine.rs:1195
+msgid "{0}; restored {1} of {2} settings."
+msgid_plural "{0}; restored {1} of {2} settings."
+msgstr[0] "{0} ; {1} sur {2} paramètre restauré."
+msgstr[1] "{0} ; {1} sur {2} paramètres restaurés."
+
+#: crates/tvc-core/src/engine.rs:1208
+msgid "Restored {0} of {1} settings. {2}"
+msgid_plural "Restored {0} of {1} settings. {2}"
+msgstr[0] "{0} sur {1} paramètre restauré. {2}"
+msgstr[1] "{0} sur {1} paramètres restaurés. {2}"
+
+#: crates/tvc-core/src/engine.rs:1259
+msgid "Monitor not found"
+msgstr "Moniteur introuvable"
+
+#: crates/tvc-core/src/engine.rs:1261
+msgid "The monitor answers but supports none of the controls this app uses"
+msgstr "Le moniteur répond mais ne prend en charge aucun des contrôles utilisés par cette application"
+
+#: crates/tvc-core/src/engine.rs:1262 crates/tvc-core/src/hub.rs:493
+msgid "Monitor not responding"
+msgstr "Le moniteur ne répond pas"
+
+#: crates/tvc-core/src/profile.rs:257
+msgid "{0} can't be changed."
+msgstr "{0} ne peut pas être modifié."
+
+#: crates/tvc-core/src/safety.rs:34 crates/tvc-core/src/safety.rs:53
+msgid "{0} is never written."
+msgstr "{0} n'est jamais écrit."
+
+#: crates/tvc-core/src/safety.rs:37
+msgid "This monitor is read-only."
+msgstr "Ce moniteur est en lecture seule."
+
+#: crates/tvc-core/src/safety.rs:42
+msgid "{0} is only allowed on verified monitors."
+msgstr "{0} n'est autorisé que sur les moniteurs vérifiés."
+
+#: crates/tvc-core/src/safety.rs:46 crates/tvc-core/src/safety.rs:54
+msgid "Unknown setting — identify it with the finder first."
+msgstr "Paramètre inconnu — identifiez-le d'abord avec l'outil de recherche."
+
+#: crates/tvc-core/src/safety.rs:50
+msgid "This monitor does not support {0}."
+msgstr "Ce moniteur ne prend pas en charge {0}."
+
+#: crates/tvc-core/src/safety.rs:61
+msgid "The monitor lists no values for {0}."
+msgstr "Le moniteur n'indique aucune valeur pour {0}."
+
+#: crates/tvc-core/src/safety.rs:64
+msgid "{0} is not a valid value for {1}."
+msgstr "{0} n'est pas une valeur valide pour {1}."
+
+#: crates/tvc-core/src/profile/generic-mccs.json:11
+#: crates/tvc-core/src/profile/p32p20.json:21
+msgid "Colour mode"
+msgstr "Mode couleur"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:27
+#: crates/tvc-core/src/profile/p32p20.json:32
+msgid "Changes apply straight away"
+msgstr "Les modifications s'appliquent immédiatement"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:13
+#: crates/tvc-core/src/profile/p32p20.json:27
+msgid "sRGB"
+msgstr "sRGB"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:14
+msgid "Native"
+msgstr "Natif"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:15
+msgid "4000 K"
+msgstr "4000 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:16
+msgid "5000 K"
+msgstr "5000 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:17
+msgid "6500 K"
+msgstr "6500 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:18
+msgid "7500 K"
+msgstr "7500 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:19
+msgid "8200 K"
+msgstr "8200 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:20
+msgid "9300 K"
+msgstr "9300 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:21
+msgid "10000 K"
+msgstr "10000 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:22
+msgid "11500 K"
+msgstr "11500 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:23
+msgid "User 1"
+msgstr "Utilisateur 1"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:24
+msgid "User 2"
+msgstr "Utilisateur 2"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:25
+msgid "User 3"
+msgstr "Utilisateur 3"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:28
+#: crates/tvc-core/src/profile/p32p20.json:33
+msgid "Red gain"
+msgstr "Gain rouge"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:30
+#: crates/tvc-core/src/profile/p32p20.json:35
+msgid "Green gain"
+msgstr "Gain vert"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:32
+#: crates/tvc-core/src/profile/p32p20.json:37
+msgid "Blue gain"
+msgstr "Gain bleu"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:34
+#: crates/tvc-core/src/profile/p32p20.json:39
+msgid "Input"
+msgstr "Entrée"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:37
+#: crates/tvc-core/src/profile/p32p20.json:43
+msgid ""
+"You won't be able to control the monitor from this PC until you switch back."
+msgstr "Vous ne pourrez plus contrôler le moniteur depuis ce PC tant que vous ne serez pas revenu à cette entrée."
+
+#: crates/tvc-core/src/profile/generic-mccs.json:40
+msgid "Sharpness"
+msgstr "Netteté"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:41
+#: crates/tvc-core/src/profile/p32p20.json:78
+msgid "OSD enable"
+msgstr "Menu OSD"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:42
+#: crates/tvc-core/src/profile/p32p20.json:79
+msgid "Power"
+msgstr "Alimentation"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:43
+#: crates/tvc-core/src/profile/p32p20.json:55
+#: crates/tvc-core/src/profile/p32p20.json:49
+#: crates/tvc-core/src/profile/p32p20.json:80
+msgid "On"
+msgstr "Activé"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:43
+#: crates/tvc-core/src/profile/p32p20.json:80
+msgid "Standby"
+msgstr "Veille"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:43
+#: crates/tvc-core/src/profile/p32p20.json:49
+#: crates/tvc-core/src/profile/p32p20.json:55
+#: crates/tvc-core/src/profile/p32p20.json:80
+msgid "Off"
+msgstr "Désactivé"
+
+#: crates/tvc-core/src/profile/p32p20.json:12
+msgid " — the current colour mode may lock it"
+msgstr " — le mode couleur actuel peut la bloquer"
+
+#: crates/tvc-core/src/profile/p32p20.json:23
+msgid "DCI-P3"
+msgstr "DCI-P3"
+
+#: crates/tvc-core/src/profile/p32p20.json:24
+msgid "Bluish"
+msgstr "Bleuté"
+
+#: crates/tvc-core/src/profile/p32p20.json:25
+msgid "Neutral"
+msgstr "Neutre"
+
+#: crates/tvc-core/src/profile/p32p20.json:26
+msgid "Low Blue Light"
+msgstr "Lumière bleue réduite"
+
+#: crates/tvc-core/src/profile/p32p20.json:28
+msgid "Reddish"
+msgstr "Rougeâtre"
+
+#: crates/tvc-core/src/profile/p32p20.json:29
+msgid "BT.709"
+msgstr "BT.709"
+
+#: crates/tvc-core/src/profile/p32p20.json:30
+msgid "User / Custom"
+msgstr "Utilisateur / Personnalisé"
+
+#: crates/tvc-core/src/profile/p32p20.json:6
+msgid "HDMI"
+msgstr "HDMI"
+
+#: crates/tvc-core/src/profile/p32p20.json:7
+msgid "DisplayPort"
+msgstr "DisplayPort"
+
+#: crates/tvc-core/src/profile/p32p20.json:8
+msgid "USB-C"
+msgstr "USB-C"
+
+#: crates/tvc-core/src/profile/p32p20.json:45
+msgid "Over Drive"
+msgstr "Over Drive"
+
+#: crates/tvc-core/src/profile/p32p20.json:47
+msgid "Reduces motion blur. Extreme can leave trails behind moving objects"
+msgstr "Réduit le flou de mouvement. Extrême peut laisser des traînées derrière les objets en mouvement"
+
+#: crates/tvc-core/src/profile/p32p20.json:51
+msgid "Normal"
+msgstr "Normal"
+
+#: crates/tvc-core/src/profile/p32p20.json:46
+msgid "Extreme"
+msgstr "Extrême"
+
+#: crates/tvc-core/src/profile/p32p20.json:48
+msgid "Dynamic Contrast"
+msgstr "Contraste dynamique"
+
+#: crates/tvc-core/src/profile/p32p20.json:50
+msgid "Adjusts contrast to match what's on screen"
+msgstr "Ajuste le contraste en fonction du contenu affiché"
+
+#: crates/tvc-core/src/profile/p32p20.json:51
+msgid "Aspect ratio"
+msgstr "Format d'image"
+
+#: crates/tvc-core/src/profile/p32p20.json:53
+msgid ""
+"The monitor greys this out at its native resolution and may ignore changes"
+msgstr "Le moniteur grise cette option à sa résolution native et peut ignorer les modifications"
+
+#: crates/tvc-core/src/profile/p32p20.json:52
+msgid "Full screen"
+msgstr "Plein écran"
+
+#: crates/tvc-core/src/profile/p32p20.json:52
+msgid "Original aspect ratio"
+msgstr "Format d'origine"
+
+#: crates/tvc-core/src/profile/p32p20.json:54
+msgid "USB Charging"
+msgstr "Charge USB"
+
+#: crates/tvc-core/src/profile/p32p20.json:56
+msgid "Charge devices from the monitor's USB ports while it's in standby"
+msgstr "Charge les appareils via les ports USB du moniteur quand il est en veille"
+
+#: crates/tvc-core/src/profile/p32p20.json:57
+msgid "Menu language"
+msgstr "Langue du menu"
+
+#: crates/tvc-core/src/profile/p32p20.json:63
+msgid "The language of the monitor's own menus"
+msgstr "La langue des menus du moniteur"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "English"
+msgstr "Anglais"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "French"
+msgstr "Français"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "German"
+msgstr "Allemand"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "Italian"
+msgstr "Italien"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Japanese"
+msgstr "Japonais"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Russian"
+msgstr "Russe"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Spanish"
+msgstr "Espagnol"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Chinese (Simplified)"
+msgstr "Chinois (simplifié)"
+
+#: crates/tvc-core/src/profile/p32p20.json:64
+msgid "Factory reset"
+msgstr "Réinitialisation d'usine"
+
+#: crates/tvc-core/src/profile/p32p20.json:66
+msgid "Restores every on-screen-menu setting. We save a backup first"
+msgstr "Rétablit tous les paramètres du menu à l'écran. Une sauvegarde est faite avant"
+
+#: crates/tvc-core/src/profile/p32p20.json:65
+msgid ""
+"Reset ALL monitor settings to factory defaults? This may switch DDC/CI off, which would stop this app working until it is turned back on with the Exit button (hold 10 s). A backup is saved first."
+msgstr "Rétablir TOUS les paramètres d'usine du moniteur ? Cela peut désactiver DDC/CI, ce qui empêcherait cette application de fonctionner jusqu'à sa réactivation avec le bouton Exit (maintenir 10 s). Une sauvegarde est faite avant."
+
+#: crates/tvc-core/src/profile/p32p20.json:67
+msgid "Reset monitor to factory settings?"
+msgstr "Rétablir les paramètres d'usine du moniteur ?"
+
+#: crates/tvc-core/src/profile/p32p20.json:68
+msgid ""
+"This restores every on-screen-menu setting, and it can turn off DDC/CI on some Lenovo monitors. We save a backup first."
+msgstr "Cela rétablit tous les paramètres du menu à l'écran et peut désactiver DDC/CI sur certains moniteurs Lenovo. Une sauvegarde est faite avant."
+
+#: crates/tvc-core/src/profile/p32p20.json:70
+msgid "Reset brightness and contrast"
+msgstr "Réinitialiser luminosité et contraste"
+
+#: crates/tvc-core/src/profile/p32p20.json:71
+msgid "Reset brightness and contrast to factory defaults?"
+msgstr "Rétablir les valeurs d'usine de la luminosité et du contraste ?"
+
+#: crates/tvc-core/src/profile/p32p20.json:73
+msgid "Reset brightness and contrast?"
+msgstr "Réinitialiser la luminosité et le contraste ?"
+
+#: crates/tvc-core/src/profile/p32p20.json:74
+msgid "Reset colour"
+msgstr "Réinitialiser la couleur"
+
+#: crates/tvc-core/src/profile/p32p20.json:75
+msgid "Reset colour settings to factory defaults?"
+msgstr "Rétablir les valeurs d'usine des paramètres de couleur ?"
+
+#: crates/tvc-core/src/profile/p32p20.json:77
+msgid "Reset colour settings?"
+msgstr "Réinitialiser les paramètres de couleur ?"
+
+#: crates/tvc-core/src/store.rs:95
+msgid "Day"
+msgstr "Jour"
+
+#: crates/tvc-core/src/store.rs:96
+msgid "Night"
+msgstr "Nuit"
+
+#: crates/tvc-core/src/hotkey.rs:177
+msgid "Brightness up"
+msgstr "Augmenter la luminosité"
+
+#: crates/tvc-core/src/hotkey.rs:178
+msgid "Brightness down"
+msgstr "Baisser la luminosité"
+
+#: crates/tvc-core/src/hotkey.rs:179
+msgid "Contrast up"
+msgstr "Augmenter le contraste"
+
+#: crates/tvc-core/src/hotkey.rs:180
+msgid "Contrast down"
+msgstr "Baisser le contraste"
+
+#: crates/tvc-core/src/hotkey.rs:181
+msgid "Day preset"
+msgstr "Préréglage Jour"
+
+#: crates/tvc-core/src/hotkey.rs:182
+msgid "Night preset"
+msgstr "Préréglage Nuit"
+
+#: crates/tvc-core/src/hotkey.rs:183
+msgid "Input HDMI"
+msgstr "Entrée HDMI"
+
+#: crates/tvc-core/src/hotkey.rs:184
+msgid "Input DisplayPort"
+msgstr "Entrée DisplayPort"
+
+#: crates/tvc-core/src/hotkey.rs:185
+msgid "Input USB-C"
+msgstr "Entrée USB-C"
+
+#: crates/tvc-core/src/hotkey.rs:186
+msgid "Switch to this PC"
+msgstr "Basculer vers ce PC"
+
+#: crates/tvc-core/src/hotkey.rs:187
+msgid "Open ThinkVision Control"
+msgstr "Ouvrir ThinkVision Control"

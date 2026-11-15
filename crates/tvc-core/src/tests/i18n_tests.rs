@@ -82,3 +82,91 @@ fn english_scope_nests_and_restores() {
     assert_eq!(inner, "Brightness");
     assert_eq!(tr("Brightness"), "Brightness");
 }
+
+/// (msgctxt, msgid) → msgstr forms, for coverage checks; unlike `parse`, entries with a context are kept.
+fn entries(text: &str) -> std::collections::BTreeMap<(String, String), Vec<String>> {
+    fn unquote(s: &str) -> String {
+        let inner = s.trim().strip_prefix('"').and_then(|r| r.strip_suffix('"')).unwrap_or("");
+        inner.replace("\\\"", "\"").replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\")
+    }
+    let mut out = std::collections::BTreeMap::new();
+    let (mut ctx, mut id, mut forms, mut last) = (String::new(), String::new(), Vec::<String>::new(), "");
+    let mut flush = |ctx: &mut String, id: &mut String, forms: &mut Vec<String>| {
+        if !id.is_empty() {
+            out.insert((std::mem::take(ctx), std::mem::take(id)), std::mem::take(forms));
+        }
+        ctx.clear();
+        forms.clear();
+    };
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
+        let (key, rest) = if line.starts_with('"') { ("", line) } else { line.split_once(' ').unwrap_or((line, "")) };
+        match key {
+            "msgctxt" => {
+                flush(&mut ctx, &mut id, &mut forms);
+                ctx = unquote(rest);
+                last = "ctx";
+            }
+            "msgid" => {
+                if last != "ctx" {
+                    flush(&mut ctx, &mut id, &mut forms);
+                }
+                id = unquote(rest);
+                last = "id";
+            }
+            "msgid_plural" => last = "plural",
+            k if k.starts_with("msgstr") => {
+                forms.push(unquote(rest));
+                last = "str";
+            }
+            "" => match last {
+                "id" => id.push_str(&unquote(rest)),
+                "ctx" => ctx.push_str(&unquote(rest)),
+                "str" => forms.last_mut().unwrap().push_str(&unquote(rest)),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    flush(&mut ctx, &mut id, &mut forms);
+    out
+}
+
+/// `{0}`, `{1}`, `{}` and `{name}` tokens, sorted.
+fn placeholders(s: &str) -> Vec<String> {
+    let mut found: Vec<String> = s.match_indices('{').filter_map(|(i, _)| {
+        let end = s[i..].find('}')?;
+        let token = &s[i..=i + end];
+        token[1..token.len() - 1].chars().all(|c| c.is_ascii_alphanumeric() || c == '_').then(|| token.to_string())
+    }).collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn every_catalog_covers_its_template_with_matching_placeholders() {
+    let root = format!("{}/../../translations", env!("CARGO_MANIFEST_DIR"));
+    for file in ["tvc", "tvc-app"] {
+        let template = entries(&std::fs::read_to_string(format!("{root}/{file}.pot")).unwrap());
+        for (code, _) in LANGUAGES.iter().filter(|(c, _)| *c != "en") {
+            let path = format!("{root}/{code}/LC_MESSAGES/{file}.po");
+            let catalog = entries(&std::fs::read_to_string(&path).unwrap());
+            let mut problems = Vec::new();
+            for key in template.keys() {
+                match catalog.get(key) {
+                    None => problems.push(format!("missing {key:?}")),
+                    Some(forms) if forms.is_empty() || forms.iter().any(String::is_empty) => {
+                        problems.push(format!("untranslated {key:?}"))
+                    }
+                    Some(forms) => {
+                        for form in forms {
+                            if placeholders(form) != placeholders(&key.1) {
+                                problems.push(format!("placeholders differ in {key:?}: {form:?}"));
+                            }
+                        }
+                    }
+                }
+            }
+            assert!(problems.is_empty(), "{path}: {} problem(s), first: {:?}", problems.len(), &problems[..problems.len().min(5)]);
+        }
+    }
+}

@@ -1,5 +1,694 @@
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "Language: zh_CN\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+#. Header
+#: crates/tvc-app/ui/app.slint:19
+msgctxt "App"
+msgid "Monitor"
+msgstr "显示器"
+
+#: crates/tvc-app/ui/app.slint:55
+msgctxt "App"
+msgid "Reads the current value of every code the monitor reports"
+msgstr "读取显示器报告的每个代码的当前值"
+
+#: crates/tvc-app/ui/app.slint:73
+msgctxt "App"
+msgid "Start with Windows"
+msgstr "随 Windows 启动"
+
+#: crates/tvc-app/ui/background.slint:26
+msgctxt "Tray"
+msgid "Open ThinkVision Control"
+msgstr "打开 ThinkVision Control"
+
+#: crates/tvc-app/ui/background.slint:28
+msgctxt "Tray"
+msgid "Brightness up"
+msgstr "调高亮度"
+
+#: crates/tvc-app/ui/background.slint:29
+msgctxt "Tray"
+msgid "Brightness down"
+msgstr "调低亮度"
+
+#: crates/tvc-app/ui/background.slint:30
+msgctxt "Tray"
+msgid "Day preset"
+msgstr "日间预设"
+
+#: crates/tvc-app/ui/background.slint:31
+msgctxt "Tray"
+msgid "Night preset"
+msgstr "夜间预设"
+
+#: crates/tvc-app/ui/background.slint:32
+msgctxt "Tray"
+msgid "Switch to this PC"
+msgstr "切换到此电脑"
+
+#: crates/tvc-app/ui/background.slint:34
+msgctxt "Tray"
+msgid "Exit"
+msgstr "退出"
+
+#: crates/tvc-app/ui/background.slint:42
+msgctxt "Osd"
+msgid "Brightness"
+msgstr "亮度"
+
+#: crates/tvc-app/ui/controls.slint:304
+msgctxt "InputTile"
+msgid "{0}, This PC"
+msgstr "{0}，此电脑"
+
+#: crates/tvc-app/ui/controls.slint:324
+msgctxt "InputSelector"
+msgid "Input"
+msgstr "输入源"
+
+#: crates/tvc-app/ui/controls.slint:335
+msgctxt "InputSelector"
+msgid "This PC"
+msgstr "此电脑"
+
+#: crates/tvc-app/ui/controls.slint:493
+msgctxt "LabelledSwitch"
+msgid "On"
+msgstr "开"
+
+#: crates/tvc-app/ui/controls.slint:493
+msgctxt "LabelledSwitch"
+msgid "Off"
+msgstr "关"
+
+#: crates/tvc-app/ui/controls.slint:768
+msgctxt "DisplayWords"
+msgid "Disconnected"
+msgstr "已断开连接"
+
+#: crates/tvc-app/ui/controls.slint:769
+msgctxt "DisplayWords"
+msgid "Not responding"
+msgstr "无响应"
+
+#: crates/tvc-app/ui/controls.slint:770
+msgctxt "DisplayWords"
+msgid "Connecting…"
+msgstr "正在连接…"
+
+#: crates/tvc-app/ui/controls.slint:771
+msgctxt "DisplayWords"
+msgid "Can't be reached"
+msgstr "无法访问"
+
+#: crates/tvc-app/ui/controls.slint:772
+msgctxt "DisplayWords"
+msgid "Built-in · brightness only"
+msgstr "内置 · 仅亮度"
+
+#: crates/tvc-app/ui/controls.slint:773
+msgctxt "DisplayWords"
+msgid "Verified"
+msgstr "已验证"
+
+#: crates/tvc-app/ui/controls.slint:773
+msgctxt "DisplayWords"
+msgid "Experimental"
+msgstr "实验性"
+
+#: crates/tvc-app/ui/controls.slint:773
+msgctxt "DisplayWords"
+msgid "Read-only"
+msgstr "只读"
+
+#: crates/tvc-app/ui/controls.slint:968 crates/tvc-app/ui/controls.slint:1028
+msgctxt "DisplayMenu"
+msgid "Display"
+msgstr "显示器"
+
+#: crates/tvc-app/ui/controls.slint:1041
+msgctxt "DisplayMenu"
+msgid "All together"
+msgstr "全部同步"
+
+#: crates/tvc-app/ui/controls.slint:1042
+msgctxt "DisplayMenu"
+msgid "Move every included display"
+msgstr "同时调节所有已包含的显示器"
+
+#: crates/tvc-app/ui/controls.slint:1077
+msgctxt "DisplayPicker"
+msgid "Display"
+msgstr "显示器"
+
+#: crates/tvc-app/ui/controls.slint:1091
+msgctxt "DisplayPicker"
+msgid "All together"
+msgstr "全部同步"
+
+#: crates/tvc-app/ui/controls.slint:1092
+msgctxt "DisplayPicker"
+msgid "Move every included display"
+msgstr "同时调节所有已包含的显示器"
+
+#: crates/tvc-app/ui/main.slint:90
+msgctxt "MainWindow"
+msgid "Together"
+msgstr "同步"
+
+#: crates/tvc-app/ui/main.slint:95
+msgctxt "MainWindow"
+msgid "Experimental"
+msgstr "实验性"
+
+#: crates/tvc-app/ui/main.slint:101
+msgctxt "MainWindow"
+msgid "Built-in"
+msgstr "内置"
+
+#: crates/tvc-app/ui/main.slint:134
+msgctxt "MainWindow"
+msgid "All together"
+msgstr "全部同步"
+
+#: crates/tvc-app/ui/main.slint:147
+msgctxt "MainWindow"
+msgid "Display"
+msgstr "显示"
+
+#: crates/tvc-app/ui/main.slint:148
+msgctxt "MainWindow"
+msgid "Monitor"
+msgstr "显示器"
+
+#: crates/tvc-app/ui/main.slint:149
+msgctxt "MainWindow"
+msgid "Settings"
+msgstr "设置"
+
+#: crates/tvc-app/ui/pages.slint:32
+msgctxt "DisplayPage"
+msgid "Input"
+msgstr "输入源"
+
+#: crates/tvc-app/ui/pages.slint:33
+msgctxt "DisplayPage"
+msgid "Names from the monitor's capability report"
+msgstr "名称来自显示器的功能报告"
+
+#: crates/tvc-app/ui/pages.slint:52
+msgctxt "DisplayPage"
+msgid "Brightness and contrast"
+msgstr "亮度和对比度"
+
+#: crates/tvc-app/ui/pages.slint:83
+msgctxt "DisplayPage"
+msgid "Sound"
+msgstr "声音"
+
+#: crates/tvc-app/ui/pages.slint:104
+msgctxt "DisplayPage"
+msgid "Presets"
+msgstr "预设"
+
+#. Only the built-in panel has no presets: say so instead of showing nothing.
+#: crates/tvc-app/ui/pages.slint:123
+msgctxt "DisplayPage"
+msgid "Day and Night"
+msgstr "日间和夜间"
+
+#: crates/tvc-app/ui/pages.slint:136
+msgctxt "DisplayPage"
+msgid ""
+"The built-in display has no Day and Night presets. It keeps the brightness "
+"you set here."
+msgstr "内置显示器没有日间和夜间预设，它会保持你在此处设置的亮度。"
+
+#: crates/tvc-app/ui/pages.slint:144
+msgctxt "DisplayPage"
+msgid "Colour"
+msgstr "颜色"
+
+#: crates/tvc-app/ui/pages.slint:149
+msgctxt "DisplayPage"
+msgid "Colour mode"
+msgstr "颜色模式"
+
+#: crates/tvc-app/ui/pages.slint:163
+msgctxt "DisplayPage"
+msgid "Custom colour"
+msgstr "自定义颜色"
+
+#. No verified profile: the report is how the display gets one.
+#: crates/tvc-app/ui/pages.slint:182
+msgctxt "DisplayPage"
+msgid "Help support this display"
+msgstr "帮助支持此显示器"
+
+#: crates/tvc-app/ui/pages.slint:185
+msgctxt "DisplayPage"
+msgid "Capability report"
+msgstr "功能报告"
+
+#: crates/tvc-app/ui/pages.slint:186
+msgctxt "DisplayPage"
+msgid "What {0} says it can do. Paste it into a new issue."
+msgstr "{0} 报告的功能。请将其粘贴到新的 issue 中。"
+
+#: crates/tvc-app/ui/pages.slint:188
+msgctxt "DisplayPage"
+msgid "Copy capability report"
+msgstr "复制功能报告"
+
+#: crates/tvc-app/ui/pages.slint:200
+msgctxt "IncludedRow"
+msgid "Disconnected · its offset is kept"
+msgstr "已断开连接 · 保留其偏移"
+
+#: crates/tvc-app/ui/pages.slint:201
+msgctxt "IncludedRow"
+msgid "Not responding"
+msgstr "无响应"
+
+#: crates/tvc-app/ui/pages.slint:202
+msgctxt "IncludedRow"
+msgid "Brightness only"
+msgstr "仅亮度"
+
+#: crates/tvc-app/ui/pages.slint:203
+msgctxt "IncludedRow"
+msgid "Brightness, contrast, volume"
+msgstr "亮度、对比度、音量"
+
+#: crates/tvc-app/ui/pages.slint:203
+msgctxt "IncludedRow"
+msgid "Brightness, contrast"
+msgstr "亮度、对比度"
+
+#: crates/tvc-app/ui/pages.slint:233
+msgctxt "IncludedRow"
+msgid "Include {0}"
+msgstr "包含 {0}"
+
+#: crates/tvc-app/ui/pages.slint:248
+msgctxt "IncludedRow"
+msgid "Offset from the master sliders"
+msgstr "相对主滑块的偏移"
+
+#: crates/tvc-app/ui/pages.slint:256
+msgctxt "IncludedRow"
+msgid "{0} offset"
+msgstr "{0} 偏移"
+
+#: crates/tvc-app/ui/pages.slint:270
+msgctxt "TogetherPage"
+msgid "Disconnected · its offset is kept"
+msgstr "已断开连接 · 保留其偏移"
+
+#: crates/tvc-app/ui/pages.slint:271
+msgctxt "TogetherPage"
+msgid "Not responding"
+msgstr "无响应"
+
+#: crates/tvc-app/ui/pages.slint:272
+msgctxt "TogetherPage"
+msgid "Not controlled over DDC/CI"
+msgstr "不通过 DDC/CI 控制"
+
+#: crates/tvc-app/ui/pages.slint:273
+msgctxt "TogetherPage"
+msgid "No volume control reported"
+msgstr "未报告音量控制"
+
+#: crates/tvc-app/ui/pages.slint:277
+msgctxt "TogetherPage"
+msgid "Included displays"
+msgstr "已包含的显示器"
+
+#: crates/tvc-app/ui/pages.slint:287
+msgctxt "TogetherPage"
+msgid "Move together"
+msgstr "同步调节"
+
+#: crates/tvc-app/ui/pages.slint:287
+msgctxt "TogetherPage"
+msgid "Offsets keep the gap between displays"
+msgstr "偏移会保持显示器之间的差值"
+
+#: crates/tvc-app/ui/pages.slint:309
+msgctxt "TogetherPage"
+msgid "{0}: {1}"
+msgstr "{0}：{1}"
+
+#: crates/tvc-app/ui/pages.slint:347
+msgctxt "TogetherPage"
+msgid "Presets"
+msgstr "预设"
+
+#: crates/tvc-app/ui/pages.slint:347
+msgctxt "TogetherPage"
+msgid "Every included display"
+msgstr "所有已包含的显示器"
+
+#: crates/tvc-app/ui/pages.slint:354
+msgctxt "TogetherPage"
+msgid "Brightness and contrast"
+msgstr "亮度和对比度"
+
+#: crates/tvc-app/ui/pages.slint:368
+msgctxt "TogetherPage"
+msgid ""
+"Input, colour and the Monitor tab stay per display. Pick a display above to "
+"change them."
+msgstr "输入源、颜色和“显示器”选项卡按显示器单独设置。请在上方选择一个显示器进行更改。"
+
+#: crates/tvc-app/ui/pages.slint:417
+msgctxt "MonitorPage"
+msgid "Backup"
+msgstr "备份"
+
+#: crates/tvc-app/ui/pages.slint:420
+msgctxt "MonitorPage"
+msgid "Restore backup"
+msgstr "还原备份"
+
+#: crates/tvc-app/ui/pages.slint:425
+msgctxt "MonitorPage"
+msgid "Restore"
+msgstr "还原"
+
+#: crates/tvc-app/ui/pages.slint:431
+msgctxt "MonitorPage"
+msgid "Tools"
+msgstr "工具"
+
+#: crates/tvc-app/ui/pages.slint:434
+msgctxt "MonitorPage"
+msgid "Find hidden settings"
+msgstr "查找隐藏设置"
+
+#: crates/tvc-app/ui/pages.slint:435
+msgctxt "MonitorPage"
+msgid "Look for settings your monitor supports but doesn't list"
+msgstr "查找显示器支持但未列出的设置"
+
+#: crates/tvc-app/ui/pages.slint:438
+msgctxt "MonitorPage"
+msgid "Open"
+msgstr "打开"
+
+#: crates/tvc-app/ui/pages.slint:488 crates/tvc-app/ui/pages.slint:494
+msgctxt "ShortcutDialog"
+msgid "Edit shortcut"
+msgstr "编辑快捷键"
+
+#: crates/tvc-app/ui/pages.slint:496
+msgctxt "ShortcutDialog"
+msgid "Press a combination of keys to change the shortcut for {0}."
+msgstr "按下组合键以更改“{0}”的快捷键。"
+
+#: crates/tvc-app/ui/pages.slint:524 crates/tvc-app/ui/pages.slint:552
+msgctxt "ShortcutDialog"
+msgid "Press keys"
+msgstr "请按键"
+
+#: crates/tvc-app/ui/pages.slint:524
+msgctxt "ShortcutDialog"
+msgid "Shortcut keys"
+msgstr "快捷键"
+
+#: crates/tvc-app/ui/pages.slint:585
+msgctxt "ShortcutDialog"
+msgid "Reset to default"
+msgstr "重置为默认值"
+
+#: crates/tvc-app/ui/pages.slint:594
+msgctxt "ShortcutDialog"
+msgid "Clear"
+msgstr "清除"
+
+#: crates/tvc-app/ui/pages.slint:603
+msgctxt "ShortcutDialog"
+msgid "Cancel"
+msgstr "取消"
+
+#: crates/tvc-app/ui/pages.slint:611
+msgctxt "ShortcutDialog"
+msgid "Save"
+msgstr "保存"
+
+#: crates/tvc-app/ui/pages.slint:629
+msgctxt "FinderPage"
+msgid "Back to Monitor"
+msgstr "返回“显示器”"
+
+#: crates/tvc-app/ui/pages.slint:633
+msgctxt "FinderPage"
+msgid "Find hidden settings"
+msgstr "查找隐藏设置"
+
+#: crates/tvc-app/ui/pages.slint:641
+msgctxt "FinderPage"
+msgid ""
+"This only reads from the monitor; nothing is written here. It compares the "
+"manufacturer's undocumented codes before and after you change one setting "
+"with the monitor's own buttons, so you can name what each code controls. A "
+"named code then appears in Monitor settings."
+msgstr "此工具只读取显示器，不会写入任何内容。它会比较你用显示器自身按钮更改某项设置前后，制造商未公开的代码，以便你为每个代码控制的内容命名。命名后的代码会显示在“显示器”设置中。"
+
+#: crates/tvc-app/ui/pages.slint:653
+msgctxt "FinderPage"
+msgid "Steps"
+msgstr "步骤"
+
+#: crates/tvc-app/ui/pages.slint:657
+msgctxt "FinderPage"
+msgid "1. Take a snapshot"
+msgstr "1. 拍摄快照"
+
+#: crates/tvc-app/ui/pages.slint:660
+msgctxt "FinderPage"
+msgid "Take snapshot"
+msgstr "拍摄快照"
+
+#: crates/tvc-app/ui/pages.slint:666
+msgctxt "FinderPage"
+msgid "2. Change one setting with the monitor's buttons"
+msgstr "2. 用显示器按钮更改一项设置"
+
+#: crates/tvc-app/ui/pages.slint:667
+msgctxt "FinderPage"
+msgid "Pick any one in the monitor's own menu. Change only one, then compare."
+msgstr "在显示器自身的菜单中任选一项。只更改一项，然后进行比较。"
+
+#: crates/tvc-app/ui/pages.slint:670
+msgctxt "FinderPage"
+msgid "3. Compare"
+msgstr "3. 比较"
+
+#: crates/tvc-app/ui/pages.slint:671
+msgctxt "FinderPage"
+msgid "Lists the codes whose value changed"
+msgstr "列出值已更改的代码"
+
+#: crates/tvc-app/ui/pages.slint:673
+msgctxt "FinderPage"
+msgid "Compare"
+msgstr "比较"
+
+#: crates/tvc-app/ui/pages.slint:680
+msgctxt "FinderPage"
+msgid "Changed"
+msgstr "已更改"
+
+#: crates/tvc-app/ui/pages.slint:722
+msgctxt "FinderPage"
+msgid "Name it"
+msgstr "命名"
+
+#: crates/tvc-app/ui/pages.slint:730
+msgctxt "FinderPage"
+msgid "Setting name"
+msgstr "设置名称"
+
+#: crates/tvc-app/ui/pages.slint:733
+msgctxt "FinderPage"
+msgid "e.g. Local dimming"
+msgstr "例如：局部调光"
+
+#: crates/tvc-app/ui/pages.slint:742
+msgctxt "FinderPage"
+msgid "Label (optional)"
+msgstr "标签（可选）"
+
+#: crates/tvc-app/ui/pages.slint:750
+msgctxt "FinderPage"
+msgid "Save"
+msgstr "保存"
+
+#: crates/tvc-app/ui/pages.slint:767
+msgctxt "AutoDayNightCard"
+msgid "Switch presets automatically"
+msgstr "自动切换预设"
+
+#: crates/tvc-app/ui/pages.slint:770
+msgctxt "AutoDayNightCard"
+msgid "Off"
+msgstr "关"
+
+#: crates/tvc-app/ui/pages.slint:770
+msgctxt "AutoDayNightCard"
+msgid "At set times"
+msgstr "在设定时间"
+
+#: crates/tvc-app/ui/pages.slint:770
+msgctxt "AutoDayNightCard"
+msgid "At sunrise and sunset"
+msgstr "在日出和日落时"
+
+#: crates/tvc-app/ui/pages.slint:784
+msgctxt "AutoDayNightCard"
+msgid "Day"
+msgstr "日间"
+
+#: crates/tvc-app/ui/pages.slint:785
+msgctxt "AutoDayNightCard"
+msgid "Day preset time"
+msgstr "日间预设时间"
+
+#: crates/tvc-app/ui/pages.slint:786
+msgctxt "AutoDayNightCard"
+msgid "Night"
+msgstr "夜间"
+
+#: crates/tvc-app/ui/pages.slint:787
+msgctxt "AutoDayNightCard"
+msgid "Night preset time"
+msgstr "夜间预设时间"
+
+#: crates/tvc-app/ui/pages.slint:789 crates/tvc-app/ui/pages.slint:800
+msgctxt "AutoDayNightCard"
+msgid "Save"
+msgstr "保存"
+
+#: crates/tvc-app/ui/pages.slint:798
+msgctxt "AutoDayNightCard"
+msgid "Latitude, e.g. 31.52"
+msgstr "纬度，例如 31.52"
+
+#: crates/tvc-app/ui/pages.slint:798
+msgctxt "AutoDayNightCard"
+msgid "Latitude"
+msgstr "纬度"
+
+#: crates/tvc-app/ui/pages.slint:799
+msgctxt "AutoDayNightCard"
+msgid "Longitude, e.g. 74.36"
+msgstr "经度，例如 74.36"
+
+#: crates/tvc-app/ui/pages.slint:799
+msgctxt "AutoDayNightCard"
+msgid "Longitude"
+msgstr "经度"
+
+#: crates/tvc-app/ui/pages.slint:807
+msgctxt "SettingsPage"
+msgid "System setup"
+msgstr "系统配置"
+
+#: crates/tvc-app/ui/pages.slint:820
+msgctxt "SettingsPage"
+msgid "Copy"
+msgstr "复制"
+
+#: crates/tvc-app/ui/pages.slint:821
+msgctxt "SettingsPage"
+msgid "Copy the command"
+msgstr "复制命令"
+
+#. the fallback keeps the card usable before it does.
+#: crates/tvc-app/ui/pages.slint:853
+msgctxt "SettingsPage"
+msgid "Language"
+msgstr "语言"
+
+#: crates/tvc-app/ui/pages.slint:856 crates/tvc-app/ui/pages.slint:861
+msgctxt "SettingsPage"
+msgid "App language"
+msgstr "应用语言"
+
+#: crates/tvc-app/ui/pages.slint:857
+msgctxt "SettingsPage"
+msgid "System follows your computer's language"
+msgstr "“系统”表示跟随电脑的语言"
+
+#: crates/tvc-app/ui/pages.slint:859
+msgctxt "SettingsPage"
+msgid "System"
+msgstr "系统"
+
+#: crates/tvc-app/ui/pages.slint:866
+msgctxt "SettingsPage"
+msgid "Startup"
+msgstr "启动"
+
+#: crates/tvc-app/ui/pages.slint:872
+msgctxt "SettingsPage"
+msgid "Run in background"
+msgstr "在后台运行"
+
+#. Not for a display without inputs (the built-in panel).
+#: crates/tvc-app/ui/pages.slint:895
+msgctxt "SettingsPage"
+msgid "This PC"
+msgstr "此电脑"
+
+#: crates/tvc-app/ui/pages.slint:898
+msgctxt "SettingsPage"
+msgid "This PC's input"
+msgstr "此电脑的输入源"
+
+#: crates/tvc-app/ui/pages.slint:899
+msgctxt "SettingsPage"
+msgid "We ask before you switch the monitor away from it"
+msgstr "将显示器切换到其他输入源前会先询问你"
+
+#: crates/tvc-app/ui/pages.slint:907
+msgctxt "SettingsPage"
+msgid "Presets"
+msgstr "预设"
+
+#: crates/tvc-app/ui/pages.slint:917
+msgctxt "SettingsPage"
+msgid "Save current"
+msgstr "保存当前设置"
+
+#: crates/tvc-app/ui/pages.slint:924
+msgctxt "SettingsPage"
+msgid "Automatic Day/Night"
+msgstr "自动日间/夜间"
+
+#: crates/tvc-app/ui/pages.slint:927
+msgctxt "SettingsPage"
+msgid "Keyboard shortcuts"
+msgstr "键盘快捷键"
+
+#: crates/tvc-app/ui/pages.slint:957
+msgctxt "SettingsPage"
+msgid "Not set"
+msgstr "未设置"
+
+#: crates/tvc-app/ui/pages.slint:966
+msgctxt "SettingsPage"
+msgid "Edit shortcut: {0}"
+msgstr "编辑快捷键：{0}"
+
+#: crates/tvc-app/ui/pages.slint:975
+msgctxt "SettingsPage"
+msgid "About"
+msgstr "关于"

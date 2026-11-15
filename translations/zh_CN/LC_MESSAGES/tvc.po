@@ -1,5 +1,1427 @@
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "Language: zh_CN\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
+
+#: crates/tvc-app/src/controller.rs:379 crates/tvc-app/src/view.rs:231
+msgid "Built-in display"
+msgstr "内置显示器"
+
+#: crates/tvc-app/src/controller.rs:444
+msgid "No display is included"
+msgstr "未包含任何显示器"
+
+#: crates/tvc-app/src/controller.rs:446
+msgid "No included display is connected"
+msgstr "已包含的显示器均未连接"
+
+#: crates/tvc-app/src/controller.rs:448
+msgid "No included display has it"
+msgstr "已包含的显示器均不支持此项"
+
+#: crates/tvc-app/src/controller.rs:450
+msgid "{0} doesn't have it"
+msgstr "{0} 不支持此项"
+
+#: crates/tvc-app/src/controller.rs:1740
+msgid "Automatic Day/Night: {0}"
+msgstr "自动日间/夜间：{0}"
+
+#: crates/tvc-app/src/controller.rs:1796
+msgid "Your monitor kept brightness at {0}{1}"
+msgstr "显示器将亮度保持为 {0}{1}"
+
+#: crates/tvc-app/src/controller.rs:1798
+msgid "Your monitor kept contrast at {0}"
+msgstr "显示器将对比度保持为 {0}"
+
+#: crates/tvc-app/src/controller.rs:1839 crates/tvc-core/src/engine.rs:1206
+msgid "Backup restored"
+msgstr "已还原备份"
+
+#: crates/tvc-app/src/controller.rs:1866
+msgid "{0} display"
+msgid_plural "{0} displays"
+msgstr[0] "{0} 台显示器"
+
+#: crates/tvc-app/src/controller.rs:1874 crates/tvc-app/src/controller.rs:1902
+#: crates/tvc-app/src/view.rs:50
+msgid "{0}: {1}"
+msgstr "{0}：{1}"
+
+#: crates/tvc-app/src/controller.rs:1962
+msgid "Working…"
+msgstr "正在处理…"
+
+#: crates/tvc-app/src/controller.rs:1982
+msgid "Checking…"
+msgstr "正在检查…"
+
+#: crates/tvc-app/src/controller.rs:2016
+msgid "Setup done"
+msgstr "配置完成"
+
+#: crates/tvc-app/src/controller.rs:2210
+#: crates/tvc-core/src/profile/generic-mccs.json:36
+#: crates/tvc-core/src/profile/p32p20.json:42
+msgid "Switch to {label}?"
+msgstr "要切换到 {label} 吗？"
+
+#: crates/tvc-app/src/controller.rs:2213 crates/tvc-app/src/controller.rs:2223
+#: crates/tvc-core/src/profile/generic-mccs.json:38
+#: crates/tvc-core/src/profile/p32p20.json:44
+msgid "Switch"
+msgstr "切换"
+
+#: crates/tvc-app/src/controller.rs:2214 crates/tvc-app/src/controller.rs:2224
+#: crates/tvc-app/src/controller.rs:2316
+msgid "Cancel"
+msgstr "取消"
+
+#: crates/tvc-app/src/controller.rs:2221
+msgid "Switch the input on {0} display?"
+msgid_plural "Switch the input on {0} displays?"
+msgstr[0] "要切换 {0} 台显示器的输入源吗？"
+
+#: crates/tvc-app/src/controller.rs:2313 crates/tvc-core/src/safety.rs:69
+msgid "Change {0}?"
+msgstr "要更改{0}吗？"
+
+#: crates/tvc-app/src/controller.rs:2315
+msgid "Continue"
+msgstr "继续"
+
+#: crates/tvc-app/src/controller.rs:2346
+msgid "Connect the monitor to save its current settings"
+msgstr "请连接显示器以保存其当前设置"
+
+#: crates/tvc-app/src/controller.rs:2351
+msgid "Saved as {0}"
+msgstr "已保存为{0}"
+
+#: crates/tvc-app/src/controller.rs:2351
+msgid "Couldn't save {0}"
+msgstr "无法保存{0}"
+
+#: crates/tvc-app/src/controller.rs:2359
+msgid "Couldn't save settings: {0}"
+msgstr "无法保存设置：{0}"
+
+#: crates/tvc-app/src/controller.rs:2430
+msgid "Capability report copied"
+msgstr "已复制功能报告"
+
+#: crates/tvc-app/src/controller.rs:2430 crates/tvc-app/src/controller.rs:3156
+msgid "Couldn't copy"
+msgstr "无法复制"
+
+#: crates/tvc-app/src/controller.rs:2513
+msgid "This key can't be used"
+msgstr "无法使用此键"
+
+#: crates/tvc-app/src/controller.rs:2514
+msgid ""
+"Use a letter, number, arrow, Home, End, Page Up, Page Down, Insert, Delete or function key."
+msgstr "请使用字母、数字、方向键、Home、End、Page Up、Page Down、Insert、Delete 或功能键。"
+
+#: crates/tvc-app/src/controller.rs:2519
+msgid "This shortcut isn't valid"
+msgstr "此快捷键无效"
+
+#: crates/tvc-app/src/controller.rs:2519
+msgid "Start with {0}."
+msgstr "请以 {0} 开头。"
+
+#: crates/tvc-app/src/controller.rs:2528
+msgid "{0} already uses this shortcut"
+msgstr "“{0}”已在使用此快捷键"
+
+#: crates/tvc-app/src/controller.rs:2529
+msgid "Choose a different combination."
+msgstr "请选择其他组合键。"
+
+#: crates/tvc-app/src/controller.rs:2569
+msgid "Shortcuts start with {0}, and can include Shift."
+msgstr "快捷键以 {0} 开头，可包含 Shift。"
+
+#: crates/tvc-app/src/controller.rs:2608
+msgid "{0} can't use its default shortcut"
+msgstr "“{0}”无法使用其默认快捷键"
+
+#: crates/tvc-app/src/controller.rs:2609
+msgid "{0} already uses {1}. Change that shortcut first."
+msgstr "“{0}”已在使用 {1}。请先更改该快捷键。"
+
+#: crates/tvc-app/src/controller.rs:2615
+msgid "OK"
+msgstr "确定"
+
+#: crates/tvc-app/src/controller.rs:2652
+msgid "Take a snapshot first."
+msgstr "请先拍摄快照。"
+
+#: crates/tvc-app/src/controller.rs:2655
+msgid ""
+"Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first."
+msgstr "安全模式已开启，因此查找工具不会读取显示器。请先退出安全模式。"
+
+#: crates/tvc-app/src/controller.rs:2656
+msgid "The monitor is asleep or this PC is locked. Try again once it's awake."
+msgstr "显示器处于睡眠状态或此电脑已锁定。请在唤醒后重试。"
+
+#: crates/tvc-app/src/controller.rs:2657
+msgid "The monitor didn't answer. Try again."
+msgstr "显示器未响应。请重试。"
+
+#: crates/tvc-app/src/controller.rs:2663
+msgid ""
+"Nothing changed. Make sure the setting really changed on screen, then compare again."
+msgstr "没有任何更改。请确认屏幕上的设置确实已更改，然后再次比较。"
+
+#: crates/tvc-app/src/controller.rs:2665
+msgid "Select a change to name it."
+msgstr "选择一项更改来为其命名。"
+
+#: crates/tvc-app/src/controller.rs:2675
+msgid "Saved \"{0}\" ({1}). It now appears in Monitor settings."
+msgstr "已保存“{0}”（{1}）。它现在会显示在“显示器”设置中。"
+
+#: crates/tvc-app/src/controller.rs:2677
+msgid "Couldn't save: {0}"
+msgstr "无法保存：{0}"
+
+#: crates/tvc-app/src/controller.rs:2706
+msgid "{0} (before)"
+msgstr "{0}（之前）"
+
+#: crates/tvc-app/src/controller.rs:2708
+msgid "{0} (now)"
+msgstr "{0}（现在）"
+
+#: crates/tvc-app/src/controller.rs:2733
+msgid "Enter a name for the setting first."
+msgstr "请先输入设置的名称。"
+
+#: crates/tvc-app/src/controller.rs:2832
+msgid "Enter your latitude and longitude, then Save."
+msgstr "请输入纬度和经度，然后保存。"
+
+#: crates/tvc-app/src/controller.rs:2846
+msgid "Use 24-hour times like 07:00 and 19:30."
+msgstr "请使用 24 小时制时间，例如 07:00 和 19:30。"
+
+#: crates/tvc-app/src/controller.rs:2851
+msgid "Day and Night need different times."
+msgstr "日间和夜间需要设置不同的时间。"
+
+#: crates/tvc-app/src/controller.rs:2870
+msgid ""
+"Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive)."
+msgstr "纬度范围为 -90 到 90，经度范围为 -180 到 180，单位为度（北纬和东经为正）。"
+
+#: crates/tvc-app/src/controller.rs:2924 crates/tvc-app/src/view.rs:622
+#: crates/tvc-core/src/tests/i18n_tests.rs:81
+#: crates/tvc-core/src/tests/i18n_tests.rs:83
+#: crates/tvc-core/src/profile/builtin-backlight.json:6
+#: crates/tvc-core/src/profile/generic-mccs.json:7
+#: crates/tvc-core/src/profile/p32p20.json:17
+msgid "Brightness"
+msgstr "亮度"
+
+#: crates/tvc-app/src/controller.rs:2924 crates/tvc-app/src/view.rs:622
+#: crates/tvc-core/src/profile/generic-mccs.json:9
+#: crates/tvc-core/src/profile/p32p20.json:19
+msgid "Contrast"
+msgstr "对比度"
+
+#: crates/tvc-app/src/controller.rs:2935
+msgid "Control, Option or Command"
+msgstr "Control、Option 或 Command"
+
+#: crates/tvc-app/src/controller.rs:2937
+msgid "Ctrl, Alt or Super"
+msgstr "Ctrl、Alt 或 Super"
+
+#: crates/tvc-app/src/controller.rs:2939
+msgid "Ctrl, Alt or the Windows key"
+msgstr "Ctrl、Alt 或 Windows 键"
+
+#: crates/tvc-app/src/controller.rs:2962
+msgid "unknown"
+msgstr "未知"
+
+#: crates/tvc-app/src/controller.rs:2964
+msgid "{0} capability report"
+msgstr "{0} 功能报告"
+
+#: crates/tvc-app/src/controller.rs:2965
+msgid "Display: {0}"
+msgstr "显示器：{0}"
+
+#: crates/tvc-app/src/controller.rs:2966
+msgid "Id: {0}"
+msgstr "ID：{0}"
+
+#: crates/tvc-app/src/controller.rs:2967
+msgid "EDID id: {0}"
+msgstr "EDID ID：{0}"
+
+#: crates/tvc-app/src/controller.rs:2968
+msgid "Serial: {0}"
+msgstr "序列号：{0}"
+
+#: crates/tvc-app/src/controller.rs:2969
+msgid "Connector: {0}"
+msgstr "接口：{0}"
+
+#: crates/tvc-app/src/controller.rs:2970
+msgid "Support: {0} ({1})"
+msgstr "支持级别：{0}（{1}）"
+
+#: crates/tvc-app/src/controller.rs:2974
+msgid "Model: {0}"
+msgstr "型号：{0}"
+
+#: crates/tvc-app/src/controller.rs:2975
+msgid "MCCS version: {0}"
+msgstr "MCCS 版本：{0}"
+
+#: crates/tvc-app/src/controller.rs:2978
+msgid "Warnings: none"
+msgstr "警告：无"
+
+#: crates/tvc-app/src/controller.rs:2980
+msgid "Warnings:"
+msgstr "警告："
+
+#: crates/tvc-app/src/controller.rs:2984
+msgid "Capabilities:"
+msgstr "功能："
+
+#: crates/tvc-app/src/controller.rs:2985
+msgid "(not read from the display yet)"
+msgstr "（尚未从显示器读取）"
+
+#: crates/tvc-app/src/controller.rs:3156
+msgid "Copied"
+msgstr "已复制"
+
+#: crates/tvc-app/src/osd.rs:361
+msgid "{0} {1}"
+msgstr "{0} {1}"
+
+#: crates/tvc-app/src/osd.rs:363
+msgid "{0} {1} · {2}"
+msgstr "{0} {1} · {2}"
+
+#: crates/tvc-app/src/tray.rs:12
+msgid "Connecting"
+msgstr "正在连接"
+
+#: crates/tvc-app/src/tray.rs:13 crates/tvc-app/src/view.rs:285
+msgid "Not connected"
+msgstr "未连接"
+
+#: crates/tvc-app/src/tray.rs:14 crates/tvc-app/src/view.rs:354
+msgid "Not responding"
+msgstr "无响应"
+
+#: crates/tvc-app/src/tray.rs:16
+msgid "ThinkVision Control – {0}"
+msgstr "ThinkVision Control – {0}"
+
+#: crates/tvc-app/src/view.rs:60
+msgid "All displays"
+msgstr "所有显示器"
+
+#: crates/tvc-app/src/view.rs:62
+msgid "{0} of {1} included · the sliders move them together"
+msgstr "已包含 {0}/{1} 台 · 滑块会同步调节它们"
+
+#: crates/tvc-app/src/view.rs:117 crates/tvc-app/src/view.rs:800
+msgid "Unknown {0}"
+msgstr "未知 {0}"
+
+#: crates/tvc-app/src/view.rs:119
+msgid "Mode {0}"
+msgstr "模式 {0}"
+
+#: crates/tvc-app/src/view.rs:121
+msgid "Input {0}"
+msgstr "输入源 {0}"
+
+#: crates/tvc-app/src/view.rs:232 crates/tvc-app/src/view.rs:467
+msgid "Your display"
+msgstr "你的显示器"
+
+#: crates/tvc-app/src/view.rs:234
+msgid "Display"
+msgstr "显示器"
+
+#: crates/tvc-app/src/view.rs:254
+msgid "the built-in display"
+msgstr "内置显示器"
+
+#: crates/tvc-app/src/view.rs:255
+msgid "an unnamed display"
+msgstr "未命名的显示器"
+
+#: crates/tvc-app/src/view.rs:256
+msgid "a display ({0})"
+msgstr "显示器（{0}）"
+
+#: crates/tvc-app/src/view.rs:276
+msgid ""
+"NVIDIA's driver isn't offering display controls for it. See Settings → System setup."
+msgstr "NVIDIA 驱动程序未提供此显示器的控制功能。请参阅“设置”→“系统配置”。"
+
+#: crates/tvc-app/src/view.rs:278
+msgid "No supported display found"
+msgstr "未找到支持的显示器"
+
+#: crates/tvc-app/src/view.rs:279
+msgid "{0} isn't connected"
+msgstr "{0} 未连接"
+
+#: crates/tvc-app/src/view.rs:284 crates/tvc-app/src/view.rs:311
+msgid "No supported display"
+msgstr "没有支持的显示器"
+
+#: crates/tvc-app/src/view.rs:290
+msgid ""
+"Connect a display that supports DDC/CI and it will be found automatically."
+msgstr "连接支持 DDC/CI 的显示器后，会自动找到它。"
+
+#: crates/tvc-app/src/view.rs:297
+msgid "Display can't be reached"
+msgstr "无法访问显示器"
+
+#: crates/tvc-app/src/view.rs:298
+msgid "Can't be reached"
+msgstr "无法访问"
+
+#: crates/tvc-app/src/view.rs:299
+msgid "{0} can't be reached"
+msgstr "无法访问 {0}"
+
+#: crates/tvc-app/src/view.rs:300
+msgid ""
+"The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu."
+msgstr "系统能检测到它，但未提供它的控制功能。请尝试更换线缆或端口，并检查显示器自身菜单中是否已开启 DDC/CI。"
+
+#: crates/tvc-app/src/view.rs:306
+msgid ""
+"This PC is only showing a virtual display, such as a remote session or a virtual machine. Display controls need a display connected to this PC."
+msgstr "此电脑仅显示虚拟显示器，例如远程会话或虚拟机。显示器控制需要连接到此电脑的显示器。"
+
+#: crates/tvc-app/src/view.rs:307
+msgid ""
+"No display is connected. Connect a display that supports DDC/CI and it will be found automatically."
+msgstr "未连接显示器。连接支持 DDC/CI 的显示器后，会自动找到它。"
+
+#: crates/tvc-app/src/view.rs:308
+msgid "{0} is connected, but this app has no profile for it."
+msgstr "{0} 已连接，但此应用没有它的配置文件。"
+
+#: crates/tvc-app/src/view.rs:309
+msgid "{0} and {1} are connected, but this app has no profile for them."
+msgstr "{0} 和 {1} 已连接，但此应用没有它们的配置文件。"
+
+#: crates/tvc-app/src/view.rs:330
+msgid "Your display isn't responding"
+msgstr "你的显示器无响应"
+
+#: crates/tvc-app/src/view.rs:331
+msgid "{0} isn't responding"
+msgstr "{0} 无响应"
+
+#: crates/tvc-app/src/view.rs:337
+msgid "Asleep"
+msgstr "睡眠中"
+
+#: crates/tvc-app/src/view.rs:340
+msgid "Brightness through the system"
+msgstr "通过系统调节亮度"
+
+#: crates/tvc-app/src/view.rs:345
+msgid "Input: {0}"
+msgstr "输入源：{0}"
+
+#: crates/tvc-app/src/view.rs:346
+msgid "Connected"
+msgstr "已连接"
+
+#: crates/tvc-app/src/view.rs:348 crates/tvc-app/src/view.rs:378
+msgid "Firmware {0}"
+msgstr "固件 {0}"
+
+#: crates/tvc-app/src/view.rs:349
+msgid "No verified profile"
+msgstr "没有已验证的配置文件"
+
+#: crates/tvc-app/src/view.rs:352 crates/tvc-app/src/view.rs:387
+#: crates/tvc-app/src/view.rs:425 crates/tvc-app/src/view.rs:431
+msgid "Looking for your monitor…"
+msgstr "正在查找显示器…"
+
+#: crates/tvc-app/src/view.rs:361
+msgid "Verified"
+msgstr "已验证"
+
+#: crates/tvc-app/src/view.rs:362 crates/tvc-app/src/view.rs:479
+msgid "Experimental"
+msgstr "实验性"
+
+#: crates/tvc-app/src/view.rs:363
+msgid "Read-only"
+msgstr "只读"
+
+#: crates/tvc-app/src/view.rs:377
+msgid "Support: {0}"
+msgstr "支持级别：{0}"
+
+#: crates/tvc-app/src/view.rs:379
+msgid "Built with Slint"
+msgstr "使用 Slint 构建"
+
+#: crates/tvc-app/src/view.rs:387
+msgid "This usually takes a second or two."
+msgstr "这通常需要一两秒钟。"
+
+#: crates/tvc-app/src/view.rs:388
+msgid "No controls to show"
+msgstr "没有可显示的控制项"
+
+#: crates/tvc-app/src/view.rs:388
+msgid "The monitor didn't report any setting this app can change."
+msgstr "显示器未报告此应用可以更改的任何设置。"
+
+#: crates/tvc-app/src/view.rs:389
+msgid "No controls yet"
+msgstr "暂无控制项"
+
+#: crates/tvc-app/src/view.rs:389
+msgid "They appear here once the monitor answers."
+msgstr "显示器响应后，控制项会显示在这里。"
+
+#: crates/tvc-app/src/view.rs:396
+msgid "Read only on this display"
+msgstr "在此显示器上为只读"
+
+#: crates/tvc-app/src/view.rs:398
+msgid "Available once the monitor answers"
+msgstr "显示器响应后可用"
+
+#: crates/tvc-app/src/view.rs:399
+msgid "Available when the monitor responds again"
+msgstr "显示器再次响应时可用"
+
+#: crates/tvc-app/src/view.rs:400
+msgid "Available when the monitor is connected"
+msgstr "连接显示器后可用"
+
+#: crates/tvc-app/src/view.rs:410
+msgid "Safe mode"
+msgstr "安全模式"
+
+#: crates/tvc-app/src/view.rs:411
+msgid ""
+"ThinkVision Control closed while reading the monitor's details last time, so it's using the saved copy and the hidden-settings finder is off."
+msgstr "ThinkVision Control 上次在读取显示器详细信息时关闭，因此现在使用已保存的副本，并已关闭隐藏设置查找工具。"
+
+#: crates/tvc-app/src/view.rs:412
+msgid "Read them now"
+msgstr "立即读取"
+
+#: crates/tvc-app/src/view.rs:419
+msgid "Your monitor is asleep"
+msgstr "显示器处于睡眠状态"
+
+#: crates/tvc-app/src/view.rs:420
+msgid "Changes wait until it wakes up or you unlock this PC."
+msgstr "更改将在显示器唤醒或你解锁此电脑后生效。"
+
+#: crates/tvc-app/src/view.rs:434
+msgid "This app isn't allowed to use the monitor controls"
+msgstr "此应用无权使用显示器控制"
+
+#: crates/tvc-app/src/view.rs:435
+msgid ""
+"Your system blocks access to the monitor's DDC/CI bus. See Settings → System setup."
+msgstr "系统阻止了对显示器 DDC/CI 总线的访问。请参阅“设置”→“系统配置”。"
+
+#: crates/tvc-app/src/view.rs:436 crates/tvc-app/src/view.rs:442
+#: crates/tvc-app/src/view.rs:448 crates/tvc-app/src/view.rs:454
+msgid "Try again"
+msgstr "重试"
+
+#: crates/tvc-app/src/view.rs:440
+msgid "Monitor controls aren't turned on in your system"
+msgstr "系统中未开启显示器控制"
+
+#: crates/tvc-app/src/view.rs:441
+msgid ""
+"The i2c-dev kernel module isn't loaded, so the monitor can't be reached. See Settings → System setup."
+msgstr "未加载 i2c-dev 内核模块，因此无法访问显示器。请参阅“设置”→“系统配置”。"
+
+#: crates/tvc-app/src/view.rs:446
+msgid "This port can't control the monitor"
+msgstr "此端口无法控制显示器"
+
+#: crates/tvc-app/src/view.rs:447
+msgid ""
+"Connect the monitor to a USB-C or Thunderbolt port. See Settings → System setup."
+msgstr "请将显示器连接到 USB-C 或雷电端口。请参阅“设置”→“系统配置”。"
+
+#: crates/tvc-app/src/view.rs:453
+msgid ""
+"It's connected but isn't answering monitor controls (DDC/CI). Check that DDC/CI is turned on in the monitor's own menu, then try again. If this started after a graphics driver update, the previous driver may help."
+msgstr "显示器已连接，但未响应显示器控制（DDC/CI）。请检查显示器自身菜单中是否已开启 DDC/CI，然后重试。如果此问题在显卡驱动程序更新后出现，换回之前的驱动程序可能会有帮助。"
+
+#: crates/tvc-app/src/view.rs:458
+msgid "Check again"
+msgstr "再次检查"
+
+#: crates/tvc-app/src/view.rs:467
+msgid "this display"
+msgstr "此显示器"
+
+#: crates/tvc-app/src/view.rs:473
+msgid "Brightness only"
+msgstr "仅亮度"
+
+#: crates/tvc-app/src/view.rs:474
+msgid ""
+"The built-in display isn't controlled over DDC/CI. Its brightness is set through the system, the same way as the brightness keys."
+msgstr "内置显示器不通过 DDC/CI 控制。其亮度通过系统设置，与亮度键的方式相同。"
+
+#: crates/tvc-app/src/view.rs:480
+msgid ""
+"There's no verified profile for {0}, so only standard controls are shown. Some may not behave as labelled."
+msgstr "{0} 没有已验证的配置文件，因此仅显示标准控制项。部分控制项的实际效果可能与标签不符。"
+
+#: crates/tvc-app/src/view.rs:484
+msgid "Read only"
+msgstr "只读"
+
+#: crates/tvc-app/src/view.rs:485
+msgid ""
+"{0} didn't confirm which settings it supports, so its values are shown but nothing is changed."
+msgstr "{0} 未确认其支持哪些设置，因此只显示其值，不会更改任何内容。"
+
+#: crates/tvc-app/src/view.rs:509
+msgid "Brightness {0}, contrast {1}, {2}"
+msgstr "亮度 {0}，对比度 {1}，{2}"
+
+#: crates/tvc-app/src/view.rs:510
+msgid "Brightness {0}, contrast {1}"
+msgstr "亮度 {0}，对比度 {1}"
+
+#: crates/tvc-app/src/view.rs:522
+msgid "Picture"
+msgstr "图像"
+
+#: crates/tvc-app/src/view.rs:523
+msgid "Ports"
+msgstr "端口"
+
+#: crates/tvc-app/src/view.rs:524
+msgid "On-screen menu"
+msgstr "屏幕菜单"
+
+#: crates/tvc-app/src/view.rs:525
+msgid "More settings"
+msgstr "更多设置"
+
+#: crates/tvc-app/src/view.rs:526
+msgid "Reset and restore"
+msgstr "重置和还原"
+
+#: crates/tvc-app/src/view.rs:547 crates/tvc-core/src/profile/p32p20.json:69
+#: crates/tvc-core/src/profile/p32p20.json:73
+#: crates/tvc-core/src/profile/p32p20.json:77
+msgid "Reset"
+msgstr "重置"
+
+#: crates/tvc-app/src/view.rs:622
+#: crates/tvc-core/src/profile/generic-mccs.json:39
+msgid "Volume"
+msgstr "音量"
+
+#: crates/tvc-app/src/view.rs:650
+msgid "Red, green and blue gain"
+msgstr "红、绿、蓝增益"
+
+#: crates/tvc-app/src/view.rs:651
+msgid "Available in {0} colour mode"
+msgstr "在“{0}”颜色模式下可用"
+
+#: crates/tvc-app/src/view.rs:659
+msgid "Red"
+msgstr "红"
+
+#: crates/tvc-app/src/view.rs:659
+msgid "Green"
+msgstr "绿"
+
+#: crates/tvc-app/src/view.rs:659
+msgid "Blue"
+msgstr "蓝"
+
+#: crates/tvc-app/src/view.rs:669
+msgid "Put back the settings saved before the last reset"
+msgstr "恢复上次重置前保存的设置"
+
+#: crates/tvc-app/src/view.rs:697
+msgid ""
+"Keep the menu bar icon and keyboard shortcuts running after you close the window"
+msgstr "关闭窗口后，菜单栏图标和键盘快捷键继续运行"
+
+#: crates/tvc-app/src/view.rs:699
+msgid ""
+"Keep the tray icon and keyboard shortcuts running after you close the window"
+msgstr "关闭窗口后，托盘图标和键盘快捷键继续运行"
+
+#: crates/tvc-app/src/view.rs:703
+msgid "Starts in the background when you sign in"
+msgstr "登录时在后台启动"
+
+#: crates/tvc-app/src/view.rs:704
+msgid "Starts in the background when you log in"
+msgstr "登录时在后台启动"
+
+#: crates/tvc-app/src/view.rs:705
+msgid "Opens the window when you sign in"
+msgstr "登录时打开窗口"
+
+#: crates/tvc-app/src/view.rs:706
+msgid "Opens the window when you log in"
+msgstr "登录时打开窗口"
+
+#: crates/tvc-app/src/view.rs:714
+msgid ""
+"This desktop doesn't let apps register global shortcuts. See System setup above."
+msgstr "此桌面不允许应用注册全局快捷键。请参阅上方的“系统配置”。"
+
+#: crates/tvc-app/src/view.rs:716
+msgid "Shortcuts work whenever ThinkVision Control is running."
+msgstr "只要 ThinkVision Control 正在运行，快捷键即可使用。"
+
+#: crates/tvc-app/src/view.rs:718
+msgid "Shortcuts work while Run in background is on. Turn it on to use them."
+msgstr "快捷键在“在后台运行”开启时可用。请开启该选项以使用快捷键。"
+
+#: crates/tvc-app/src/view.rs:732
+msgid "System"
+msgstr "系统"
+
+#: crates/tvc-app/src/view.rs:755
+msgid "Another app is using this shortcut"
+msgstr "另一个应用正在使用此快捷键"
+
+#: crates/tvc-app/src/view.rs:786
+msgid "Reading the monitor…"
+msgstr "正在读取显示器…"
+
+#: crates/tvc-app/src/view.rs:791
+msgid "Snapshot taken ({0} code)"
+msgid_plural "Snapshot taken ({0} codes)"
+msgstr[0] "已拍摄快照（{0} 个代码）"
+
+#: crates/tvc-app/src/view.rs:792
+msgid "Reads the current value of every code the monitor reports"
+msgstr "读取显示器报告的每个代码的当前值"
+
+#: crates/tvc-app/src/view.rs:838
+msgid "Day preset at {0}, Night preset at {1}."
+msgstr "{0} 切换日间预设，{1} 切换夜间预设。"
+
+#: crates/tvc-app/src/view.rs:845
+msgid "Today: Day preset at sunrise {0}, Night preset at sunset {1}."
+msgstr "今天：日出 {0} 切换日间预设，日落 {1} 切换夜间预设。"
+
+#: crates/tvc-app/src/view.rs:847
+msgid "No sunrise or sunset there today; nothing changes until there is."
+msgstr "该地今天没有日出或日落；在出现之前不会进行任何更改。"
+
+#: crates/tvc-app/src/platform/autostart.rs:8
+msgid "Start with Windows"
+msgstr "随 Windows 启动"
+
+#: crates/tvc-app/src/platform/autostart.rs:10
+msgid "Start when you log in"
+msgstr "登录时启动"
+
+#: crates/tvc-app/src/platform/privileged.rs:33
+msgid "You closed the password prompt."
+msgstr "你关闭了密码提示。"
+
+#: crates/tvc-app/src/platform/privileged.rs:35
+msgid ""
+"No password prompt is available on this desktop (no polkit agent). Run the command above in a terminal instead."
+msgstr "此桌面上没有可用的密码提示（没有 polkit 代理）。请改为在终端中运行上面的命令。"
+
+#: crates/tvc-app/src/platform/privileged.rs:40
+msgid ""
+"No password prompt is available (pkexec isn't installed). Run the command above in a terminal instead."
+msgstr "没有可用的密码提示（未安装 pkexec）。请改为在终端中运行上面的命令。"
+
+#: crates/tvc-app/src/platform/privileged.rs:44
+msgid "Authentication failed or isn't allowed."
+msgstr "身份验证失败或不被允许。"
+
+#: crates/tvc-app/src/platform/privileged.rs:45
+msgid "The command failed."
+msgstr "命令执行失败。"
+
+#: crates/tvc-app/src/platform/privileged.rs:46
+msgid ""
+"The command failed:\n"
+"{0}"
+msgstr ""
+"命令执行失败：\n"
+"{0}"
+
+#: crates/tvc-app/src/platform/setup.rs:245
+msgid "Use a USB-C or Thunderbolt port for this monitor"
+msgstr "请为此显示器使用 USB-C 或雷电端口"
+
+#: crates/tvc-app/src/platform/setup.rs:246
+msgid ""
+"The built-in HDMI port on M1 and base M2 Macs doesn't pass monitor controls through. Connect the monitor with USB-C or Thunderbolt (or a USB-C to DisplayPort cable) instead."
+msgstr "M1 和基础款 M2 Mac 的内置 HDMI 端口无法传递显示器控制。请改用 USB-C 或雷电（或 USB-C 转 DisplayPort 线缆）连接显示器。"
+
+#: crates/tvc-app/src/platform/setup.rs:288
+msgid "Allow brightness control for the built-in display"
+msgstr "允许控制内置显示器的亮度"
+
+#: crates/tvc-app/src/platform/setup.rs:289
+msgid ""
+"Your user can't change the built-in display's brightness, and the login manager didn't do it for the app either. Allow access to add your user to the video group, which the app's udev rule lets write the brightness."
+msgstr "你的用户无法更改内置显示器的亮度，登录管理器也没有为此应用授予权限。点击“允许访问”会将你的用户添加到 video 组，此应用的 udev 规则允许该组写入亮度。"
+
+#: crates/tvc-app/src/platform/setup.rs:293
+#: crates/tvc-app/src/platform/setup.rs:308
+msgid "Allow access"
+msgstr "允许访问"
+
+#: crates/tvc-app/src/platform/setup.rs:298
+msgid "Your user is in the video group now; log out and back in to use it."
+msgstr "你的用户现已加入 video 组；请注销并重新登录以使其生效。"
+
+#: crates/tvc-app/src/platform/setup.rs:304
+msgid "Allow access to monitor controls"
+msgstr "允许访问显示器控制"
+
+#: crates/tvc-app/src/platform/setup.rs:305
+msgid ""
+"Your user can't open the monitor's I²C bus. Allow access to install a udev rule that opens it to your login session (your distribution's ddcutil package ships an equivalent rule)."
+msgstr "你的用户无法打开显示器的 I²C 总线。点击“允许访问”会安装一条 udev 规则，向你的登录会话开放该总线（你的发行版的 ddcutil 软件包也附带等效规则）。"
+
+#: crates/tvc-app/src/platform/setup.rs:310
+msgid ""
+"Access is set up; log out and back in if the monitor still isn't found."
+msgstr "访问权限已配置；如果仍找不到显示器，请注销并重新登录。"
+
+#: crates/tvc-app/src/platform/setup.rs:317
+msgid "Load the i2c-dev kernel module"
+msgstr "加载 i2c-dev 内核模块"
+
+#: crates/tvc-app/src/platform/setup.rs:318
+msgid ""
+"There are no /dev/i2c-* devices, so the i2c-dev module isn't loaded. Load it now and at every boot."
+msgstr "没有 /dev/i2c-* 设备，因此 i2c-dev 模块未加载。立即加载，并在每次启动时加载。"
+
+#: crates/tvc-app/src/platform/setup.rs:320
+msgid "Load the module"
+msgstr "加载模块"
+
+#: crates/tvc-app/src/platform/setup.rs:322
+msgid ""
+"The module is loaded; restart the computer if the monitor still isn't found."
+msgstr "模块已加载；如果仍找不到显示器，请重启电脑。"
+
+#: crates/tvc-app/src/platform/setup.rs:329
+msgid "Turn on monitor controls in the NVIDIA driver"
+msgstr "在 NVIDIA 驱动程序中开启显示器控制"
+
+#: crates/tvc-app/src/platform/setup.rs:330
+msgid ""
+"NVIDIA's driver isn't offering this monitor's control channel. Check that kernel modesetting is on (the nvidia-drm.modeset=1 kernel option, the default on recent drivers). If the monitor still can't be reached, add the driver option below and restart the computer (on some systems, rebuild the initramfs first)."
+msgstr "NVIDIA 驱动程序未提供此显示器的控制通道。请检查是否已开启内核模式设置（nvidia-drm.modeset=1 内核选项，较新的驱动程序默认开启）。如果仍无法访问显示器，请添加下面的驱动程序选项并重启电脑（在某些系统上需要先重新生成 initramfs）。"
+
+#: crates/tvc-app/src/platform/setup.rs:341
+msgid "The ddcci kernel driver also controls the monitor"
+msgstr "ddcci 内核驱动程序也在控制显示器"
+
+#: crates/tvc-app/src/platform/setup.rs:342
+msgid ""
+"The ddcci driver (ddcci-dkms) drives the monitor's brightness itself, so its changes and this app's fight each other. Unload it while you use this app; to keep it from loading at boot, uninstall it or blacklist it in /etc/modprobe.d."
+msgstr "ddcci 驱动程序（ddcci-dkms）会自行控制显示器亮度，因此它的更改会与此应用的更改相互冲突。使用此应用时请卸载该驱动程序；要阻止它在启动时加载，请将其卸载或在 /etc/modprobe.d 中将其列入黑名单。"
+
+#: crates/tvc-app/src/platform/setup.rs:346
+msgid "Unload the driver"
+msgstr "卸载驱动程序"
+
+#: crates/tvc-app/src/platform/setup.rs:348
+msgid "The driver is unloaded; restart the computer if it comes back."
+msgstr "驱动程序已卸载；如果它再次出现，请重启电脑。"
+
+#: crates/tvc-app/src/platform/setup.rs:355
+msgid "KDE's power manager also controls monitor brightness"
+msgstr "KDE 的电源管理器也在控制显示器亮度"
+
+#: crates/tvc-app/src/platform/setup.rs:356
+msgid ""
+"PowerDevil talks to the monitor over DDC/CI too, so the two fight over the bus and brightness changes don't stick. Turn off its DDC control (the same override `systemctl --user edit plasma-powerdevil.service` makes); laptop screen brightness keeps working."
+msgstr "PowerDevil 也通过 DDC/CI 与显示器通信，两者会争用总线，导致亮度更改无法保持。请关闭它的 DDC 控制（与 `systemctl --user edit plasma-powerdevil.service` 所做的覆盖相同）；笔记本电脑屏幕亮度仍可正常调节。"
+
+#: crates/tvc-app/src/platform/setup.rs:360
+msgid "Turn off PowerDevil's DDC"
+msgstr "关闭 PowerDevil 的 DDC"
+
+#: crates/tvc-app/src/platform/setup.rs:371
+msgid ""
+"PowerDevil's DDC control is off; log out and back in if brightness changes still don't stick."
+msgstr "PowerDevil 的 DDC 控制已关闭；如果亮度更改仍无法保持，请注销并重新登录。"
+
+#: crates/tvc-app/src/platform/setup.rs:378
+msgid "Another app also controls the monitor"
+msgstr "另一个应用也在控制显示器"
+
+#: crates/tvc-app/src/platform/setup.rs:379
+msgid ""
+"{0} talks to the monitor over DDC/CI too, so the two can fight over the bus and changes may not stick. Quit it, or turn off its monitor control, while you use this app."
+msgstr "{0} 也通过 DDC/CI 与显示器通信，两者可能争用总线，导致更改无法保持。使用此应用时，请退出它或关闭它的显示器控制。"
+
+#: crates/tvc-app/src/platform/setup.rs:397
+msgid "Set desktop shortcuts"
+msgstr "设置桌面快捷键"
+
+#: crates/tvc-app/src/platform/setup.rs:398
+msgid ""
+"This desktop doesn't let apps register global shortcuts. Add these commands as custom shortcuts instead: GNOME: Settings → Keyboard → Custom Shortcuts; KDE: System Settings → Keyboard → Shortcuts → Add New → Command or Script; COSMIC: Settings → Keyboard → Custom shortcuts."
+msgstr "此桌面不允许应用注册全局快捷键。请改为将这些命令添加为自定义快捷键：GNOME：设置 → 键盘 → 自定义快捷键；KDE：系统设置 → 键盘 → 快捷键 → 添加新项 → 命令或脚本；COSMIC：设置 → 键盘 → 自定义快捷键。"
+
+#: crates/tvc-app/src/platform/setup.rs:406
+msgid ""
+"{0} No password prompt seems to be running on this desktop; if none appears, run the command in a terminal instead."
+msgstr "{0} 此桌面上似乎没有运行密码提示程序；如果没有出现提示，请改为在终端中运行该命令。"
+
+#: crates/tvc-app/src/platform/setup.rs:421
+msgid "Install the AppIndicator extension to see the tray icon"
+msgstr "安装 AppIndicator 扩展以显示托盘图标"
+
+#: crates/tvc-app/src/platform/setup.rs:427
+msgid ""
+"GNOME shows tray icons only through the AppIndicator extension. Ubuntu ships it; turn it back on."
+msgstr "GNOME 只能通过 AppIndicator 扩展显示托盘图标。Ubuntu 已附带该扩展；请重新开启它。"
+
+#: crates/tvc-app/src/platform/setup.rs:429
+msgid "Turn on"
+msgstr "开启"
+
+#: crates/tvc-app/src/platform/setup.rs:431
+msgid ""
+"The extension is turned on; log out and back in if the tray icon doesn't appear."
+msgstr "扩展已开启；如果托盘图标未出现，请注销并重新登录。"
+
+#: crates/tvc-app/src/platform/setup.rs:440
+msgid ""
+"GNOME shows tray icons only through the AppIndicator extension. Install it with your package manager (usually as gnome-shell-extension-appindicator) or from extensions.gnome.org, log out and back in, then turn it on."
+msgstr "GNOME 只能通过 AppIndicator 扩展显示托盘图标。请使用软件包管理器（通常为 gnome-shell-extension-appindicator）或从 extensions.gnome.org 安装，注销并重新登录，然后开启它。"
+
+#: crates/tvc-app/src/platform/setup.rs:449
+msgid ""
+"GNOME shows tray icons only through the AppIndicator extension. Install it and turn it on."
+msgstr "GNOME 只能通过 AppIndicator 扩展显示托盘图标。请安装并开启它。"
+
+#: crates/tvc-app/src/platform/setup.rs:451
+msgid "Install and turn on"
+msgstr "安装并开启"
+
+#: crates/tvc-app/src/platform/setup.rs:453
+msgid ""
+"The extension is installed and turned on; log out and back in to see the tray icon."
+msgstr "扩展已安装并开启；请注销并重新登录以显示托盘图标。"
+
+#: crates/tvc-app/src/platform/setup.rs:463
+msgid ""
+"Add the XApp Status applet to a panel, and check that xapp-sn-watcher is running."
+msgstr "将 XApp Status 小程序添加到面板，并检查 xapp-sn-watcher 是否正在运行。"
+
+#: crates/tvc-app/src/platform/setup.rs:465
+msgid ""
+"Add the Status Tray plugin to a panel (Panel → Panel Preferences → Items)."
+msgstr "将 Status Tray 插件添加到面板（面板 → 面板首选项 → 项目）。"
+
+#: crates/tvc-app/src/platform/setup.rs:467
+msgid "Add the System Tray widget to a panel."
+msgstr "将系统托盘小部件添加到面板。"
+
+#: crates/tvc-app/src/platform/setup.rs:469
+msgid "Use a bar with a tray, such as Waybar with its tray module."
+msgstr "请使用带托盘的状态栏，例如带 tray 模块的 Waybar。"
+
+#: crates/tvc-app/src/platform/setup.rs:471
+msgid "Add a system tray (status notifier) to your panel."
+msgstr "请在面板中添加系统托盘（状态通知器）。"
+
+#: crates/tvc-app/src/platform/setup.rs:475
+msgid "Add a system tray to see the tray icon"
+msgstr "添加系统托盘以显示托盘图标"
+
+#: crates/tvc-app/src/platform/setup.rs:476
+msgid ""
+"This desktop has no tray for app icons right now, so the app keeps its window open instead of hiding in the tray. {0}"
+msgstr "此桌面目前没有用于应用图标的托盘，因此应用会保持窗口打开，而不是隐藏到托盘中。{0}"
+
+#: crates/tvc-core/src/engine.rs:177
+msgid "{0} isn't supported by this monitor."
+msgstr "此显示器不支持{0}。"
+
+#: crates/tvc-core/src/engine.rs:698
+msgid "The monitor is asleep or this PC is locked"
+msgstr "显示器处于睡眠状态或此电脑已锁定"
+
+#: crates/tvc-core/src/engine.rs:938
+msgid ""
+"Changes are off for this monitor after repeated failed writes; reconnect it to try again."
+msgstr "由于多次写入失败，已停止对此显示器进行更改；请重新连接后重试。"
+
+#: crates/tvc-core/src/engine.rs:941
+msgid "The monitor's capabilities haven't been read yet."
+msgstr "尚未读取显示器的功能。"
+
+#: crates/tvc-core/src/engine.rs:971
+msgid "Backup failed — {0} cancelled."
+msgstr "备份失败，已取消{0}。"
+
+#: crates/tvc-core/src/engine.rs:994
+msgid "{0} remains {1}; the monitor did not apply {2}."
+msgstr "{0}仍为 {1}；显示器未应用 {2}。"
+
+#: crates/tvc-core/src/engine.rs:1045
+msgid "The monitor stayed on {0}"
+msgstr "显示器仍保持为 {0}"
+
+#: crates/tvc-core/src/engine.rs:1170
+msgid "{0} preset"
+msgstr "{0}预设"
+
+#: crates/tvc-core/src/engine.rs:1176
+msgid "No backup found."
+msgstr "未找到备份。"
+
+#: crates/tvc-core/src/engine.rs:1177
+msgid "Couldn't read the backup: {0}"
+msgstr "无法读取备份：{0}"
+
+#: crates/tvc-core/src/engine.rs:1195
+msgid "{0}; restored {1} of {2} settings."
+msgid_plural "{0}; restored {1} of {2} settings."
+msgstr[0] "{0}；已还原 {1}/{2} 项设置。"
+
+#: crates/tvc-core/src/engine.rs:1208
+msgid "Restored {0} of {1} settings. {2}"
+msgid_plural "Restored {0} of {1} settings. {2}"
+msgstr[0] "已还原 {1} 项设置中的 {0} 项。{2}"
+
+#: crates/tvc-core/src/engine.rs:1259
+msgid "Monitor not found"
+msgstr "未找到显示器"
+
+#: crates/tvc-core/src/engine.rs:1261
+msgid "The monitor answers but supports none of the controls this app uses"
+msgstr "显示器有响应，但不支持此应用使用的任何控制"
+
+#: crates/tvc-core/src/engine.rs:1262 crates/tvc-core/src/hub.rs:493
+msgid "Monitor not responding"
+msgstr "显示器无响应"
+
+#: crates/tvc-core/src/profile.rs:257
+msgid "{0} can't be changed."
+msgstr "无法更改{0}。"
+
+#: crates/tvc-core/src/safety.rs:34 crates/tvc-core/src/safety.rs:53
+msgid "{0} is never written."
+msgstr "永远不会写入{0}。"
+
+#: crates/tvc-core/src/safety.rs:37
+msgid "This monitor is read-only."
+msgstr "此显示器为只读。"
+
+#: crates/tvc-core/src/safety.rs:42
+msgid "{0} is only allowed on verified monitors."
+msgstr "仅在已验证的显示器上允许{0}。"
+
+#: crates/tvc-core/src/safety.rs:46 crates/tvc-core/src/safety.rs:54
+msgid "Unknown setting — identify it with the finder first."
+msgstr "未知设置，请先使用查找工具识别它。"
+
+#: crates/tvc-core/src/safety.rs:50
+msgid "This monitor does not support {0}."
+msgstr "此显示器不支持{0}。"
+
+#: crates/tvc-core/src/safety.rs:61
+msgid "The monitor lists no values for {0}."
+msgstr "显示器未列出{0}的任何值。"
+
+#: crates/tvc-core/src/safety.rs:64
+msgid "{0} is not a valid value for {1}."
+msgstr "{0} 不是{1}的有效值。"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:11
+#: crates/tvc-core/src/profile/p32p20.json:21
+msgid "Colour mode"
+msgstr "颜色模式"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:27
+#: crates/tvc-core/src/profile/p32p20.json:32
+msgid "Changes apply straight away"
+msgstr "更改会立即生效"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:13
+#: crates/tvc-core/src/profile/p32p20.json:27
+msgid "sRGB"
+msgstr "sRGB"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:14
+msgid "Native"
+msgstr "原生"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:15
+msgid "4000 K"
+msgstr "4000 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:16
+msgid "5000 K"
+msgstr "5000 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:17
+msgid "6500 K"
+msgstr "6500 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:18
+msgid "7500 K"
+msgstr "7500 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:19
+msgid "8200 K"
+msgstr "8200 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:20
+msgid "9300 K"
+msgstr "9300 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:21
+msgid "10000 K"
+msgstr "10000 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:22
+msgid "11500 K"
+msgstr "11500 K"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:23
+msgid "User 1"
+msgstr "用户 1"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:24
+msgid "User 2"
+msgstr "用户 2"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:25
+msgid "User 3"
+msgstr "用户 3"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:28
+#: crates/tvc-core/src/profile/p32p20.json:33
+msgid "Red gain"
+msgstr "红色增益"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:30
+#: crates/tvc-core/src/profile/p32p20.json:35
+msgid "Green gain"
+msgstr "绿色增益"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:32
+#: crates/tvc-core/src/profile/p32p20.json:37
+msgid "Blue gain"
+msgstr "蓝色增益"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:34
+#: crates/tvc-core/src/profile/p32p20.json:39
+msgid "Input"
+msgstr "输入源"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:37
+#: crates/tvc-core/src/profile/p32p20.json:43
+msgid ""
+"You won't be able to control the monitor from this PC until you switch back."
+msgstr "在切换回来之前，你将无法从此电脑控制显示器。"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:40
+msgid "Sharpness"
+msgstr "清晰度"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:41
+#: crates/tvc-core/src/profile/p32p20.json:78
+msgid "OSD enable"
+msgstr "屏幕菜单"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:42
+#: crates/tvc-core/src/profile/p32p20.json:79
+msgid "Power"
+msgstr "电源"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:43
+#: crates/tvc-core/src/profile/p32p20.json:55
+#: crates/tvc-core/src/profile/p32p20.json:49
+#: crates/tvc-core/src/profile/p32p20.json:80
+msgid "On"
+msgstr "开"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:43
+#: crates/tvc-core/src/profile/p32p20.json:80
+msgid "Standby"
+msgstr "待机"
+
+#: crates/tvc-core/src/profile/generic-mccs.json:43
+#: crates/tvc-core/src/profile/p32p20.json:49
+#: crates/tvc-core/src/profile/p32p20.json:55
+#: crates/tvc-core/src/profile/p32p20.json:80
+msgid "Off"
+msgstr "关"
+
+#: crates/tvc-core/src/profile/p32p20.json:12
+msgid " — the current colour mode may lock it"
+msgstr "（当前颜色模式可能会锁定亮度）"
+
+#: crates/tvc-core/src/profile/p32p20.json:23
+msgid "DCI-P3"
+msgstr "DCI-P3"
+
+#: crates/tvc-core/src/profile/p32p20.json:24
+msgid "Bluish"
+msgstr "偏蓝"
+
+#: crates/tvc-core/src/profile/p32p20.json:25
+msgid "Neutral"
+msgstr "中性"
+
+#: crates/tvc-core/src/profile/p32p20.json:26
+msgid "Low Blue Light"
+msgstr "低蓝光"
+
+#: crates/tvc-core/src/profile/p32p20.json:28
+msgid "Reddish"
+msgstr "偏红"
+
+#: crates/tvc-core/src/profile/p32p20.json:29
+msgid "BT.709"
+msgstr "BT.709"
+
+#: crates/tvc-core/src/profile/p32p20.json:30
+msgid "User / Custom"
+msgstr "用户/自定义"
+
+#: crates/tvc-core/src/profile/p32p20.json:6
+msgid "HDMI"
+msgstr "HDMI"
+
+#: crates/tvc-core/src/profile/p32p20.json:7
+msgid "DisplayPort"
+msgstr "DisplayPort"
+
+#: crates/tvc-core/src/profile/p32p20.json:8
+msgid "USB-C"
+msgstr "USB-C"
+
+#: crates/tvc-core/src/profile/p32p20.json:45
+msgid "Over Drive"
+msgstr "过驱动"
+
+#: crates/tvc-core/src/profile/p32p20.json:47
+msgid "Reduces motion blur. Extreme can leave trails behind moving objects"
+msgstr "减少动态模糊。“极限”可能会使移动物体留下拖影"
+
+#: crates/tvc-core/src/profile/p32p20.json:51
+msgid "Normal"
+msgstr "正常"
+
+#: crates/tvc-core/src/profile/p32p20.json:46
+msgid "Extreme"
+msgstr "极限"
+
+#: crates/tvc-core/src/profile/p32p20.json:48
+msgid "Dynamic Contrast"
+msgstr "动态对比度"
+
+#: crates/tvc-core/src/profile/p32p20.json:50
+msgid "Adjusts contrast to match what's on screen"
+msgstr "根据屏幕内容调整对比度"
+
+#: crates/tvc-core/src/profile/p32p20.json:51
+msgid "Aspect ratio"
+msgstr "宽高比"
+
+#: crates/tvc-core/src/profile/p32p20.json:53
+msgid ""
+"The monitor greys this out at its native resolution and may ignore changes"
+msgstr "在原生分辨率下，显示器会将此项灰显，并可能忽略更改"
+
+#: crates/tvc-core/src/profile/p32p20.json:52
+msgid "Full screen"
+msgstr "全屏"
+
+#: crates/tvc-core/src/profile/p32p20.json:52
+msgid "Original aspect ratio"
+msgstr "原始宽高比"
+
+#: crates/tvc-core/src/profile/p32p20.json:54
+msgid "USB Charging"
+msgstr "USB 充电"
+
+#: crates/tvc-core/src/profile/p32p20.json:56
+msgid "Charge devices from the monitor's USB ports while it's in standby"
+msgstr "显示器待机时，通过其 USB 端口为设备充电"
+
+#: crates/tvc-core/src/profile/p32p20.json:57
+msgid "Menu language"
+msgstr "菜单语言"
+
+#: crates/tvc-core/src/profile/p32p20.json:63
+msgid "The language of the monitor's own menus"
+msgstr "显示器自身菜单的语言"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "English"
+msgstr "英语"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "French"
+msgstr "法语"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "German"
+msgstr "德语"
+
+#: crates/tvc-core/src/profile/p32p20.json:59
+msgid "Italian"
+msgstr "意大利语"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Japanese"
+msgstr "日语"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Russian"
+msgstr "俄语"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Spanish"
+msgstr "西班牙语"
+
+#: crates/tvc-core/src/profile/p32p20.json:60
+msgid "Chinese (Simplified)"
+msgstr "简体中文"
+
+#: crates/tvc-core/src/profile/p32p20.json:64
+msgid "Factory reset"
+msgstr "恢复出厂设置"
+
+#: crates/tvc-core/src/profile/p32p20.json:66
+msgid "Restores every on-screen-menu setting. We save a backup first"
+msgstr "还原所有屏幕菜单设置。会先保存备份"
+
+#: crates/tvc-core/src/profile/p32p20.json:65
+msgid ""
+"Reset ALL monitor settings to factory defaults? This may switch DDC/CI off, which would stop this app working until it is turned back on with the Exit button (hold 10 s). A backup is saved first."
+msgstr "要将显示器的所有设置重置为出厂默认值吗？这可能会关闭 DDC/CI，导致此应用无法工作，直到用 Exit 按钮（按住 10 秒）重新开启。会先保存备份。"
+
+#: crates/tvc-core/src/profile/p32p20.json:67
+msgid "Reset monitor to factory settings?"
+msgstr "要将显示器恢复出厂设置吗？"
+
+#: crates/tvc-core/src/profile/p32p20.json:68
+msgid ""
+"This restores every on-screen-menu setting, and it can turn off DDC/CI on some Lenovo monitors. We save a backup first."
+msgstr "此操作会还原所有屏幕菜单设置，并可能在部分 Lenovo 显示器上关闭 DDC/CI。会先保存备份。"
+
+#: crates/tvc-core/src/profile/p32p20.json:70
+msgid "Reset brightness and contrast"
+msgstr "重置亮度和对比度"
+
+#: crates/tvc-core/src/profile/p32p20.json:71
+msgid "Reset brightness and contrast to factory defaults?"
+msgstr "要将亮度和对比度重置为出厂默认值吗？"
+
+#: crates/tvc-core/src/profile/p32p20.json:73
+msgid "Reset brightness and contrast?"
+msgstr "要重置亮度和对比度吗？"
+
+#: crates/tvc-core/src/profile/p32p20.json:74
+msgid "Reset colour"
+msgstr "重置颜色"
+
+#: crates/tvc-core/src/profile/p32p20.json:75
+msgid "Reset colour settings to factory defaults?"
+msgstr "要将颜色设置重置为出厂默认值吗？"
+
+#: crates/tvc-core/src/profile/p32p20.json:77
+msgid "Reset colour settings?"
+msgstr "要重置颜色设置吗？"
+
+#: crates/tvc-core/src/store.rs:95
+msgid "Day"
+msgstr "日间"
+
+#: crates/tvc-core/src/store.rs:96
+msgid "Night"
+msgstr "夜间"
+
+#: crates/tvc-core/src/hotkey.rs:177
+msgid "Brightness up"
+msgstr "调高亮度"
+
+#: crates/tvc-core/src/hotkey.rs:178
+msgid "Brightness down"
+msgstr "调低亮度"
+
+#: crates/tvc-core/src/hotkey.rs:179
+msgid "Contrast up"
+msgstr "调高对比度"
+
+#: crates/tvc-core/src/hotkey.rs:180
+msgid "Contrast down"
+msgstr "调低对比度"
+
+#: crates/tvc-core/src/hotkey.rs:181
+msgid "Day preset"
+msgstr "日间预设"
+
+#: crates/tvc-core/src/hotkey.rs:182
+msgid "Night preset"
+msgstr "夜间预设"
+
+#: crates/tvc-core/src/hotkey.rs:183
+msgid "Input HDMI"
+msgstr "输入源 HDMI"
+
+#: crates/tvc-core/src/hotkey.rs:184
+msgid "Input DisplayPort"
+msgstr "输入源 DisplayPort"
+
+#: crates/tvc-core/src/hotkey.rs:185
+msgid "Input USB-C"
+msgstr "输入源 USB-C"
+
+#: crates/tvc-core/src/hotkey.rs:186
+msgid "Switch to this PC"
+msgstr "切换到此电脑"
+
+#: crates/tvc-core/src/hotkey.rs:187
+msgid "Open ThinkVision Control"
+msgstr "打开 ThinkVision Control"

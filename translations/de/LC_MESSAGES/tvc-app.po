@@ -1,5 +1,694 @@
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "Language: de\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Header
+#: crates/tvc-app/ui/app.slint:19
+msgctxt "App"
+msgid "Monitor"
+msgstr "Monitor"
+
+#: crates/tvc-app/ui/app.slint:55
+msgctxt "App"
+msgid "Reads the current value of every code the monitor reports"
+msgstr "Liest den aktuellen Wert jedes vom Monitor gemeldeten Codes"
+
+#: crates/tvc-app/ui/app.slint:73
+msgctxt "App"
+msgid "Start with Windows"
+msgstr "Mit Windows starten"
+
+#: crates/tvc-app/ui/background.slint:26
+msgctxt "Tray"
+msgid "Open ThinkVision Control"
+msgstr "ThinkVision Control öffnen"
+
+#: crates/tvc-app/ui/background.slint:28
+msgctxt "Tray"
+msgid "Brightness up"
+msgstr "Helligkeit erhöhen"
+
+#: crates/tvc-app/ui/background.slint:29
+msgctxt "Tray"
+msgid "Brightness down"
+msgstr "Helligkeit verringern"
+
+#: crates/tvc-app/ui/background.slint:30
+msgctxt "Tray"
+msgid "Day preset"
+msgstr "Voreinstellung Tag"
+
+#: crates/tvc-app/ui/background.slint:31
+msgctxt "Tray"
+msgid "Night preset"
+msgstr "Voreinstellung Nacht"
+
+#: crates/tvc-app/ui/background.slint:32
+msgctxt "Tray"
+msgid "Switch to this PC"
+msgstr "Zu diesem PC wechseln"
+
+#: crates/tvc-app/ui/background.slint:34
+msgctxt "Tray"
+msgid "Exit"
+msgstr "Beenden"
+
+#: crates/tvc-app/ui/background.slint:42
+msgctxt "Osd"
+msgid "Brightness"
+msgstr "Helligkeit"
+
+#: crates/tvc-app/ui/controls.slint:304
+msgctxt "InputTile"
+msgid "{0}, This PC"
+msgstr "{0}, dieser PC"
+
+#: crates/tvc-app/ui/controls.slint:324
+msgctxt "InputSelector"
+msgid "Input"
+msgstr "Eingang"
+
+#: crates/tvc-app/ui/controls.slint:335
+msgctxt "InputSelector"
+msgid "This PC"
+msgstr "Dieser PC"
+
+#: crates/tvc-app/ui/controls.slint:493
+msgctxt "LabelledSwitch"
+msgid "On"
+msgstr "Ein"
+
+#: crates/tvc-app/ui/controls.slint:493
+msgctxt "LabelledSwitch"
+msgid "Off"
+msgstr "Aus"
+
+#: crates/tvc-app/ui/controls.slint:768
+msgctxt "DisplayWords"
+msgid "Disconnected"
+msgstr "Getrennt"
+
+#: crates/tvc-app/ui/controls.slint:769
+msgctxt "DisplayWords"
+msgid "Not responding"
+msgstr "Reagiert nicht"
+
+#: crates/tvc-app/ui/controls.slint:770
+msgctxt "DisplayWords"
+msgid "Connecting…"
+msgstr "Verbindung wird hergestellt…"
+
+#: crates/tvc-app/ui/controls.slint:771
+msgctxt "DisplayWords"
+msgid "Can't be reached"
+msgstr "Nicht erreichbar"
+
+#: crates/tvc-app/ui/controls.slint:772
+msgctxt "DisplayWords"
+msgid "Built-in · brightness only"
+msgstr "Integriert · nur Helligkeit"
+
+#: crates/tvc-app/ui/controls.slint:773
+msgctxt "DisplayWords"
+msgid "Verified"
+msgstr "Geprüft"
+
+#: crates/tvc-app/ui/controls.slint:773
+msgctxt "DisplayWords"
+msgid "Experimental"
+msgstr "Experimentell"
+
+#: crates/tvc-app/ui/controls.slint:773
+msgctxt "DisplayWords"
+msgid "Read-only"
+msgstr "Schreibgeschützt"
+
+#: crates/tvc-app/ui/controls.slint:968 crates/tvc-app/ui/controls.slint:1028
+msgctxt "DisplayMenu"
+msgid "Display"
+msgstr "Bildschirm"
+
+#: crates/tvc-app/ui/controls.slint:1041
+msgctxt "DisplayMenu"
+msgid "All together"
+msgstr "Alle gemeinsam"
+
+#: crates/tvc-app/ui/controls.slint:1042
+msgctxt "DisplayMenu"
+msgid "Move every included display"
+msgstr "Alle einbezogenen Bildschirme bewegen"
+
+#: crates/tvc-app/ui/controls.slint:1077
+msgctxt "DisplayPicker"
+msgid "Display"
+msgstr "Bildschirm"
+
+#: crates/tvc-app/ui/controls.slint:1091
+msgctxt "DisplayPicker"
+msgid "All together"
+msgstr "Alle gemeinsam"
+
+#: crates/tvc-app/ui/controls.slint:1092
+msgctxt "DisplayPicker"
+msgid "Move every included display"
+msgstr "Alle einbezogenen Bildschirme bewegen"
+
+#: crates/tvc-app/ui/main.slint:90
+msgctxt "MainWindow"
+msgid "Together"
+msgstr "Gemeinsam"
+
+#: crates/tvc-app/ui/main.slint:95
+msgctxt "MainWindow"
+msgid "Experimental"
+msgstr "Experimentell"
+
+#: crates/tvc-app/ui/main.slint:101
+msgctxt "MainWindow"
+msgid "Built-in"
+msgstr "Integriert"
+
+#: crates/tvc-app/ui/main.slint:134
+msgctxt "MainWindow"
+msgid "All together"
+msgstr "Alle gemeinsam"
+
+#: crates/tvc-app/ui/main.slint:147
+msgctxt "MainWindow"
+msgid "Display"
+msgstr "Bildschirm"
+
+#: crates/tvc-app/ui/main.slint:148
+msgctxt "MainWindow"
+msgid "Monitor"
+msgstr "Monitor"
+
+#: crates/tvc-app/ui/main.slint:149
+msgctxt "MainWindow"
+msgid "Settings"
+msgstr "Einstellungen"
+
+#: crates/tvc-app/ui/pages.slint:32
+msgctxt "DisplayPage"
+msgid "Input"
+msgstr "Eingang"
+
+#: crates/tvc-app/ui/pages.slint:33
+msgctxt "DisplayPage"
+msgid "Names from the monitor's capability report"
+msgstr "Namen aus dem Fähigkeitsbericht des Monitors"
+
+#: crates/tvc-app/ui/pages.slint:52
+msgctxt "DisplayPage"
+msgid "Brightness and contrast"
+msgstr "Helligkeit und Kontrast"
+
+#: crates/tvc-app/ui/pages.slint:83
+msgctxt "DisplayPage"
+msgid "Sound"
+msgstr "Ton"
+
+#: crates/tvc-app/ui/pages.slint:104
+msgctxt "DisplayPage"
+msgid "Presets"
+msgstr "Voreinstellungen"
+
+#. Only the built-in panel has no presets: say so instead of showing nothing.
+#: crates/tvc-app/ui/pages.slint:123
+msgctxt "DisplayPage"
+msgid "Day and Night"
+msgstr "Tag und Nacht"
+
+#: crates/tvc-app/ui/pages.slint:136
+msgctxt "DisplayPage"
+msgid ""
+"The built-in display has no Day and Night presets. It keeps the brightness "
+"you set here."
+msgstr "Der integrierte Bildschirm hat keine Voreinstellungen für Tag und Nacht. Er behält die hier eingestellte Helligkeit."
+
+#: crates/tvc-app/ui/pages.slint:144
+msgctxt "DisplayPage"
+msgid "Colour"
+msgstr "Farbe"
+
+#: crates/tvc-app/ui/pages.slint:149
+msgctxt "DisplayPage"
+msgid "Colour mode"
+msgstr "Farbmodus"
+
+#: crates/tvc-app/ui/pages.slint:163
+msgctxt "DisplayPage"
+msgid "Custom colour"
+msgstr "Eigene Farbe"
+
+#. No verified profile: the report is how the display gets one.
+#: crates/tvc-app/ui/pages.slint:182
+msgctxt "DisplayPage"
+msgid "Help support this display"
+msgstr "Unterstützung für diesen Bildschirm verbessern"
+
+#: crates/tvc-app/ui/pages.slint:185
+msgctxt "DisplayPage"
+msgid "Capability report"
+msgstr "Fähigkeitsbericht"
+
+#: crates/tvc-app/ui/pages.slint:186
+msgctxt "DisplayPage"
+msgid "What {0} says it can do. Paste it into a new issue."
+msgstr "Was {0} laut eigener Angabe kann. In ein neues Issue einfügen."
+
+#: crates/tvc-app/ui/pages.slint:188
+msgctxt "DisplayPage"
+msgid "Copy capability report"
+msgstr "Fähigkeitsbericht kopieren"
+
+#: crates/tvc-app/ui/pages.slint:200
+msgctxt "IncludedRow"
+msgid "Disconnected · its offset is kept"
+msgstr "Getrennt · Versatz bleibt erhalten"
+
+#: crates/tvc-app/ui/pages.slint:201
+msgctxt "IncludedRow"
+msgid "Not responding"
+msgstr "Reagiert nicht"
+
+#: crates/tvc-app/ui/pages.slint:202
+msgctxt "IncludedRow"
+msgid "Brightness only"
+msgstr "Nur Helligkeit"
+
+#: crates/tvc-app/ui/pages.slint:203
+msgctxt "IncludedRow"
+msgid "Brightness, contrast, volume"
+msgstr "Helligkeit, Kontrast, Lautstärke"
+
+#: crates/tvc-app/ui/pages.slint:203
+msgctxt "IncludedRow"
+msgid "Brightness, contrast"
+msgstr "Helligkeit, Kontrast"
+
+#: crates/tvc-app/ui/pages.slint:233
+msgctxt "IncludedRow"
+msgid "Include {0}"
+msgstr "{0} einbeziehen"
+
+#: crates/tvc-app/ui/pages.slint:248
+msgctxt "IncludedRow"
+msgid "Offset from the master sliders"
+msgstr "Versatz zu den Hauptreglern"
+
+#: crates/tvc-app/ui/pages.slint:256
+msgctxt "IncludedRow"
+msgid "{0} offset"
+msgstr "Versatz {0}"
+
+#: crates/tvc-app/ui/pages.slint:270
+msgctxt "TogetherPage"
+msgid "Disconnected · its offset is kept"
+msgstr "Getrennt · Versatz bleibt erhalten"
+
+#: crates/tvc-app/ui/pages.slint:271
+msgctxt "TogetherPage"
+msgid "Not responding"
+msgstr "Reagiert nicht"
+
+#: crates/tvc-app/ui/pages.slint:272
+msgctxt "TogetherPage"
+msgid "Not controlled over DDC/CI"
+msgstr "Nicht über DDC/CI gesteuert"
+
+#: crates/tvc-app/ui/pages.slint:273
+msgctxt "TogetherPage"
+msgid "No volume control reported"
+msgstr "Keine Lautstärkeregelung gemeldet"
+
+#: crates/tvc-app/ui/pages.slint:277
+msgctxt "TogetherPage"
+msgid "Included displays"
+msgstr "Einbezogene Bildschirme"
+
+#: crates/tvc-app/ui/pages.slint:287
+msgctxt "TogetherPage"
+msgid "Move together"
+msgstr "Gemeinsam bewegen"
+
+#: crates/tvc-app/ui/pages.slint:287
+msgctxt "TogetherPage"
+msgid "Offsets keep the gap between displays"
+msgstr "Der Versatz hält den Abstand zwischen den Bildschirmen"
+
+#: crates/tvc-app/ui/pages.slint:309
+msgctxt "TogetherPage"
+msgid "{0}: {1}"
+msgstr "{0}: {1}"
+
+#: crates/tvc-app/ui/pages.slint:347
+msgctxt "TogetherPage"
+msgid "Presets"
+msgstr "Voreinstellungen"
+
+#: crates/tvc-app/ui/pages.slint:347
+msgctxt "TogetherPage"
+msgid "Every included display"
+msgstr "Alle einbezogenen Bildschirme"
+
+#: crates/tvc-app/ui/pages.slint:354
+msgctxt "TogetherPage"
+msgid "Brightness and contrast"
+msgstr "Helligkeit und Kontrast"
+
+#: crates/tvc-app/ui/pages.slint:368
+msgctxt "TogetherPage"
+msgid ""
+"Input, colour and the Monitor tab stay per display. Pick a display above to "
+"change them."
+msgstr "Eingang, Farbe und die Registerkarte „Monitor“ gelten je Bildschirm. Zum Ändern oben einen Bildschirm wählen."
+
+#: crates/tvc-app/ui/pages.slint:417
+msgctxt "MonitorPage"
+msgid "Backup"
+msgstr "Sicherung"
+
+#: crates/tvc-app/ui/pages.slint:420
+msgctxt "MonitorPage"
+msgid "Restore backup"
+msgstr "Sicherung wiederherstellen"
+
+#: crates/tvc-app/ui/pages.slint:425
+msgctxt "MonitorPage"
+msgid "Restore"
+msgstr "Wiederherstellen"
+
+#: crates/tvc-app/ui/pages.slint:431
+msgctxt "MonitorPage"
+msgid "Tools"
+msgstr "Tools"
+
+#: crates/tvc-app/ui/pages.slint:434
+msgctxt "MonitorPage"
+msgid "Find hidden settings"
+msgstr "Versteckte Einstellungen suchen"
+
+#: crates/tvc-app/ui/pages.slint:435
+msgctxt "MonitorPage"
+msgid "Look for settings your monitor supports but doesn't list"
+msgstr "Nach Einstellungen suchen, die der Monitor unterstützt, aber nicht auflistet"
+
+#: crates/tvc-app/ui/pages.slint:438
+msgctxt "MonitorPage"
+msgid "Open"
+msgstr "Öffnen"
+
+#: crates/tvc-app/ui/pages.slint:488 crates/tvc-app/ui/pages.slint:494
+msgctxt "ShortcutDialog"
+msgid "Edit shortcut"
+msgstr "Tastenkombination bearbeiten"
+
+#: crates/tvc-app/ui/pages.slint:496
+msgctxt "ShortcutDialog"
+msgid "Press a combination of keys to change the shortcut for {0}."
+msgstr "Eine Tastenkombination drücken, um die Tastenkombination für {0} zu ändern."
+
+#: crates/tvc-app/ui/pages.slint:524 crates/tvc-app/ui/pages.slint:552
+msgctxt "ShortcutDialog"
+msgid "Press keys"
+msgstr "Tasten drücken"
+
+#: crates/tvc-app/ui/pages.slint:524
+msgctxt "ShortcutDialog"
+msgid "Shortcut keys"
+msgstr "Tastenkombination"
+
+#: crates/tvc-app/ui/pages.slint:585
+msgctxt "ShortcutDialog"
+msgid "Reset to default"
+msgstr "Auf Standard zurücksetzen"
+
+#: crates/tvc-app/ui/pages.slint:594
+msgctxt "ShortcutDialog"
+msgid "Clear"
+msgstr "Löschen"
+
+#: crates/tvc-app/ui/pages.slint:603
+msgctxt "ShortcutDialog"
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#: crates/tvc-app/ui/pages.slint:611
+msgctxt "ShortcutDialog"
+msgid "Save"
+msgstr "Speichern"
+
+#: crates/tvc-app/ui/pages.slint:629
+msgctxt "FinderPage"
+msgid "Back to Monitor"
+msgstr "Zurück zu „Monitor“"
+
+#: crates/tvc-app/ui/pages.slint:633
+msgctxt "FinderPage"
+msgid "Find hidden settings"
+msgstr "Versteckte Einstellungen suchen"
+
+#: crates/tvc-app/ui/pages.slint:641
+msgctxt "FinderPage"
+msgid ""
+"This only reads from the monitor; nothing is written here. It compares the "
+"manufacturer's undocumented codes before and after you change one setting "
+"with the monitor's own buttons, so you can name what each code controls. A "
+"named code then appears in Monitor settings."
+msgstr "Hier wird nur vom Monitor gelesen, nichts geschrieben. Die undokumentierten Herstellercodes werden vor und nach dem Ändern einer Einstellung über die Tasten des Monitors verglichen, damit sich benennen lässt, was jeder Code steuert. Ein benannter Code erscheint dann in den Monitor-Einstellungen."
+
+#: crates/tvc-app/ui/pages.slint:653
+msgctxt "FinderPage"
+msgid "Steps"
+msgstr "Schritte"
+
+#: crates/tvc-app/ui/pages.slint:657
+msgctxt "FinderPage"
+msgid "1. Take a snapshot"
+msgstr "1. Momentaufnahme erstellen"
+
+#: crates/tvc-app/ui/pages.slint:660
+msgctxt "FinderPage"
+msgid "Take snapshot"
+msgstr "Momentaufnahme erstellen"
+
+#: crates/tvc-app/ui/pages.slint:666
+msgctxt "FinderPage"
+msgid "2. Change one setting with the monitor's buttons"
+msgstr "2. Eine Einstellung über die Tasten des Monitors ändern"
+
+#: crates/tvc-app/ui/pages.slint:667
+msgctxt "FinderPage"
+msgid "Pick any one in the monitor's own menu. Change only one, then compare."
+msgstr "Eine beliebige im Menü des Monitors wählen. Nur eine ändern, dann vergleichen."
+
+#: crates/tvc-app/ui/pages.slint:670
+msgctxt "FinderPage"
+msgid "3. Compare"
+msgstr "3. Vergleichen"
+
+#: crates/tvc-app/ui/pages.slint:671
+msgctxt "FinderPage"
+msgid "Lists the codes whose value changed"
+msgstr "Listet die Codes auf, deren Wert sich geändert hat"
+
+#: crates/tvc-app/ui/pages.slint:673
+msgctxt "FinderPage"
+msgid "Compare"
+msgstr "Vergleichen"
+
+#: crates/tvc-app/ui/pages.slint:680
+msgctxt "FinderPage"
+msgid "Changed"
+msgstr "Geändert"
+
+#: crates/tvc-app/ui/pages.slint:722
+msgctxt "FinderPage"
+msgid "Name it"
+msgstr "Benennen"
+
+#: crates/tvc-app/ui/pages.slint:730
+msgctxt "FinderPage"
+msgid "Setting name"
+msgstr "Name der Einstellung"
+
+#: crates/tvc-app/ui/pages.slint:733
+msgctxt "FinderPage"
+msgid "e.g. Local dimming"
+msgstr "z. B. Lokales Dimmen"
+
+#: crates/tvc-app/ui/pages.slint:742
+msgctxt "FinderPage"
+msgid "Label (optional)"
+msgstr "Bezeichnung (optional)"
+
+#: crates/tvc-app/ui/pages.slint:750
+msgctxt "FinderPage"
+msgid "Save"
+msgstr "Speichern"
+
+#: crates/tvc-app/ui/pages.slint:767
+msgctxt "AutoDayNightCard"
+msgid "Switch presets automatically"
+msgstr "Voreinstellungen automatisch wechseln"
+
+#: crates/tvc-app/ui/pages.slint:770
+msgctxt "AutoDayNightCard"
+msgid "Off"
+msgstr "Aus"
+
+#: crates/tvc-app/ui/pages.slint:770
+msgctxt "AutoDayNightCard"
+msgid "At set times"
+msgstr "Zu festen Zeiten"
+
+#: crates/tvc-app/ui/pages.slint:770
+msgctxt "AutoDayNightCard"
+msgid "At sunrise and sunset"
+msgstr "Bei Sonnenauf- und -untergang"
+
+#: crates/tvc-app/ui/pages.slint:784
+msgctxt "AutoDayNightCard"
+msgid "Day"
+msgstr "Tag"
+
+#: crates/tvc-app/ui/pages.slint:785
+msgctxt "AutoDayNightCard"
+msgid "Day preset time"
+msgstr "Uhrzeit für Voreinstellung Tag"
+
+#: crates/tvc-app/ui/pages.slint:786
+msgctxt "AutoDayNightCard"
+msgid "Night"
+msgstr "Nacht"
+
+#: crates/tvc-app/ui/pages.slint:787
+msgctxt "AutoDayNightCard"
+msgid "Night preset time"
+msgstr "Uhrzeit für Voreinstellung Nacht"
+
+#: crates/tvc-app/ui/pages.slint:789 crates/tvc-app/ui/pages.slint:800
+msgctxt "AutoDayNightCard"
+msgid "Save"
+msgstr "Speichern"
+
+#: crates/tvc-app/ui/pages.slint:798
+msgctxt "AutoDayNightCard"
+msgid "Latitude, e.g. 31.52"
+msgstr "Breitengrad, z. B. 31.52"
+
+#: crates/tvc-app/ui/pages.slint:798
+msgctxt "AutoDayNightCard"
+msgid "Latitude"
+msgstr "Breitengrad"
+
+#: crates/tvc-app/ui/pages.slint:799
+msgctxt "AutoDayNightCard"
+msgid "Longitude, e.g. 74.36"
+msgstr "Längengrad, z. B. 74.36"
+
+#: crates/tvc-app/ui/pages.slint:799
+msgctxt "AutoDayNightCard"
+msgid "Longitude"
+msgstr "Längengrad"
+
+#: crates/tvc-app/ui/pages.slint:807
+msgctxt "SettingsPage"
+msgid "System setup"
+msgstr "Systemeinrichtung"
+
+#: crates/tvc-app/ui/pages.slint:820
+msgctxt "SettingsPage"
+msgid "Copy"
+msgstr "Kopieren"
+
+#: crates/tvc-app/ui/pages.slint:821
+msgctxt "SettingsPage"
+msgid "Copy the command"
+msgstr "Befehl kopieren"
+
+#. the fallback keeps the card usable before it does.
+#: crates/tvc-app/ui/pages.slint:853
+msgctxt "SettingsPage"
+msgid "Language"
+msgstr "Sprache"
+
+#: crates/tvc-app/ui/pages.slint:856 crates/tvc-app/ui/pages.slint:861
+msgctxt "SettingsPage"
+msgid "App language"
+msgstr "App-Sprache"
+
+#: crates/tvc-app/ui/pages.slint:857
+msgctxt "SettingsPage"
+msgid "System follows your computer's language"
+msgstr "„System“ folgt der Sprache des Computers"
+
+#: crates/tvc-app/ui/pages.slint:859
+msgctxt "SettingsPage"
+msgid "System"
+msgstr "System"
+
+#: crates/tvc-app/ui/pages.slint:866
+msgctxt "SettingsPage"
+msgid "Startup"
+msgstr "Autostart"
+
+#: crates/tvc-app/ui/pages.slint:872
+msgctxt "SettingsPage"
+msgid "Run in background"
+msgstr "Im Hintergrund ausführen"
+
+#. Not for a display without inputs (the built-in panel).
+#: crates/tvc-app/ui/pages.slint:895
+msgctxt "SettingsPage"
+msgid "This PC"
+msgstr "Dieser PC"
+
+#: crates/tvc-app/ui/pages.slint:898
+msgctxt "SettingsPage"
+msgid "This PC's input"
+msgstr "Eingang dieses PCs"
+
+#: crates/tvc-app/ui/pages.slint:899
+msgctxt "SettingsPage"
+msgid "We ask before you switch the monitor away from it"
+msgstr "Vor dem Wechsel des Monitors auf einen anderen Eingang wird nachgefragt"
+
+#: crates/tvc-app/ui/pages.slint:907
+msgctxt "SettingsPage"
+msgid "Presets"
+msgstr "Voreinstellungen"
+
+#: crates/tvc-app/ui/pages.slint:917
+msgctxt "SettingsPage"
+msgid "Save current"
+msgstr "Aktuelle speichern"
+
+#: crates/tvc-app/ui/pages.slint:924
+msgctxt "SettingsPage"
+msgid "Automatic Day/Night"
+msgstr "Automatisch Tag/Nacht"
+
+#: crates/tvc-app/ui/pages.slint:927
+msgctxt "SettingsPage"
+msgid "Keyboard shortcuts"
+msgstr "Tastenkombinationen"
+
+#: crates/tvc-app/ui/pages.slint:957
+msgctxt "SettingsPage"
+msgid "Not set"
+msgstr "Nicht festgelegt"
+
+#: crates/tvc-app/ui/pages.slint:966
+msgctxt "SettingsPage"
+msgid "Edit shortcut: {0}"
+msgstr "Tastenkombination bearbeiten: {0}"
+
+#: crates/tvc-app/ui/pages.slint:975
+msgctxt "SettingsPage"
+msgid "About"
+msgstr "Info"
