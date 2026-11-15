@@ -512,15 +512,18 @@ fn burst_is_a_no_op_while_connected() {
 #[test]
 fn drag_coalesces_writes_reads_nothing_and_verifies_once_on_release() {
     let dir = TempDir::new();
-    // Writes are 50 ms apart, so 20 positions 10 ms apart coalesce to well under 20 writes.
+    // Writes are 50 ms apart; positions queued while a write is pending coalesce (newest wins). Four bursts of
+    // five, sent without waiting, so the count doesn't depend on how fast the test machine sleeps.
     let timing = Timing { gap: Duration::from_millis(50), ..Timing::zero() };
     let h = Harness::with_timing(&FakeLink::new(), dir.path(), timing);
     h.connect();
     let reads = h.link.state().reads.len();
 
-    for v in 1..=20 {
-        h.send(Command::DragTo { code: 0x10, value: v });
-        std::thread::sleep(Duration::from_millis(10));
+    for burst in 0..4 {
+        for v in 1..=5 {
+            h.send(Command::DragTo { code: 0x10, value: burst * 5 + v });
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
     assert_eq!(h.link.state().reads.len(), reads);
     let events = h.run(Command::EndDrag { code: 0x10, value: 20, origin: Origin::Window });
