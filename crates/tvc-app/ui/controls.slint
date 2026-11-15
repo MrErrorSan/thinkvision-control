@@ -301,7 +301,7 @@ export component InputTile inherits TileFace {
     accessible-checkable: true;
     accessible-checked: root.selected;
     accessible-enabled: root.enabled;
-    accessible-label: root.this-pc ? root.label + ", This PC" : root.label;
+    accessible-label: root.this-pc ? @tr("{0}, This PC", root.label) : root.label;
     accessible-item-index: root.item-index;
     accessible-item-count: root.item-count;
     accessible-action-default => { if root.enabled { root.clicked(); } }
@@ -321,7 +321,7 @@ export component InputSelector inherits Rectangle {
     property <length> tile-height: root.compact ? 44px : 56px;
     height: root.rows * root.tile-height + max(0, root.rows - 1) * 6px;
     accessible-role: radio-group;
-    accessible-label: "Input";
+    accessible-label: @tr("Input");
 
     for item[i] in root.inputs: InputTile {
         x: Math.mod(i, root.columns) * (root.tile-width + 6px);
@@ -332,7 +332,7 @@ export component InputSelector inherits Rectangle {
         this-pc: item.this-pc;
         item-index: i;
         item-count: root.inputs.length;
-        caption: item.this-pc && !root.compact ? "This PC" : (root.compact ? "" : " ");
+        caption: item.this-pc && !root.compact ? @tr("This PC") : (root.compact ? "" : " ");
         selected: item.code == root.active;
         enabled: root.enabled;
         clicked => { root.select(item.code); }
@@ -490,7 +490,7 @@ export component LabelledSwitch inherits HorizontalLayout {
     changed checked => { sw.checked = root.checked; }
     changed revision => { sw.checked = root.checked; }
     Text {
-        text: sw.checked ? "On" : "Off";
+        text: sw.checked ? @tr("On") : @tr("Off");
         vertical-alignment: center;
         color: root.enabled ? Theme.text : Theme.text-disabled;
         font-size: 14px;
@@ -765,12 +765,12 @@ export component Badge inherits Rectangle {
 global DisplayWords {
     // The chip's second line: what's wrong with it, else how it's connected and how far it's supported.
     public pure function caption(d: DisplayEntry) -> string {
-        if d.state == "disconnected" { return "Disconnected"; }
-        if d.state == "not-responding" { return "Not responding"; }
-        if d.state == "connecting" { return "Connecting…"; }
-        if d.state == "unreachable" { return "Can't be reached"; }
-        if d.kind == "built-in" { return "Built-in · brightness only"; }
-        let level = d.level == "verified" ? "Verified" : d.level == "experimental" ? "Experimental" : "Read-only";
+        if d.state == "disconnected" { return @tr("Disconnected"); }
+        if d.state == "not-responding" { return @tr("Not responding"); }
+        if d.state == "connecting" { return @tr("Connecting…"); }
+        if d.state == "unreachable" { return @tr("Can't be reached"); }
+        if d.kind == "built-in" { return @tr("Built-in · brightness only"); }
+        let level = d.level == "verified" ? @tr("Verified") : d.level == "experimental" ? @tr("Experimental") : @tr("Read-only");
         d.detail == "" ? level : d.detail + " · " + level
     }
 }
@@ -965,7 +965,7 @@ component DisplayMenu inherits Rectangle {
     border-color: Theme.control-stroke;
     background: ta.has-hover ? Theme.card-bg-secondary : Theme.card-bg;
     accessible-role: combobox;
-    accessible-label: "Display";
+    accessible-label: @tr("Display");
     accessible-value: root.selected-name;
     accessible-expandable: true;
     accessible-action-default => { root.open(); }
@@ -1025,7 +1025,7 @@ component DisplayMenu inherits Rectangle {
                 VerticalLayout {
                     padding: 4px;
                     accessible-role: list;
-                    accessible-label: "Display";
+                    accessible-label: @tr("Display");
                     for d[i] in root.displays: MenuRow {
                         init => { if d.id == root.selected { root.highlight = i; } }
                         title: d.name;
@@ -1038,8 +1038,8 @@ component DisplayMenu inherits Rectangle {
                         clicked => { root.choose(i); }
                     }
                     if root.together-available: MenuRow {
-                        title: "All together";
-                        caption: "Move every included display";
+                        title: @tr("All together");
+                        caption: @tr("Move every included display");
                         checked: root.selected == "";
                         highlighted: root.highlight == root.displays.length;
                         item-index: root.displays.length;
@@ -1074,7 +1074,7 @@ export component DisplayPicker inherits VerticalLayout {
     if !root.menu: HorizontalLayout {
         spacing: 8px;
         accessible-role: radio-group;
-        accessible-label: "Display";
+        accessible-label: @tr("Display");
         for d[i] in root.displays: DisplayChip {
             horizontal-stretch: 1;
             title: d.name;
@@ -1088,8 +1088,8 @@ export component DisplayPicker inherits VerticalLayout {
         }
         if root.together-available: DisplayChip {
             horizontal-stretch: 1;
-            title: "All together";
-            caption: "Move every included display";
+            title: @tr("All together");
+            caption: @tr("Move every included display");
             selected: root.selected == "";
             item-index: root.displays.length;
             item-count: root.count;

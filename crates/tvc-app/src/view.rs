@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
 use tvc_core::engine::MonitorStatus;
+use tvc_core::i18n::{tr, trf, trn, LANGUAGES};
 use tvc_core::identity::BackendKind;
 use tvc_core::link::{DisplayKind, LinkFailure};
 use tvc_core::profile::{ControlDefinition, ControlKind, Group, Section};
@@ -46,7 +47,7 @@ pub fn render_together(app: &App, sliders: &[TogetherSlider]) {
         .collect();
     sync(app.get_main_ranges(), rows, |m| app.set_main_ranges(m));
     let reasons: Vec<String> =
-        sliders.iter().filter(|t| !t.reason.is_empty()).map(|t| format!("{}: {}", t.label, t.reason)).collect();
+        sliders.iter().filter(|t| !t.reason.is_empty()).map(|t| trf("{0}: {1}", &[&t.label, &t.reason])).collect();
     app.set_range_note(s(reasons.join("\n")));
 }
 
@@ -56,9 +57,9 @@ pub fn render_displays(app: &App, entries: Vec<DisplayEntry>, selected_id: &str,
     experimental: bool) {
     if selected_id.is_empty() && together_available {
         let included = entries.iter().filter(|e| e.included).count();
-        app.set_model_name(s("All displays"));
+        app.set_model_name(s(tr("All displays")));
         app.set_status_glyph(s(glyph::CONNECTED));
-        app.set_status_text(s(format!("{included} of {} included · the sliders move them together", entries.len())));
+        app.set_status_text(s(trf("{0} of {1} included · the sliders move them together", &[&included, &entries.len()])));
     }
     sync(app.get_displays(), entries, |m| app.set_displays(m));
     app.set_selected_id(selected_id.into());
@@ -107,6 +108,22 @@ fn s(text: impl AsRef<str>) -> SharedString {
     text.as_ref().into()
 }
 
+/// A profile label (control name, value or input label) as the window shows it, through the catalog. The labels the
+/// profile makes up for a code it has no name for ("Unknown 0x99", "Mode 0x0C", "Input 0x31") are translated around
+/// their code; the command line prints them untranslated.
+pub fn display_label(text: &str) -> String {
+    let code = |prefix: &str| text.strip_prefix(prefix).filter(|c| c.starts_with("0x"));
+    if let Some(c) = code("Unknown ") {
+        trf("Unknown {0}", &[&c])
+    } else if let Some(c) = code("Mode ") {
+        trf("Mode {0}", &[&c])
+    } else if let Some(c) = code("Input ") {
+        trf("Input {0}", &[&c])
+    } else {
+        tr(text)
+    }
+}
+
 /// Sets the rows that changed, then adds or removes rows at the end, so a repeater keeps every unchanged item.
 fn update<T: Clone + PartialEq + 'static>(vec: &VecModel<T>, rows: Vec<T>) {
     let len = rows.len();
@@ -146,16 +163,18 @@ fn strings<I: IntoIterator<Item = String>>(current: Option<ModelRc<SharedString>
     nested(current, items.into_iter().map(SharedString::from).collect())
 }
 
-/// Value labels a control offers: the capability list for the code, else the profile's labels.
+/// Value labels a control offers, as the window shows them: the capability list for the code, else the profile's
+/// labels.
 pub fn options(st: &State, def: &ControlDefinition) -> Vec<(u16, String)> {
     let Some(rc) = st.controls.as_ref() else { return vec![] };
     let values: Vec<u16> = match rc.capabilities.vcp.get(&def.code) {
         Some(Some(list)) if !list.is_empty() => list.iter().map(|v| *v as u16).collect(),
         _ => def.value_labels.keys().map(|v| *v as u16).collect(),
     };
-    values.into_iter().map(|v| (v, label(def, v))).collect()
+    values.into_iter().map(|v| (v, display_label(&label(def, v)))).collect()
 }
 
+/// A value's profile label, untranslated (the command line prints it).
 pub fn label(def: &ControlDefinition, value: u16) -> String {
     u8::try_from(value)
         .ok()
@@ -209,10 +228,10 @@ pub fn header_name(st: &State) -> String {
     match monitor_name(st) {
         name if !name.is_empty() => name,
         _ if !os_name.is_empty() => os_name,
-        _ if built_in(st) => "Built-in display".into(),
-        _ if st.status == MonitorStatus::Connected => "Your display".into(),
-        _ if st.status == MonitorStatus::NotFound => not_found(st).header.into(),
-        _ => "Display".into(),
+        _ if built_in(st) => tr("Built-in display"),
+        _ if st.status == MonitorStatus::Connected => tr("Your display"),
+        _ if st.status == MonitorStatus::NotFound => not_found(st).header,
+        _ => tr("Display"),
     }
 }
 
@@ -232,9 +251,9 @@ impl AttachedDisplay {
     /// The name the display gives, else what kind it is (with its EDID id when known).
     pub fn label(&self) -> String {
         match (self.name.trim(), self.edid_id.as_str(), self.kind) {
-            ("", _, DisplayKind::BuiltIn) => "the built-in display".into(),
-            ("", "", _) => "an unnamed display".into(),
-            ("", id, _) => format!("a display ({id})"),
+            ("", _, DisplayKind::BuiltIn) => tr("the built-in display"),
+            ("", "", _) => tr("an unnamed display"),
+            ("", id, _) => trf("a display ({0})", &[&id]),
             (name, _, _) => name.into(),
         }
     }
@@ -243,9 +262,9 @@ impl AttachedDisplay {
 /// What a `NotFound` means, worked out from the displays the OS reports.
 pub struct NotFound {
     /// The header's title when no monitor name is known.
-    pub header: &'static str,
+    pub header: String,
     /// The header's status line.
-    pub status: &'static str,
+    pub status: String,
     pub title: String,
     pub message: String,
 }
@@ -254,38 +273,42 @@ pub fn not_found(st: &State) -> NotFound {
     let name = monitor_name(st);
     // Linux with NVIDIA's driver, which offers no control channel for the display: the setup card says what to do.
     let nvidia = st.setup_hints.iter().any(|h| h.id == "linux-nvidia");
-    const NVIDIA: &str = "NVIDIA's driver isn't offering display controls for it. See Settings → System setup.";
+    let nvidia_text = || tr("NVIDIA's driver isn't offering display controls for it. See Settings → System setup.");
+    let title = match name.as_str() {
+        "" => tr("No supported display found"),
+        name => trf("{0} isn't connected", &[&name]),
+    };
     let Some(displays) = st.displays.as_deref() else {
         // The backend can't list displays: say only what is known.
         return NotFound {
-            header: "No supported display",
-            status: "Not connected",
-            title: if name.is_empty() { "No supported display found".into() } else { format!("{name} isn't connected") },
-            message: if nvidia { NVIDIA } else { "Connect a display that supports DDC/CI and it will be found automatically." }.into(),
+            header: tr("No supported display"),
+            status: tr("Not connected"),
+            title,
+            message: if nvidia {
+                nvidia_text()
+            } else {
+                tr("Connect a display that supports DDC/CI and it will be found automatically.")
+            },
         };
     };
     if let Some(found) = displays.iter().find(|d| d.tracked) {
         let label = if name.is_empty() { found.label() } else { name };
         return NotFound {
-            header: "Display can't be reached",
-            status: "Can't be reached",
-            title: format!("{label} can't be reached"),
-            message: if nvidia { NVIDIA } else { "The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu." }.into(),
+            header: tr("Display can't be reached"),
+            status: tr("Can't be reached"),
+            title: trf("{0} can't be reached", &[&label]),
+            message: if nvidia { nvidia_text() } else { tr("The system sees it, but isn't offering display controls for it. Try another cable or port, and check that DDC/CI is turned on in the display's own menu.") },
         };
     }
     // Every real display counts (a laptop panel too); only software screens are left out.
     let physical: Vec<String> = displays.iter().filter(|d| d.kind != DisplayKind::Virtual).map(|d| d.label()).collect();
     let message = match physical.as_slice() {
-        [] if !displays.is_empty() => "This PC is only showing a virtual display, such as a remote session or a virtual machine. Display controls need a display connected to this PC.".into(),
-        [] => "No display is connected. Connect a display that supports DDC/CI and it will be found automatically.".into(),
-        [one] => format!("{} is connected, but this app has no profile for it.", capitalised(one)),
-        [rest @ .., last] => format!("{} and {last} are connected, but this app has no profile for them.", capitalised(&rest.join(", "))),
+        [] if !displays.is_empty() => tr("This PC is only showing a virtual display, such as a remote session or a virtual machine. Display controls need a display connected to this PC."),
+        [] => tr("No display is connected. Connect a display that supports DDC/CI and it will be found automatically."),
+        [one] => trf("{0} is connected, but this app has no profile for it.", &[&capitalised(one)]),
+        [rest @ .., last] => trf("{0} and {1} are connected, but this app has no profile for them.", &[&capitalised(&rest.join(", ")), last]),
     };
-    let title = match name.as_str() {
-        "" => "No supported display found".to_owned(),
-        name => format!("{name} isn't connected"),
-    };
-    NotFound { header: "No supported display", status: "No supported display", title, message }
+    NotFound { header: tr("No supported display"), status: tr("No supported display"), title, message }
 }
 
 /// "the built-in display" → "The built-in display" at the start of a sentence.
@@ -294,7 +317,7 @@ fn capitalised(text: &str) -> String {
     chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
-/// The one-line reason the monitor can't be reached, for the OSD and the command line.
+/// The one-line reason the monitor can't be reached, for the OSD and (inside `i18n::english`) the command line.
 pub fn unreachable_text(st: &State) -> String {
     match st.status {
         MonitorStatus::NotResponding => not_responding_title(st),
@@ -304,39 +327,40 @@ pub fn unreachable_text(st: &State) -> String {
 
 fn not_responding_title(st: &State) -> String {
     match monitor_name(st) {
-        name if name.is_empty() => "Your display isn't responding".into(),
-        name => format!("{name} isn't responding"),
+        name if name.is_empty() => tr("Your display isn't responding"),
+        name => trf("{0} isn't responding", &[&name]),
     }
 }
 
 pub fn status_line(st: &State) -> (&'static str, String) {
     if st.asleep && st.status == MonitorStatus::Connected {
-        return (glyph::MOON, "Asleep".into());
+        return (glyph::MOON, tr("Asleep"));
     }
     match st.status {
-        MonitorStatus::Connected if built_in(st) => (glyph::CONNECTED, "Brightness through the system".into()),
+        MonitorStatus::Connected if built_in(st) => (glyph::CONNECTED, tr("Brightness through the system")),
         MonitorStatus::Connected => {
             let input = st
                 .value(INPUT)
                 .and_then(|v| inputs(st).into_iter().find(|(c, _)| *c == v))
-                .map(|(_, l)| format!("Input: {l}"))
-                .unwrap_or_else(|| "Connected".into());
-            let fw = st.firmware().map(|f| format!(" · Firmware {f}")).unwrap_or_default();
-            let unverified = if experimental(st) { " · No verified profile" } else { "" };
-            (glyph::CONNECTED, input + &fw + unverified)
+                .map(|(_, l)| trf("Input: {0}", &[&display_label(&l)]))
+                .unwrap_or_else(|| tr("Connected"));
+            // Separate facts, one phrase each, in a " · " list.
+            let fw = st.firmware().map(|f| trf("Firmware {0}", &[&f]));
+            let unverified = experimental(st).then(|| tr("No verified profile"));
+            (glyph::CONNECTED, [Some(input), fw, unverified].into_iter().flatten().collect::<Vec<_>>().join(" · "))
         }
-        MonitorStatus::Connecting => (glyph::CONNECTING, "Looking for your monitor…".into()),
-        MonitorStatus::NotFound => (glyph::NOT_FOUND, not_found(st).status.into()),
-        MonitorStatus::NotResponding => (glyph::ERROR, "Not responding".into()),
+        MonitorStatus::Connecting => (glyph::CONNECTING, tr("Looking for your monitor…")),
+        MonitorStatus::NotFound => (glyph::NOT_FOUND, not_found(st).status),
+        MonitorStatus::NotResponding => (glyph::ERROR, tr("Not responding")),
     }
 }
 
 /// How far the app supports a display, in the words the window uses.
-pub fn support_label(level: &SupportLevel) -> &'static str {
+pub fn support_label(level: &SupportLevel) -> String {
     match level {
-        SupportLevel::Verified { .. } => "Verified",
-        SupportLevel::LenovoFamily | SupportLevel::GenericMccs => "Experimental",
-        SupportLevel::ReadOnly => "Read-only",
+        SupportLevel::Verified { .. } => tr("Verified"),
+        SupportLevel::LenovoFamily | SupportLevel::GenericMccs => tr("Experimental"),
+        SupportLevel::ReadOnly => tr("Read-only"),
     }
 }
 
@@ -350,30 +374,30 @@ fn about_text(st: &State) -> String {
     let edid = st.displays.iter().flatten().find(|d| d.tracked).map(|d| d.name.trim().to_owned());
     let name = Some(monitor_name(st)).into_iter().chain(edid).find(|n| !n.is_empty());
     name.into_iter()
-        .chain([format!("Support: {}", support_label(&st.level))])
-        .chain(st.firmware().map(|f| format!("Firmware {f}")))
-        .chain(["Built with Slint".to_owned()])
+        .chain([trf("Support: {0}", &[&support_label(&st.level)])])
+        .chain(st.firmware().map(|f| trf("Firmware {0}", &[&f])))
+        .chain([tr("Built with Slint")])
         .collect::<Vec<_>>()
         .join(" · ")
 }
 
 /// The title and text of the card a tab shows when it has no controls.
-fn empty_state(st: &State) -> (&'static str, &'static str) {
+fn empty_state(st: &State) -> (String, String) {
     match st.status {
-        MonitorStatus::Connecting => ("Looking for your monitor…", "This usually takes a second or two."),
-        MonitorStatus::Connected => ("No controls to show", "The monitor didn't report any setting this app can change."),
-        _ => ("No controls yet", "They appear here once the monitor answers."),
+        MonitorStatus::Connecting => (tr("Looking for your monitor…"), tr("This usually takes a second or two.")),
+        MonitorStatus::Connected => (tr("No controls to show"), tr("The monitor didn't report any setting this app can change.")),
+        _ => (tr("No controls yet"), tr("They appear here once the monitor answers.")),
     }
 }
 
 /// Why the monitor's cards are greyed out; "" while they aren't.
-fn disabled_reason(st: &State) -> &'static str {
+fn disabled_reason(st: &State) -> String {
     match st.status {
-        MonitorStatus::Connected if st.level == SupportLevel::ReadOnly => "Read only on this display",
-        MonitorStatus::Connected => "",
-        MonitorStatus::Connecting => "Available once the monitor answers",
-        MonitorStatus::NotResponding => "Available when the monitor responds again",
-        MonitorStatus::NotFound => "Available when the monitor is connected",
+        MonitorStatus::Connected if st.level == SupportLevel::ReadOnly => tr("Read only on this display"),
+        MonitorStatus::Connected => String::new(),
+        MonitorStatus::Connecting => tr("Available once the monitor answers"),
+        MonitorStatus::NotResponding => tr("Available when the monitor responds again"),
+        MonitorStatus::NotFound => tr("Available when the monitor is connected"),
     }
 }
 
@@ -383,55 +407,55 @@ pub fn banner(st: &State) -> Banner {
         return Banner {
             visible: true,
             severity: Severity::Info,
-            title: s("Safe mode"),
-            message: s("ThinkVision Control closed while reading the monitor's details last time, so it's using the saved copy and the hidden-settings finder is off."),
-            action: s("Read them now"),
+            title: s(tr("Safe mode")),
+            message: s(tr("ThinkVision Control closed while reading the monitor's details last time, so it's using the saved copy and the hidden-settings finder is off.")),
+            action: s(tr("Read them now")),
         };
     }
     if st.asleep {
         return Banner {
             visible: true,
             severity: Severity::Info,
-            title: s("Your monitor is asleep"),
-            message: s("Changes wait until it wakes up or you unlock this PC."),
+            title: s(tr("Your monitor is asleep")),
+            message: s(tr("Changes wait until it wakes up or you unlock this PC.")),
             action: s(""),
         };
     }
     if st.retrying && st.status != MonitorStatus::Connected {
-        return Banner { visible: true, severity: Severity::Info, title: s("Looking for your monitor…"), ..Default::default() };
+        return Banner { visible: true, severity: Severity::Info, title: s(tr("Looking for your monitor…")), ..Default::default() };
     }
     let (status, failure) = st.shown_status;
-    let (severity, title, message, action): (Severity, String, String, &str) = match (status, failure) {
+    let (severity, title, message, action): (Severity, String, String, String) = match (status, failure) {
         (Some(MonitorStatus::Connected), _) => return support_banner(st),
         (None, _) => return Banner::default(),
-        (Some(MonitorStatus::Connecting), _) => (Severity::Info, "Looking for your monitor…".into(), String::new(), ""),
+        (Some(MonitorStatus::Connecting), _) => (Severity::Info, tr("Looking for your monitor…"), String::new(), String::new()),
         (_, Some(LinkFailure::PermissionDenied)) => (
             Severity::Warning,
-            "This app isn't allowed to use the monitor controls".into(),
-            "Your system blocks access to the monitor's DDC/CI bus. See Settings → System setup.".into(),
-            "Try again",
+            tr("This app isn't allowed to use the monitor controls"),
+            tr("Your system blocks access to the monitor's DDC/CI bus. See Settings → System setup."),
+            tr("Try again"),
         ),
         (_, Some(LinkFailure::ModuleMissing)) => (
             Severity::Warning,
-            "Monitor controls aren't turned on in your system".into(),
-            "The i2c-dev kernel module isn't loaded, so the monitor can't be reached. See Settings → System setup.".into(),
-            "Try again",
+            tr("Monitor controls aren't turned on in your system"),
+            tr("The i2c-dev kernel module isn't loaded, so the monitor can't be reached. See Settings → System setup."),
+            tr("Try again"),
         ),
         (_, Some(LinkFailure::UnsupportedPort)) => (
             Severity::Warning,
-            "This port can't control the monitor".into(),
-            "Connect the monitor to a USB-C or Thunderbolt port. See Settings → System setup.".into(),
-            "Try again",
+            tr("This port can't control the monitor"),
+            tr("Connect the monitor to a USB-C or Thunderbolt port. See Settings → System setup."),
+            tr("Try again"),
         ),
         (Some(MonitorStatus::NotResponding), _) => (
             Severity::Error,
             not_responding_title(st),
-            "It's connected but isn't answering monitor controls (DDC/CI). Check that DDC/CI is turned on in the monitor's own menu, then try again. If this started after a graphics driver update, the previous driver may help.".into(),
-            "Try again",
+            tr("It's connected but isn't answering monitor controls (DDC/CI). Check that DDC/CI is turned on in the monitor's own menu, then try again. If this started after a graphics driver update, the previous driver may help."),
+            tr("Try again"),
         ),
         (Some(MonitorStatus::NotFound), _) => {
             let NotFound { title, message, .. } = not_found(st);
-            (Severity::Info, title, message, "Check again")
+            (Severity::Info, title, message, tr("Check again"))
         }
     };
     Banner { visible: true, severity, title: s(title), message: s(message), action: s(action) }
@@ -440,25 +464,25 @@ pub fn banner(st: &State) -> Banner {
 /// The bar a connected display gets for how far it's supported; none when Verified.
 fn support_banner(st: &State) -> Banner {
     let name = match header_name(st) {
-        name if name == "Your display" => "this display".to_owned(),
+        name if name == tr("Your display") => tr("this display"),
         name => name,
     };
     let (severity, title, message) = match st.level {
         _ if built_in(st) => (
             Severity::Info,
-            "Brightness only",
-            "The built-in display isn't controlled over DDC/CI. Its brightness is set through the system, the same way as the brightness keys.".to_owned(),
+            tr("Brightness only"),
+            tr("The built-in display isn't controlled over DDC/CI. Its brightness is set through the system, the same way as the brightness keys."),
         ),
         SupportLevel::Verified { .. } => return Banner::default(),
         SupportLevel::LenovoFamily | SupportLevel::GenericMccs => (
             Severity::Warning,
-            "Experimental",
-            format!("There's no verified profile for {name}, so only standard controls are shown. Some may not behave as labelled."),
+            tr("Experimental"),
+            trf("There's no verified profile for {0}, so only standard controls are shown. Some may not behave as labelled.", &[&name]),
         ),
         SupportLevel::ReadOnly => (
             Severity::Warning,
-            "Read only",
-            format!("{} didn't confirm which settings it supports, so its values are shown but nothing is changed.", capitalised(&name)),
+            tr("Read only"),
+            trf("{0} didn't confirm which settings it supports, so its values are shown but nothing is changed.", &[&capitalised(&name)]),
         ),
     };
     Banner { visible: true, severity, title: s(title), message: s(message), action: s("") }
@@ -480,12 +504,11 @@ fn range_row(st: &State, code: u8, label: &str, glyph: &str) -> RangeRow {
 }
 
 fn preset_summary(st: &State, p: &tvc_core::store::Preset) -> String {
-    let mode = p
-        .colour_mode
-        .and_then(|m| st.def(COLOUR_MODE).map(|d| label(d, m as u16)))
-        .map(|l| format!(", {l}"))
-        .unwrap_or_default();
-    format!("Brightness {}, contrast {}{mode}", p.brightness, p.contrast)
+    let mode = p.colour_mode.and_then(|m| st.def(COLOUR_MODE).map(|d| display_label(&label(d, m as u16))));
+    match mode {
+        Some(mode) => trf("Brightness {0}, contrast {1}, {2}", &[&p.brightness, &p.contrast, &mode]),
+        None => trf("Brightness {0}, contrast {1}", &[&p.brightness, &p.contrast]),
+    }
 }
 
 /// The Monitor tab's groups. `shown` is what the window shows now: each group keeps its rows model and each card
@@ -495,8 +518,13 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
     let shown: Vec<ControlGroup> = shown.iter().collect();
     let shown_options: BTreeMap<i32, ModelRc<SharedString>> =
         shown.iter().flat_map(|g| g.rows.iter()).map(|r| (r.code, r.options)).collect();
-    let mut groups: Vec<(&str, Vec<ControlRow>)> =
-        vec![("Picture", vec![]), ("Ports", vec![]), ("On-screen menu", vec![]), ("More settings", vec![]), ("Reset and restore", vec![])];
+    let mut groups: Vec<(String, Vec<ControlRow>)> = vec![
+        (tr("Picture"), vec![]),
+        (tr("Ports"), vec![]),
+        (tr("On-screen menu"), vec![]),
+        (tr("More settings"), vec![]),
+        (tr("Reset and restore"), vec![]),
+    ];
     // Codes in the profile's order, the rest by code.
     let order = &st.profile.control_order;
     let mut defs: Vec<&ControlDefinition> = rc.controls.values().collect();
@@ -516,9 +544,9 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
         };
         let opts = options(st, def);
         let (kind, button) = match def.kind {
-            ControlKind::Action => (UiKind::Action, "Reset"),
-            _ if is_toggle(def, &opts) => (UiKind::Toggle, ""),
-            _ => (UiKind::Choice, ""),
+            ControlKind::Action => (UiKind::Action, tr("Reset")),
+            _ if is_toggle(def, &opts) => (UiKind::Toggle, String::new()),
+            _ => (UiKind::Choice, String::new()),
         };
         let current = st.value(def.code);
         let index = match kind {
@@ -529,8 +557,8 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
         groups[slot].1.push(ControlRow {
             code,
             kind,
-            label: s(&def.name),
-            description: s(def.description.as_deref().unwrap_or_default()),
+            label: s(display_label(&def.name)),
+            description: s(def.description.as_deref().map(tr).unwrap_or_default()),
             note: s(st.notes.get(&def.code).map_or("", String::as_str)),
             glyph: s(glyph::named(def.icon.as_deref())),
             options: strings(shown_options.get(&code).cloned(), opts.into_iter().map(|(_, l)| l)),
@@ -544,7 +572,7 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
         .into_iter()
         .filter(|(_, rows)| !rows.is_empty())
         .map(|(title, rows)| {
-            let rows_model = shown.iter().find(|g| g.title == title).map(|g| g.rows.clone());
+            let rows_model = shown.iter().find(|g| g.title == title.as_str()).map(|g| g.rows.clone());
             ControlGroup { title: s(title), rows: nested(rows_model, rows) }
         })
         .collect()
@@ -584,17 +612,17 @@ pub fn render(app: &App, st: &State) {
         inputs
             .iter()
             .filter(|_| input_visible)
-            .map(|(code, l)| InputItem { code: *code as i32, label: s(l), this_pc: *code == st.settings.this_machine_input as u16 })
+            .map(|(code, l)| InputItem { code: *code as i32, label: s(display_label(l)), this_pc: *code == st.settings.this_machine_input as u16 })
             .collect(),
         |m| app.set_inputs(m),
     );
     app.set_active_input(st.value(INPUT).map_or(-1, |v| v as i32));
     app.set_input_note(s(st.notes.get(&INPUT).map_or("", String::as_str)));
     if !together {
-        let ranges = [(BRIGHTNESS, "Brightness", glyph::SUN), (CONTRAST, "Contrast", glyph::CONTRAST), (VOLUME, "Volume", glyph::SPEAKER)]
+        let ranges = [(BRIGHTNESS, tr("Brightness"), glyph::SUN), (CONTRAST, tr("Contrast"), glyph::CONTRAST), (VOLUME, tr("Volume"), glyph::SPEAKER)]
             .into_iter()
             .filter(|(code, ..)| st.def(*code).is_some())
-            .map(|(code, label, glyph)| range_row(st, code, label, glyph))
+            .map(|(code, label, glyph)| range_row(st, code, &label, glyph))
             .collect();
         sync(app.get_main_ranges(), ranges, |m| app.set_main_ranges(m));
         app.set_range_note(s(&st.range_note));
@@ -604,8 +632,8 @@ pub fn render(app: &App, st: &State) {
         vec![]
     } else {
         vec![
-            PresetRow { name: s(&st.settings.day.name), glyph: s(glyph::SUN), summary: s(preset_summary(st, &st.settings.day)) },
-            PresetRow { name: s(&st.settings.night.name), glyph: s(glyph::MOON), summary: s(preset_summary(st, &st.settings.night)) },
+            PresetRow { name: s(tr(&st.settings.day.name)), glyph: s(glyph::SUN), summary: s(preset_summary(st, &st.settings.day)) },
+            PresetRow { name: s(tr(&st.settings.night.name)), glyph: s(glyph::MOON), summary: s(preset_summary(st, &st.settings.night)) },
         ]
     };
     sync(app.get_presets(), presets, |m| app.set_presets(m));
@@ -617,10 +645,10 @@ pub fn render(app: &App, st: &State) {
     sync(app.get_colour_modes(), modes.into_iter().map(|(_, l)| s(l)).collect(), |m| app.set_colour_modes(m));
     let custom = mode == Some(st.profile.custom_colour_mode as u16);
     app.set_custom_colour_available(custom);
-    let custom_label = st.def(COLOUR_MODE).map(|d| label(d, st.profile.custom_colour_mode as u16));
+    let custom_label = st.def(COLOUR_MODE).map(|d| display_label(&label(d, st.profile.custom_colour_mode as u16)));
     app.set_custom_colour_hint(s(match custom_label {
-        _ if custom => "Red, green and blue gain".to_string(),
-        Some(l) => format!("Available in {l} colour mode"),
+        _ if custom => tr("Red, green and blue gain"),
+        Some(l) => trf("Available in {0} colour mode", &[&l]),
         None => String::new(),
     }));
     app.set_colour_note(s(
@@ -628,16 +656,20 @@ pub fn render(app: &App, st: &State) {
     ));
     let gains: Vec<RangeRow> = GAINS
         .iter()
-        .zip(["Red", "Green", "Blue"])
+        .zip([tr("Red"), tr("Green"), tr("Blue")])
         .filter(|(c, _)| st.def(**c).is_some())
-        .map(|(c, l)| range_row(st, *c, l, ""))
+        .map(|(c, l)| range_row(st, *c, &l, ""))
         .collect();
     sync(app.get_custom_colour(), gains, |m| app.set_custom_colour(m));
 
     // Monitor tab
     let groups = monitor_groups(st, &app.get_monitor_groups());
     sync(app.get_monitor_groups(), groups, |m| app.set_monitor_groups(m));
-    app.set_restore_text(s(&st.restore_text));
+    app.set_restore_text(s(if st.restore_text.is_empty() {
+        tr("Put back the settings saved before the last reset")
+    } else {
+        st.restore_text.clone()
+    }));
 
     // Settings tab
     sync(
@@ -651,7 +683,7 @@ pub fn render(app: &App, st: &State) {
                     title: s(&h.title),
                     message: s(&h.message),
                     command: s(&h.command),
-                    action: s(h.fix.as_ref().map_or("", |f| f.label)),
+                    action: s(h.fix.as_ref().map_or("", |f| f.label.as_str())),
                     busy: run.is_some_and(|r| r.running || r.checking),
                     result: s(run.map_or("", |r| r.result.as_str())),
                     result_error: run.is_some_and(|r| r.error),
@@ -662,33 +694,50 @@ pub fn render(app: &App, st: &State) {
     );
     app.set_background_mode(st.settings.background_mode);
     app.set_background_description(s(if cfg!(target_os = "macos") {
-        "Keep the menu bar icon and keyboard shortcuts running after you close the window"
+        tr("Keep the menu bar icon and keyboard shortcuts running after you close the window")
     } else {
-        "Keep the tray icon and keyboard shortcuts running after you close the window"
+        tr("Keep the tray icon and keyboard shortcuts running after you close the window")
     }));
     app.set_start_label(s(crate::platform::autostart::label()));
-    let when = if cfg!(windows) { " when you sign in" } else { " when you log in" };
-    let what = if st.settings.background_mode { "Starts in the background" } else { "Opens the window" };
-    app.set_start_description(s(format!("{what}{when}")));
+    app.set_start_description(s(match (st.settings.background_mode, cfg!(windows)) {
+        (true, true) => tr("Starts in the background when you sign in"),
+        (true, false) => tr("Starts in the background when you log in"),
+        (false, true) => tr("Opens the window when you sign in"),
+        (false, false) => tr("Opens the window when you log in"),
+    }));
     app.set_start_with_os(st.settings.start_with_windows);
-    sync(app.get_input_labels(), inputs.iter().map(|(_, l)| s(l)).collect(), |m| app.set_input_labels(m));
+    sync(app.get_input_labels(), inputs.iter().map(|(_, l)| s(display_label(l))).collect(), |m| app.set_input_labels(m));
     app.set_this_pc_index(
         inputs.iter().position(|(c, _)| *c == st.settings.this_machine_input as u16).map_or(-1, |i| i as i32),
     );
     app.set_shortcuts_description(s(if !st.hotkeys_available {
-        "This desktop doesn't let apps register global shortcuts. See System setup above."
+        tr("This desktop doesn't let apps register global shortcuts. See System setup above.")
     } else if st.settings.background_mode {
-        "Shortcuts work whenever ThinkVision Control is running."
+        tr("Shortcuts work whenever ThinkVision Control is running.")
     } else {
-        "Shortcuts work while Run in background is on. Turn it on to use them."
+        tr("Shortcuts work while Run in background is on. Turn it on to use them.")
     }));
     let hotkeys = hotkey_rows(st, &app.get_hotkeys());
     sync(app.get_hotkeys(), hotkeys, |m| app.set_hotkeys(m));
     app.set_version(s(env!("CARGO_PKG_VERSION")));
     app.set_profile_text(s(about_text(st)));
+    render_languages(app, st);
 
     render_auto(app, st);
     render_finder(app, st);
+}
+
+/// Settings → Language: System, then each shipped language in its own name (never translated).
+fn render_languages(app: &App, st: &State) {
+    let names = std::iter::once(tr("System")).chain(LANGUAGES.iter().map(|(_, name)| (*name).to_string()));
+    sync(app.get_languages(), names.map(SharedString::from).collect(), |m| app.set_languages(m));
+    let index = st
+        .settings
+        .language
+        .as_deref()
+        .and_then(|code| LANGUAGES.iter().position(|(c, _)| *c == code))
+        .map_or(0, |i| i as i32 + 1);
+    app.set_language_index(index);
 }
 
 /// Each row keeps the keycap model the window shows at its place in `shown`.
@@ -701,9 +750,9 @@ fn hotkey_rows(st: &State, shown: &ModelRc<HotkeyRow>) -> Vec<HotkeyRow> {
             let text = st.settings.hotkeys.get(a).cloned().unwrap_or_default();
             let failed = st.settings.background_mode && st.hotkeys_available && st.failed_hotkeys.contains(a);
             HotkeyRow {
-                label: s(a.label()),
+                label: s(tr(a.label())),
                 keys: strings(shown.row_data(i).map(|r| r.keys), keycaps(&text)),
-                warning: s(if failed { "Another app is using this shortcut" } else { "" }),
+                warning: s(if failed { tr("Another app is using this shortcut") } else { String::new() }),
             }
         })
         .collect()
@@ -734,13 +783,13 @@ fn render_finder(app: &App, st: &State) {
     let f = &st.finder;
     app.set_finder_busy(f.busy);
     app.set_finder_status(match (&f.status, f.busy) {
-        (_, true) => Banner { visible: true, severity: Severity::Info, title: s("Reading the monitor…"), ..Default::default() },
+        (_, true) => Banner { visible: true, severity: Severity::Info, title: s(tr("Reading the monitor…")), ..Default::default() },
         (Some((severity, text)), _) => Banner { visible: true, severity: *severity, title: s(text), ..Default::default() },
         (None, _) => Banner::default(),
     });
     app.set_finder_snapshot_text(s(match f.snapshot_count {
-        Some(n) => format!("Snapshot taken ({n} codes)"),
-        None => "Reads the current value of every code the monitor reports".into(),
+        Some(n) => trn("Snapshot taken ({0} code)", "Snapshot taken ({0} codes)", n as u64, &[&n]),
+        None => tr("Reads the current value of every code the monitor reports"),
     }));
     app.set_finder_can_compare(f.snapshot_count.is_some());
     sync(
@@ -748,7 +797,7 @@ fn render_finder(app: &App, st: &State) {
         f.changes
             .iter()
             .map(|c| {
-                let name = st.def(c.code).map(|d| d.name.clone()).unwrap_or_else(|| format!("Unknown 0x{:02X}", c.code));
+                let name = st.def(c.code).map(|d| display_label(&d.name)).unwrap_or_else(|| trf("Unknown {0}", &[&format!("0x{:02X}", c.code)]));
                 FinderChange { code: c.code as i32, text: s(format!("0x{:02X} ({name}): {} → {}", c.code, c.before, c.after)) }
             })
             .collect(),
@@ -786,16 +835,16 @@ fn render_auto(app: &App, st: &State) {
     app.set_auto_lon(s(lon));
     let summary = match st.settings.auto_day_night {
         AutoMode::Off => String::new(),
-        AutoMode::Times { day, night } => format!("Day preset at {}, Night preset at {}.", hhmm(day), hhmm(night)),
+        AutoMode::Times { day, night } => trf("Day preset at {0}, Night preset at {1}.", &[&hhmm(day), &hhmm(night)]),
         AutoMode::Sun { lat, lon } => {
             let offset = crate::localtime::utc_offset();
             let today = civil_date((crate::localtime::unix_now() + offset as i64).div_euclid(86_400));
             match tvc_core::solar::sun_times(today.0, today.1, today.2, lat, lon) {
                 Some((rise, set)) => {
                     let local = |m: u32| hhmm(((m as i64 + offset as i64 / 60).rem_euclid(1440)) as u16);
-                    format!("Today: Day preset at sunrise {}, Night preset at sunset {}.", local(rise), local(set))
+                    trf("Today: Day preset at sunrise {0}, Night preset at sunset {1}.", &[&local(rise), &local(set)])
                 }
-                None => "No sunrise or sunset there today; nothing changes until there is.".into(),
+                None => tr("No sunrise or sunset there today; nothing changes until there is."),
             }
         }
     };

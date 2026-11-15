@@ -1,6 +1,8 @@
 //! Runs a setup card's fix on a worker thread (Linux): the root steps through `pkexec /bin/sh -c`, so the desktop's
 //! polkit password dialog appears once, then the user steps through `/bin/sh -c`. Other systems have no fixes.
 
+use tvc_core::i18n::{tr, trf};
+
 use super::setup::Fix;
 
 /// How a fix run ended.
@@ -23,27 +25,25 @@ pub enum Outcome {
 
 impl Outcome {
     /// The card's result line and whether it's an error; None for Done (the app checks again instead). `still` is
-    /// the fix's own "log out and back in" line.
+    /// the fix's own "log out and back in" line, already translated.
     pub fn text(&self, still: &str) -> Option<(String, bool)> {
         Some(match self {
             Outcome::Done => return None,
             Outcome::AfterLogin => (still.into(), false),
-            Outcome::Cancelled => ("You closed the password prompt.".into(), false),
+            Outcome::Cancelled => (tr("You closed the password prompt."), false),
             Outcome::NoAgent => (
-                "No password prompt is available on this desktop (no polkit agent). Run the command above in a \
-                 terminal instead."
-                    .into(),
+                tr("No password prompt is available on this desktop (no polkit agent). Run the command above in a \
+                    terminal instead."),
                 true,
             ),
             Outcome::NoPkexec => (
-                "No password prompt is available (pkexec isn't installed). Run the command above in a terminal \
-                 instead."
-                    .into(),
+                tr("No password prompt is available (pkexec isn't installed). Run the command above in a terminal \
+                    instead."),
                 true,
             ),
-            Outcome::NotAllowed => ("Authentication failed or isn't allowed.".into(), true),
-            Outcome::Failed(tail) if tail.is_empty() => ("The command failed.".into(), true),
-            Outcome::Failed(tail) => (format!("The command failed:\n{tail}"), true),
+            Outcome::NotAllowed => (tr("Authentication failed or isn't allowed."), true),
+            Outcome::Failed(tail) if tail.is_empty() => (tr("The command failed."), true),
+            Outcome::Failed(tail) => (trf("The command failed:\n{0}", &[tail]), true),
         })
     }
 }

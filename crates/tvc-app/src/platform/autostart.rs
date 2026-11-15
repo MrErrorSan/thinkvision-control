@@ -3,11 +3,11 @@
 use std::io;
 
 /// The settings row label.
-pub fn label() -> &'static str {
+pub fn label() -> String {
     if cfg!(windows) {
-        "Start with Windows"
+        tvc_core::i18n::tr("Start with Windows")
     } else {
-        "Start when you log in"
+        tvc_core::i18n::tr("Start when you log in")
     }
 }
 

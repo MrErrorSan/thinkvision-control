@@ -357,7 +357,11 @@ mod shell {
         match *content {
             Content::Level { label, value, max, display, .. } => {
                 let percent = if max == 0 { 0 } else { (u32::from(value.min(max)) * 100 / u32::from(max)) as i32 };
-                let text = if display.is_empty() { format!("{label} {value}") } else { format!("{label} {value} · {display}") };
+                let text = if display.is_empty() {
+                    tvc_core::i18n::trf("{0} {1}", &[&label, &value])
+                } else {
+                    tvc_core::i18n::trf("{0} {1} · {2}", &[&label, &value, &display])
+                };
                 Request { text, percent: Some(percent) }
             }
             Content::Message(text) => Request { text: text.to_owned(), percent: None },

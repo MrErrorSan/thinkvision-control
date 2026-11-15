@@ -29,8 +29,8 @@ export component DisplayPage inherits VerticalLayout {
     }
 
     if App.inputs.length > 0: SectionHeader {
-        text: "Input";
-        hint: App.experimental ? "Names from the monitor's capability report" : "";
+        text: @tr("Input");
+        hint: App.experimental ? @tr("Names from the monitor's capability report") : "";
         first: true;
     }
     if App.inputs.length > 0: InputSelector {
@@ -49,7 +49,7 @@ export component DisplayPage inherits VerticalLayout {
     }
 
     if root.has-picture: SectionHeader {
-        text: App.main-ranges.length > 1 && App.main-ranges[1].code == Codes.contrast ? "Brightness and contrast" : App.main-ranges[0].label;
+        text: App.main-ranges.length > 1 && App.main-ranges[1].code == Codes.contrast ? @tr("Brightness and contrast") : App.main-ranges[0].label;
         first: App.inputs.length == 0;
     }
     if root.has-picture: CardFrame {
@@ -80,7 +80,7 @@ export component DisplayPage inherits VerticalLayout {
         wrap: word-wrap;
     }
 
-    if root.has-volume: SectionHeader { text: "Sound"; first: App.inputs.length == 0 && !root.has-picture; }
+    if root.has-volume: SectionHeader { text: @tr("Sound"); first: App.inputs.length == 0 && !root.has-picture; }
     if root.has-volume: CardFrame {
         VerticalLayout {
             padding-top: 2px;
@@ -101,7 +101,7 @@ export component DisplayPage inherits VerticalLayout {
         }
     }
 
-    if App.presets.length > 0 && root.has-any: SectionHeader { text: "Presets"; }
+    if App.presets.length > 0 && root.has-any: SectionHeader { text: @tr("Presets"); }
     if App.presets.length > 0 && root.has-any: HorizontalLayout {
         spacing: 6px;
         for p[i] in App.presets: TileButton {
@@ -120,7 +120,7 @@ export component DisplayPage inherits VerticalLayout {
         wrap: word-wrap;
     }
     // Only the built-in panel has no presets: say so instead of showing nothing.
-    if App.presets.length == 0 && root.has-any: SectionHeader { text: "Day and Night"; }
+    if App.presets.length == 0 && root.has-any: SectionHeader { text: @tr("Day and Night"); }
     if App.presets.length == 0 && root.has-any: CardFrame {
         HorizontalLayout {
             padding: 12px;
@@ -133,7 +133,7 @@ export component DisplayPage inherits VerticalLayout {
             }
             Text {
                 horizontal-stretch: 1;
-                text: "The built-in display has no Day and Night presets. It keeps the brightness you set here.";
+                text: @tr("The built-in display has no Day and Night presets. It keeps the brightness you set here.");
                 font-size: 12px;
                 color: Theme.text-secondary;
                 wrap: word-wrap;
@@ -141,12 +141,12 @@ export component DisplayPage inherits VerticalLayout {
         }
     }
 
-    if root.has-colour: SectionHeader { text: "Colour"; first: App.inputs.length == 0 && App.main-ranges.length == 0; }
+    if root.has-colour: SectionHeader { text: @tr("Colour"); first: App.inputs.length == 0 && App.main-ranges.length == 0; }
     if root.has-colour: VerticalLayout {
         spacing: 4px;
         Card {
             glyph: Glyphs.colour;
-            title: "Colour mode";
+            title: @tr("Colour mode");
             note: App.colour-note;
             reason: App.disabled-reason;
             enabled: root.writable;
@@ -160,7 +160,7 @@ export component DisplayPage inherits VerticalLayout {
         }
         ExpanderCard {
             glyph: Glyphs.options;
-            title: "Custom colour";
+            title: @tr("Custom colour");
             description: App.connected ? App.custom-colour-hint : App.disabled-reason;
             enabled: App.custom-colour-available && App.connected;
             expanded <=> root.custom-open;
@@ -179,13 +179,13 @@ export component DisplayPage inherits VerticalLayout {
     }
 
     // No verified profile: the report is how the display gets one.
-    if App.experimental: SectionHeader { text: "Help support this display"; }
+    if App.experimental: SectionHeader { text: @tr("Help support this display"); }
     if App.experimental: Card {
         glyph: Glyphs.copy;
-        title: "Capability report";
-        description: "What " + App.model-name + " says it can do. Paste it into a new issue.";
+        title: @tr("Capability report");
+        description: @tr("What {0} says it can do. Paste it into a new issue.", App.model-name);
         Button {
-            text: "Copy capability report";
+            text: @tr("Copy capability report");
             clicked => { App.copy-capability-report(); }
         }
     }
@@ -197,10 +197,10 @@ component IncludedRow inherits VerticalLayout {
     property <bool> gone: root.entry.state == "disconnected";
 
     pure function can-do(d: DisplayEntry) -> string {
-        if d.state == "disconnected" { return "Disconnected · its offset is kept"; }
-        if d.state == "not-responding" { return "Not responding"; }
-        if d.kind == "built-in" { return "Brightness only"; }
-        d.has-volume ? "Brightness, contrast, volume" : "Brightness, contrast"
+        if d.state == "disconnected" { return @tr("Disconnected · its offset is kept"); }
+        if d.state == "not-responding" { return @tr("Not responding"); }
+        if d.kind == "built-in" { return @tr("Brightness only"); }
+        d.has-volume ? @tr("Brightness, contrast, volume") : @tr("Brightness, contrast")
     }
 
     HorizontalLayout {
@@ -230,7 +230,7 @@ component IncludedRow inherits VerticalLayout {
             alignment: center;
             SyncSwitch {
                 on: root.entry.included;
-                accessible-label: "Include " + root.entry.name;
+                accessible-label: @tr("Include {0}", root.entry.name);
                 toggled => { App.set-included(root.entry.id, self.checked); }
             }
         }
@@ -245,7 +245,7 @@ component IncludedRow inherits VerticalLayout {
             spacing: 12px;
             Text {
                 horizontal-stretch: 1;
-                text: "Offset from the master sliders";
+                text: @tr("Offset from the master sliders");
                 font-size: 13px;
                 color: Theme.text-secondary;
                 vertical-alignment: center;
@@ -253,7 +253,7 @@ component IncludedRow inherits VerticalLayout {
             }
             OffsetStepper {
                 value: root.entry.offset;
-                label: root.entry.name + " offset";
+                label: @tr("{0} offset", root.entry.name);
                 changed(v) => { App.set-offset(root.entry.id, v); }
             }
         }
@@ -267,14 +267,14 @@ export component TogetherPage inherits VerticalLayout {
 
     // Why an included display doesn't follow the master slider for `code`; "" when it does.
     pure function missing(d: DisplayEntry, code: int) -> string {
-        if d.state == "disconnected" { return "Disconnected · its offset is kept"; }
-        if d.state == "not-responding" { return "Not responding"; }
-        if (code == Codes.contrast || code == Codes.volume) && d.kind == "built-in" { return "Not controlled over DDC/CI"; }
-        if code == Codes.volume && !d.has-volume { return "No volume control reported"; }
+        if d.state == "disconnected" { return @tr("Disconnected · its offset is kept"); }
+        if d.state == "not-responding" { return @tr("Not responding"); }
+        if (code == Codes.contrast || code == Codes.volume) && d.kind == "built-in" { return @tr("Not controlled over DDC/CI"); }
+        if code == Codes.volume && !d.has-volume { return @tr("No volume control reported"); }
         ""
     }
 
-    SectionHeader { text: "Included displays"; first: true; }
+    SectionHeader { text: @tr("Included displays"); first: true; }
     CardFrame {
         VerticalLayout {
             for d[i] in App.displays: VerticalLayout {
@@ -284,7 +284,7 @@ export component TogetherPage inherits VerticalLayout {
         }
     }
 
-    SectionHeader { text: "Move together"; hint: "Offsets keep the gap between displays"; }
+    SectionHeader { text: @tr("Move together"); hint: @tr("Offsets keep the gap between displays"); }
     VerticalLayout {
         spacing: 4px;
         for r in App.main-ranges: CardFrame {
@@ -306,7 +306,7 @@ export component TogetherPage inherits VerticalLayout {
                     if d.included && root.missing(d, r.code) != "": Rectangle {
                         background: Theme.card-bg-secondary;
                         accessible-role: text;
-                        accessible-label: d.name + ": " + root.missing(d, r.code);
+                        accessible-label: @tr("{0}: {1}", d.name, root.missing(d, r.code));
                         HorizontalLayout {
                             padding-left: Theme.narrow ? 16px : 50px;
                             padding-right: 16px;
@@ -344,14 +344,14 @@ export component TogetherPage inherits VerticalLayout {
         accessible-live-region: polite;
     }
 
-    if App.presets.length > 0: SectionHeader { text: "Presets"; hint: "Every included display"; }
+    if App.presets.length > 0: SectionHeader { text: @tr("Presets"); hint: @tr("Every included display"); }
     if App.presets.length > 0: HorizontalLayout {
         spacing: 6px;
         for p[i] in App.presets: TileButton {
             horizontal-stretch: 1;
             glyph: p.glyph;
             label: p.name;
-            caption: root.compact ? "" : "Brightness and contrast";
+            caption: root.compact ? "" : @tr("Brightness and contrast");
             clicked => { App.apply-preset(i); }
         }
     }
@@ -365,7 +365,7 @@ export component TogetherPage inherits VerticalLayout {
     VerticalLayout {
         padding-top: 14px;
         Text {
-            text: "Input, colour and the Monitor tab stay per display. Pick a display above to change them.";
+            text: @tr("Input, colour and the Monitor tab stay per display. Pick a display above to change them.");
             font-size: 12px;
             color: Theme.text-secondary;
             wrap: word-wrap;
@@ -414,28 +414,28 @@ export component MonitorPage inherits VerticalLayout {
         }
     }
 
-    SectionHeader { text: "Backup"; }
+    SectionHeader { text: @tr("Backup"); }
     Card {
         glyph: Glyphs.reset;
-        title: "Restore backup";
+        title: @tr("Restore backup");
         description: App.restore-text;
         reason: App.disabled-reason;
         enabled: App.connected;
         Button {
-            text: "Restore";
+            text: @tr("Restore");
             enabled: App.connected;
             clicked => { App.restore-backup(); }
         }
     }
 
-    SectionHeader { text: "Tools"; }
+    SectionHeader { text: @tr("Tools"); }
     Card {
         glyph: Glyphs.search;
-        title: "Find hidden settings";
-        description: "Look for settings your monitor supports but doesn't list";
+        title: @tr("Find hidden settings");
+        description: @tr("Look for settings your monitor supports but doesn't list");
         enabled: App.has-controls;
         Button {
-            text: "Open";
+            text: @tr("Open");
             enabled: App.has-controls;
             clicked => { App.finder-open = true; App.find-hidden(); }
         }
@@ -485,15 +485,15 @@ export component ShortcutDialog inherits Rectangle {
             drop-shadow-blur: 24px;
             drop-shadow-color: #00000055;
             accessible-role: groupbox;
-            accessible-label: "Edit shortcut";
+            accessible-label: @tr("Edit shortcut");
 
             body := VerticalLayout {
                 VerticalLayout {
                     padding: 24px;
                     spacing: 12px;
-                    Text { text: "Edit shortcut"; font-size: 20px; font-weight: 600; color: Theme.text; accessible-role: none; }
+                    Text { text: @tr("Edit shortcut"); font-size: 20px; font-weight: 600; color: Theme.text; accessible-role: none; }
                     Text {
-                        text: "Press a combination of keys to change the shortcut for " + App.editor.action + ".";
+                        text: @tr("Press a combination of keys to change the shortcut for {0}.", App.editor.action);
                         font-size: 14px;
                         color: Theme.text;
                         wrap: word-wrap;
@@ -521,7 +521,7 @@ export component ShortcutDialog inherits Rectangle {
                             border-color: capture.has-focus ? Theme.accent : Theme.card-stroke;
                             background: Theme.card-bg;
                             accessible-role: text;
-                            accessible-label: App.editor.keys.length == 0 ? "Press keys" : "Shortcut keys";
+                            accessible-label: App.editor.keys.length == 0 ? @tr("Press keys") : @tr("Shortcut keys");
                             TouchArea { clicked => { capture.focus(); } }
                             HorizontalLayout {
                                 alignment: center;
@@ -549,7 +549,7 @@ export component ShortcutDialog inherits Rectangle {
                                     }
                                 }
                                 if App.editor.keys.length == 0: Text {
-                                    text: "Press keys";
+                                    text: @tr("Press keys");
                                     color: Theme.text-secondary;
                                     vertical-alignment: center;
                                 }
@@ -582,7 +582,7 @@ export component ShortcutDialog inherits Rectangle {
                         y: parent.pad;
                         width: self.preferred-width;
                         height: parent.line;
-                        text: "Reset to default";
+                        text: @tr("Reset to default");
                         enabled: !App.dialog.visible;
                         clicked => { App.editor-reset(); }
                     }
@@ -591,7 +591,7 @@ export component ShortcutDialog inherits Rectangle {
                         y: parent.pad;
                         width: self.preferred-width;
                         height: parent.line;
-                        text: "Clear";
+                        text: @tr("Clear");
                         enabled: App.editor.can-clear;
                         clicked => { App.editor-clear(); }
                     }
@@ -600,7 +600,7 @@ export component ShortcutDialog inherits Rectangle {
                         y: Theme.narrow ? parent.pad + parent.line + 8px : parent.pad;
                         width: self.preferred-width;
                         height: parent.line;
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         clicked => { App.editor-cancel(); }
                     }
                     save-button := Button {
@@ -608,7 +608,7 @@ export component ShortcutDialog inherits Rectangle {
                         y: cancel-button.y;
                         width: self.preferred-width;
                         height: parent.line;
-                        text: "Save";
+                        text: @tr("Save");
                         primary: true;
                         enabled: App.editor.can-save;
                         clicked => { App.editor-save(); }
@@ -626,11 +626,11 @@ export component FinderPage inherits VerticalLayout {
         padding-bottom: 8px;
         IconButton {
             glyph: Glyphs.back;
-            label: "Back to Monitor";
+            label: @tr("Back to Monitor");
             clicked => { App.finder-open = false; }
         }
         Text {
-            text: "Find hidden settings";
+            text: @tr("Find hidden settings");
             font-size: 18px;
             font-weight: 600;
             color: Theme.text;
@@ -638,7 +638,7 @@ export component FinderPage inherits VerticalLayout {
         }
     }
     Text {
-        text: "This only reads from the monitor; nothing is written here. It compares the manufacturer's undocumented codes before and after you change one setting with the monitor's own buttons, so you can name what each code controls. A named code then appears in Monitor settings.";
+        text: @tr("This only reads from the monitor; nothing is written here. It compares the manufacturer's undocumented codes before and after you change one setting with the monitor's own buttons, so you can name what each code controls. A named code then appears in Monitor settings.");
         font-size: 13px;
         color: Theme.text-secondary;
         wrap: word-wrap;
@@ -650,34 +650,34 @@ export component FinderPage inherits VerticalLayout {
         if App.finder-busy: ProgressIndicator { indeterminate: true; }
     }
 
-    SectionHeader { text: "Steps"; }
+    SectionHeader { text: @tr("Steps"); }
     VerticalLayout {
         spacing: 4px;
         Card {
-            title: "1. Take a snapshot";
+            title: @tr("1. Take a snapshot");
             description: App.finder-snapshot-text;
             Button {
-                text: "Take snapshot";
+                text: @tr("Take snapshot");
                 enabled: App.connected && !App.finder-busy;
                 clicked => { App.finder-snapshot(); }
             }
         }
         Card {
-            title: "2. Change one setting with the monitor's buttons";
-            description: "Pick any one in the monitor's own menu. Change only one, then compare.";
+            title: @tr("2. Change one setting with the monitor's buttons");
+            description: @tr("Pick any one in the monitor's own menu. Change only one, then compare.");
         }
         Card {
-            title: "3. Compare";
-            description: "Lists the codes whose value changed";
+            title: @tr("3. Compare");
+            description: @tr("Lists the codes whose value changed");
             Button {
-                text: "Compare";
+                text: @tr("Compare");
                 enabled: App.finder-can-compare && App.connected && !App.finder-busy;
                 clicked => { App.finder-compare(); }
             }
         }
     }
 
-    if App.finder-changes.length > 0: SectionHeader { text: "Changed"; }
+    if App.finder-changes.length > 0: SectionHeader { text: @tr("Changed"); }
     if App.finder-changes.length > 0: CardFrame {
         VerticalLayout {
             padding: 4px;
@@ -719,7 +719,7 @@ export component FinderPage inherits VerticalLayout {
         }
     }
 
-    if App.finder-selected >= 0: SectionHeader { text: "Name it"; }
+    if App.finder-selected >= 0: SectionHeader { text: @tr("Name it"); }
     if App.finder-selected >= 0: CardFrame {
         // Typing breaks the field's binding; put the new change's name back when the form is refilled.
         property <int> form: App.finder-form;
@@ -727,10 +727,10 @@ export component FinderPage inherits VerticalLayout {
         VerticalLayout {
             padding: 16px;
             spacing: 8px;
-            Text { text: "Setting name"; font-size: 13px; color: Theme.text; }
+            Text { text: @tr("Setting name"); font-size: 13px; color: Theme.text; }
             name-edit := LineEdit {
                 text: App.finder-name;
-                placeholder-text: "e.g. Local dimming";
+                placeholder-text: @tr("e.g. Local dimming");
                 edited(t) => { App.finder-name-edited(t); }
             }
             for v[i] in App.finder-values: VerticalLayout {
@@ -739,7 +739,7 @@ export component FinderPage inherits VerticalLayout {
                 Text { text: v.caption; font-size: 12px; color: Theme.text-secondary; }
                 LineEdit {
                     text: v.label;
-                    placeholder-text: "Label (optional)";
+                    placeholder-text: @tr("Label (optional)");
                     edited(t) => { App.finder-value-edited(i, t); }
                 }
             }
@@ -747,7 +747,7 @@ export component FinderPage inherits VerticalLayout {
                 alignment: end;
                 padding-top: 4px;
                 Button {
-                    text: "Save";
+                    text: @tr("Save");
                     primary: true;
                     clicked => { App.finder-save(); }
                 }
@@ -764,10 +764,10 @@ component AutoDayNightCard inherits CardFrame {
             border-width: 0px;
             background: transparent;
             glyph: Glyphs.moon;
-            title: "Switch presets automatically";
+            title: @tr("Switch presets automatically");
             description: App.auto-note;
             SyncCombo {
-                model: ["Off", "At set times", "At sunrise and sunset"];
+                model: [@tr("Off"), @tr("At set times"), @tr("At sunrise and sunset")];
                 index: App.auto-mode;
                 selected => {
                     root.choice = self.current-index;
@@ -781,12 +781,12 @@ component AutoDayNightCard inherits CardFrame {
                 padding: 12px;
                 padding-left: Theme.narrow ? 16px : 52px;
                 spacing: 8px;
-                Text { text: "Day"; vertical-alignment: center; color: Theme.text; }
-                day := LineEdit { text: App.auto-day; width: Theme.narrow ? 64px : 80px; accessible-label: "Day preset time"; }
-                Text { text: "Night"; vertical-alignment: center; color: Theme.text; }
-                night := LineEdit { text: App.auto-night; width: Theme.narrow ? 64px : 80px; accessible-label: "Night preset time"; }
+                Text { text: @tr("Day"); vertical-alignment: center; color: Theme.text; }
+                day := LineEdit { text: App.auto-day; width: Theme.narrow ? 64px : 80px; accessible-label: @tr("Day preset time"); }
+                Text { text: @tr("Night"); vertical-alignment: center; color: Theme.text; }
+                night := LineEdit { text: App.auto-night; width: Theme.narrow ? 64px : 80px; accessible-label: @tr("Night preset time"); }
                 Rectangle { horizontal-stretch: 1; }
-                Button { text: "Save"; clicked => { App.save-auto-times(day.text, night.text); } }
+                Button { text: @tr("Save"); clicked => { App.save-auto-times(day.text, night.text); } }
             }
         }
         if root.choice == 2: VerticalLayout {
@@ -795,16 +795,16 @@ component AutoDayNightCard inherits CardFrame {
                 padding: 12px;
                 padding-left: Theme.narrow ? 16px : 52px;
                 spacing: 8px;
-                lat := LineEdit { text: App.auto-lat; placeholder-text: "Latitude, e.g. 31.52"; accessible-label: "Latitude"; }
-                lon := LineEdit { text: App.auto-lon; placeholder-text: "Longitude, e.g. 74.36"; accessible-label: "Longitude"; }
-                Button { text: "Save"; clicked => { App.save-auto-location(lat.text, lon.text); } }
+                lat := LineEdit { text: App.auto-lat; placeholder-text: @tr("Latitude, e.g. 31.52"); accessible-label: @tr("Latitude"); }
+                lon := LineEdit { text: App.auto-lon; placeholder-text: @tr("Longitude, e.g. 74.36"); accessible-label: @tr("Longitude"); }
+                Button { text: @tr("Save"); clicked => { App.save-auto-location(lat.text, lon.text); } }
             }
         }
     }
 }
 
 export component SettingsPage inherits VerticalLayout {
-    if App.setup-hints.length > 0: SectionHeader { text: "System setup"; first: true; }
+    if App.setup-hints.length > 0: SectionHeader { text: @tr("System setup"); first: true; }
     if App.setup-hints.length > 0: VerticalLayout {
         spacing: 4px;
         // The message and command, Copy, then the fix button; while it runs (and after) a progress bar and the
@@ -817,8 +817,8 @@ export component SettingsPage inherits VerticalLayout {
                     title: h.title;
                     description: h.command != "" ? h.message + "\n" + h.command : h.message;
                     if h.command != "": Button {
-                        text: "Copy";
-                        accessible-label: "Copy the command";
+                        text: @tr("Copy");
+                        accessible-label: @tr("Copy the command");
                         clicked => { App.copy-text(h.command); }
                     }
                     if h.action != "": Button {
@@ -848,13 +848,28 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    SectionHeader { text: "Startup"; first: App.setup-hints.length == 0; }
+    // The language names are each in their own language, so only "System" is translated. Rust fills `languages`;
+    // the fallback keeps the card usable before it does.
+    SectionHeader { text: @tr("Language"); first: App.setup-hints.length == 0; }
+    Card {
+        glyph: Glyphs.language;
+        title: @tr("App language");
+        description: @tr("System follows your computer's language");
+        SyncCombo {
+            model: App.languages.length > 0 ? App.languages : [@tr("System"), "English", "Español", "简体中文", "Français", "Deutsch"];
+            index: App.language-index;
+            accessible-label: @tr("App language");
+            selected => { App.set-language(self.current-index); }
+        }
+    }
+
+    SectionHeader { text: @tr("Startup"); }
     CardFrame {
         VerticalLayout {
             Card {
                 border-width: 0px;
                 glyph: Glyphs.background;
-                title: "Run in background";
+                title: @tr("Run in background");
                 description: App.background-description;
                 LabelledSwitch {
                     checked: App.background-mode;
@@ -877,11 +892,11 @@ export component SettingsPage inherits VerticalLayout {
     }
 
     // Not for a display without inputs (the built-in panel).
-    if App.input-labels.length > 0: SectionHeader { text: "This PC"; }
+    if App.input-labels.length > 0: SectionHeader { text: @tr("This PC"); }
     if App.input-labels.length > 0: Card {
         glyph: Glyphs.display;
-        title: "This PC's input";
-        description: "We ask before you switch the monitor away from it";
+        title: @tr("This PC's input");
+        description: @tr("We ask before you switch the monitor away from it");
         SyncCombo {
             model: App.input-labels;
             index: App.this-pc-index;
@@ -889,7 +904,7 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    if App.presets.length > 0: SectionHeader { text: "Presets"; }
+    if App.presets.length > 0: SectionHeader { text: @tr("Presets"); }
     if App.presets.length > 0: VerticalLayout {
         spacing: 4px;
         for p[i] in App.presets: Card {
@@ -899,17 +914,17 @@ export component SettingsPage inherits VerticalLayout {
             reason: App.disabled-reason;
             enabled: App.connected;
             Button {
-                text: "Save current";
+                text: @tr("Save current");
                 enabled: App.connected && !App.values-stale;
                 clicked => { App.save-preset(i); }
             }
         }
     }
 
-    SectionHeader { text: "Automatic Day/Night"; }
+    SectionHeader { text: @tr("Automatic Day/Night"); }
     AutoDayNightCard { }
 
-    SectionHeader { text: "Keyboard shortcuts"; }
+    SectionHeader { text: @tr("Keyboard shortcuts"); }
     if App.shortcuts-description != "": Text {
         text: App.shortcuts-description;
         font-size: 12px;
@@ -939,7 +954,7 @@ export component SettingsPage inherits VerticalLayout {
                         Keycap { text: k; }
                     }
                     if h.keys.length == 0: Text {
-                        text: "Not set";
+                        text: @tr("Not set");
                         font-size: 12px;
                         color: Theme.text-secondary;
                         vertical-alignment: center;
@@ -948,7 +963,7 @@ export component SettingsPage inherits VerticalLayout {
                         width: 36px;
                         IconButton {
                             glyph: Glyphs.edit;
-                            label: "Edit shortcut: " + h.label;
+                            label: @tr("Edit shortcut: {0}", h.label);
                             clicked => { App.edit-hotkey(i); }
                         }
                     }
@@ -957,7 +972,7 @@ export component SettingsPage inherits VerticalLayout {
         }
     }
 
-    SectionHeader { text: "About"; }
+    SectionHeader { text: @tr("About"); }
     Card {
         glyph: Glyphs.about;
         title: "ThinkVision Control " + App.version;

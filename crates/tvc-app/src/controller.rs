@@ -28,6 +28,7 @@ use tvc_core::result::ResultKind;
 use tvc_core::schedule::{self, AutoMode, Phase};
 use tvc_core::finder::CodeChange;
 use tvc_core::hotkey::{Action, Gesture};
+use tvc_core::i18n::{self, tr, trf, trn};
 use tvc_core::link::{DisplayKind, LinkFailure, VcpReading};
 use tvc_core::profile::{ControlDefinition, ControlKind, Profile, SafetyClass, Section};
 use tvc_core::store::{CapabilitiesCache, HotkeyTarget, MonitorSettings, Settings, SettingsStore};
@@ -55,6 +56,7 @@ const HEADLESS_COLD_BUDGET: Duration = Duration::from_secs(20);
 const RETRY_FOR: Duration = Duration::from_secs(16);
 /// After a setup fix ran: long enough for the facts lookup and a reconnect.
 const SETUP_CHECK_AFTER: Duration = Duration::from_secs(4);
+// The command line's own answers: English, like everything it prints.
 const TIMED_OUT: &str = "Timed out: the monitor didn't answer in time";
 const NEEDS_YES: &str = "Switching the input needs confirmation: run it again with --yes";
 const NEEDS_SCREEN: &str =
@@ -186,7 +188,7 @@ impl State {
             range_note: String::new(),
             notes: BTreeMap::new(),
             revisions: BTreeMap::new(),
-            restore_text: "Put back the settings saved before the last reset".into(),
+            restore_text: String::new(), // the window shows its default text
             setup_hints: vec![],
             setup_runs: BTreeMap::new(),
             hotkeys_available: true,
@@ -362,7 +364,8 @@ impl AppState {
         id.and_then(|id| self.displays.get(id)).unwrap_or(&self.blank)
     }
 
-    /// The name the user gave it, else the display's own, else its model, else what it is.
+    /// The name the user gave it, else the display's own, else its model, else what it is. The command line asks
+    /// inside `i18n::english`.
     fn name(&self, id: &MonitorId) -> String {
         let Some(st) = self.displays.get(id) else { return id.0.clone() };
         let info = st.monitor.as_ref().map(|m| &m.info);
@@ -373,7 +376,7 @@ impl AppState {
             .map(|n| n.trim().to_string())
             .find(|n| !n.is_empty())
             .unwrap_or_else(|| match info {
-                Some(i) if i.kind == DisplayKind::BuiltIn => "Built-in display".into(),
+                Some(i) if i.kind == DisplayKind::BuiltIn => tr("Built-in display"),
                 Some(i) if !i.identity.edid_id.is_empty() => i.identity.edid_id.clone(),
                 _ => id.0.clone(),
             })
@@ -438,19 +441,19 @@ impl AppState {
                     .map(|(id, _)| self.name(id))
                     .collect();
                 let reason = if included.is_empty() {
-                    "No display is included".to_string()
+                    tr("No display is included")
                 } else if live.is_empty() {
-                    "No included display is connected".into()
+                    tr("No included display is connected")
                 } else if with.is_empty() {
-                    "No included display has it".into()
+                    tr("No included display has it")
                 } else if !lacking.is_empty() {
-                    format!("{} doesn't have it", lacking.join(", "))
+                    trf("{0} doesn't have it", &[&lacking.join(", ")])
                 } else {
                     String::new()
                 };
                 TogetherSlider {
                     code,
-                    label: label.into(),
+                    label: tr(label),
                     glyph: glyph.into(),
                     value: value.unwrap_or(0.0),
                     available: !with.is_empty(),
@@ -882,24 +885,25 @@ impl Controller {
         }
     }
 
-    /// No display to run on: the verb ends with the text the OSD shows, exit 1.
+    /// No display to run on: the verb ends with the text the OSD shows (in English), exit 1.
     fn finish_unreachable(&self, job: CliJob) {
-        let text = self.not_connected_text();
+        let text = i18n::english(|| self.not_connected_text());
         let json = failure_json(&job.command, "NotFound", &text);
         let osd = !matches!(job.command, CliCommand::Get(_));
         if osd {
-            OsdHost::show(&self.osd, Content::Message(&text));
+            OsdHost::show(&self.osd, Content::Message(&self.not_connected_text()));
         }
         self.finish(job, tvc_cli::exit_code(Some(ResultKind::NotFound), true), &text, json, osd);
     }
 
-    /// A target that isn't connected answers with why.
+    /// A target that isn't connected answers with why, in English (the command line prints it; the OSD works it out
+    /// again in the window's language).
     fn unreachable_result(&self, id: &MonitorId) -> WriteResult {
         let kind = match self.app.borrow().displays.get(id).map(|st| (st.attached, st.status)) {
             Some((true, MonitorStatus::NotResponding)) => ResultKind::NotResponding,
             _ => ResultKind::NotFound,
         };
-        let message = self.with_view(Some(id), view::unreachable_text);
+        let message = i18n::english(|| self.with_view(Some(id), view::unreachable_text));
         WriteResult { outcome: WriteOutcome::NotResponding, kind, message, value: None, kept: None }
     }
 
@@ -938,7 +942,7 @@ impl Controller {
     }
 
     /// Prints the values: the 0.0.8 single object for one target, an array of objects with `id` and `name` for
-    /// several.
+    /// several. All of it English, the OSD's echo too.
     fn answer_get(&self, job: CliJob, target: GetTarget, targets: &[MonitorId]) {
         struct Row {
             id: MonitorId,
@@ -947,7 +951,7 @@ impl Controller {
             text: String,
             json: String,
         }
-        let rows: Vec<Row> = targets.iter().map(|id| {
+        let rows: Vec<Row> = i18n::english(|| targets.iter().map(|id| {
             let (name, fields) = {
                 let app = self.app.borrow();
                 let fields = app.displays.get(id).filter(|st| st.connected()).map(|st| get_fields(st, target));
@@ -966,7 +970,7 @@ impl Controller {
                 }
             };
             Row { id: id.clone(), name, exit, text, json }
-        }).collect();
+        }).collect());
         let (exit, text, json) = match rows.as_slice() {
             [row] => (row.exit, row.text.clone(), row.json.clone()),
             _ => (
@@ -1034,7 +1038,7 @@ impl Controller {
             return Some(Ok(vec![])); // not found (exit 1), whatever `--display` said
         }
         let rows: Vec<(String, String, bool)> = attached.iter()
-            .map(|id| (id.0.clone(), app.name(id), app.displays.get(id).is_some_and(|st| may_run(st, &job.command))))
+            .map(|id| (id.0.clone(), i18n::english(|| app.name(id)), app.displays.get(id).is_some_and(|st| may_run(st, &job.command))))
             .collect();
         Some(cli_targets(job.display.as_deref(), &rows).map(|ids| ids.into_iter().map(MonitorId).collect()))
     }
@@ -1095,7 +1099,8 @@ impl Controller {
             match self.input_value(&id, choice) {
                 Some(value) => sends.push((id, value)),
                 None => {
-                    let name = self.app.borrow().name(&id);
+                    // The command line's answer, so English.
+                    let name = i18n::english(|| self.app.borrow().name(&id));
                     let message = format!("{name} has no such input.");
                     done.push((id, WriteResult {
                         outcome: WriteOutcome::Blocked,
@@ -1732,7 +1737,7 @@ impl Controller {
                         if let Some(st) = self.app.borrow_mut().displays.get_mut(id) {
                             st.auto_phase = None; // try again on the next tick
                         }
-                        self.show_toast(&format!("Automatic Day/Night: {}", r.message));
+                        self.show_toast(&trf("Automatic Day/Night: {0}", &[&r.message]));
                     } else {
                         self.remember_phase(id);
                     }
@@ -1749,7 +1754,7 @@ impl Controller {
     }
 
     /// A write verb's answer: the 0.0.8 line or object for one target; for several a line each, or an array of
-    /// objects with `id` and `name`, and the first failure's exit code.
+    /// objects with `id` and `name`, and the first failure's exit code. English, as everything the command line prints.
     fn finish_results(&self, job: CliJob, code: Option<u8>, results: &[(MonitorId, WriteResult)]) {
         struct Row {
             id: MonitorId,
@@ -1758,11 +1763,11 @@ impl Controller {
             text: String,
             json: String,
         }
-        let rows: Vec<Row> = results.iter().map(|(id, r)| {
+        let rows: Vec<Row> = i18n::english(|| results.iter().map(|(id, r)| {
             let text = self.result_text(id, code, r);
             let json = result_json(r.outcome == WriteOutcome::Ok, &format!("{:?}", r.kind), &text);
             Row { id: id.clone(), name: self.app.borrow().name(id), exit: tvc_cli::exit_code(Some(r.kind), true), text, json }
-        }).collect();
+        }).collect());
         let (exit, text, json) = match rows.as_slice() {
             [row] => (row.exit, row.text.clone(), row.json.clone()),
             _ => (
@@ -1786,9 +1791,12 @@ impl Controller {
                     match (result.outcome, result.kept) {
                         (WriteOutcome::Ok, _) => st.range_note.clear(),
                         (WriteOutcome::Blocked, Some(kept)) => {
-                            let name = if c == BRIGHTNESS { "brightness" } else { "contrast" };
-                            let lock = if c == BRIGHTNESS { st.profile.brightness_lock_note.clone() } else { String::new() };
-                            st.range_note = format!("Your monitor kept {name} at {kept}{lock}");
+                            st.range_note = if c == BRIGHTNESS {
+                                let lock = lock_note(&st.profile.brightness_lock_note);
+                                trf("Your monitor kept brightness at {0}{1}", &[&kept, &lock])
+                            } else {
+                                trf("Your monitor kept contrast at {0}", &[&kept])
+                            };
                         }
                         (WriteOutcome::NotResponding, _) => {}
                         _ => st.range_note = result.message.clone(),
@@ -1828,7 +1836,7 @@ impl Controller {
                         toast = Some(result.message.clone());
                     }
                 }
-                None => st.restore_text = if ok { "Backup restored".into() } else { result.message.clone() },
+                None => st.restore_text = if ok { tr("Backup restored") } else { result.message.clone() },
             }
         }
         if let Some(codes) = refresh {
@@ -1854,13 +1862,17 @@ impl Controller {
             (true, Some(v)) => {
                 let max = self.app.borrow().displays.get(first).and_then(|st| st.values.get(&code?)).map_or(100, |r| r.max);
                 let (glyph, label) = level_glyph(code);
-                let display = format!("{} displays", results.len());
-                OsdHost::show_on(&self.osd, Content::Level { glyph, label, value: v, max, display: &display }, None);
+                let n = results.len();
+                let display = trn("{0} display", "{0} displays", n as u64, &[&n]);
+                OsdHost::show_on(&self.osd, Content::Level { glyph, label: &label, value: v, max, display: &display }, None);
             }
             _ => {
                 let shown: Vec<&(MonitorId, WriteResult)> = if failed.is_empty() { results.iter().collect() } else { failed };
                 let text = shown.iter()
-                    .map(|(id, r)| format!("{}: {}", self.app.borrow().name(id), self.result_text(id, code, r)))
+                    .map(|(id, r)| {
+                        let name = self.app.borrow().name(id);
+                        trf("{0}: {1}", &[&name, &self.osd_text(id, code, r)])
+                    })
                     .collect::<Vec<_>>()
                     .join(" · ");
                 OsdHost::show(&self.osd, Content::Message(&text));
@@ -1883,11 +1895,11 @@ impl Controller {
         match (code, result.outcome, result.value) {
             (Some(BRIGHTNESS | CONTRAST), WriteOutcome::Ok, Some(v)) => {
                 let (glyph, label) = level_glyph(code);
-                OsdHost::show_on(&self.osd, Content::Level { glyph, label, value: v, max, display: &name }, screen);
+                OsdHost::show_on(&self.osd, Content::Level { glyph, label: &label, value: v, max, display: &name }, screen);
             }
             _ => {
                 let text = self.result_text(id, code, result);
-                let text = if name.is_empty() { text } else { format!("{name}: {text}") };
+                let text = if name.is_empty() { text } else { trf("{0}: {1}", &[&name, &text]) };
                 OsdHost::show_on(&self.osd, Content::Message(&text), screen);
             }
         }
@@ -1898,9 +1910,19 @@ impl Controller {
         let app = self.app.borrow();
         let note = &app.state(Some(id)).profile.brightness_lock_note;
         if result.kind == ResultKind::Kept && code == Some(BRIGHTNESS) && !note.is_empty() {
-            format!("{}{note}", result.message.trim_end_matches('.'))
+            format!("{}{}", result.message.trim_end_matches('.'), lock_note(note))
         } else {
             result.message.clone()
+        }
+    }
+
+    /// A result's text for the OSD: a display that isn't connected says why in the window's language (its result
+    /// carries the command line's English).
+    fn osd_text(&self, id: &MonitorId, code: Option<u8>, result: &WriteResult) -> String {
+        if result.outcome == WriteOutcome::NotResponding && !self.connected(id) {
+            self.with_view(Some(id), view::unreachable_text)
+        } else {
+            self.result_text(id, code, result)
         }
     }
 
@@ -1937,17 +1959,18 @@ impl Controller {
             if run.running || run.checking {
                 return;
             }
-            *run = SetupRun { running: true, result: "Working…".into(), ..SetupRun::default() };
+            *run = SetupRun { running: true, result: tr("Working…"), ..SetupRun::default() };
             (id, fix)
         };
         self.render();
-        let still = fix.still;
+        let still = fix.still.clone();
         let spawned = std::thread::Builder::new().name("tvc-setup-fix".into()).spawn(move || {
             let outcome = platform::privileged::run(&fix);
-            let _ = slint::invoke_from_event_loop(move || with(|c| c.setup_fix_done(id, still, &outcome)));
+            let still = fix.still;
+            let _ = slint::invoke_from_event_loop(move || with(|c| c.setup_fix_done(id, &still, &outcome)));
         });
         if let Err(e) = spawned {
-            self.setup_fix_done(id, still, &platform::privileged::Outcome::Failed(e.to_string()));
+            self.setup_fix_done(id, &still, &platform::privileged::Outcome::Failed(e.to_string()));
         }
     }
 
@@ -1956,7 +1979,7 @@ impl Controller {
         use platform::privileged::Outcome;
         let run = match outcome.text(still) {
             Some((result, error)) => SetupRun { result, error, ..SetupRun::default() },
-            None => SetupRun { checking: true, result: "Checking…".into(), ..SetupRun::default() },
+            None => SetupRun { checking: true, result: tr("Checking…"), ..SetupRun::default() },
         };
         self.app.borrow_mut().setup_runs.insert(id, run);
         if matches!(outcome, Outcome::Done | Outcome::AfterLogin) {
@@ -1975,10 +1998,11 @@ impl Controller {
         self.refresh_setup_hints();
         let fixed = {
             let mut app = self.app.borrow_mut();
-            let still = app.setup_hints.iter().find(|h| h.id == id).map(|h| h.fix.as_ref().map_or("", |f| f.still));
+            let still =
+                app.setup_hints.iter().find(|h| h.id == id).map(|h| h.fix.as_ref().map_or(String::new(), |f| f.still.clone()));
             match (still, app.setup_runs.get_mut(id)) {
                 (Some(still), Some(run)) if run.checking => {
-                    *run = SetupRun { result: still.into(), ..SetupRun::default() };
+                    *run = SetupRun { result: still, ..SetupRun::default() };
                     false
                 }
                 (None, Some(run)) if run.checking => {
@@ -1989,7 +2013,7 @@ impl Controller {
             }
         };
         if fixed {
-            self.show_toast("Setup done");
+            self.show_toast(&tr("Setup done"));
         }
         self.render();
     }
@@ -2178,21 +2202,26 @@ impl Controller {
         let app = self.app.borrow();
         if let [(id, code)] = sends {
             let st = app.state(Some(id));
-            let label = st.input_label(*code);
+            let label = view::display_label(&st.input_label(*code));
             let def = st.def(INPUT);
-            let title = def.and_then(|d| d.confirm_title.clone()).unwrap_or_else(|| "Switch to {label}?".into()).replace("{label}", &label);
-            let body = def.and_then(|d| d.confirm_body.clone()).unwrap_or_default();
-            let button = def.and_then(|d| d.confirm_button.clone()).unwrap_or_else(|| "Switch".into());
-            return Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true };
+            // The profile's `{label}` template, translated as written.
+            let title = def
+                .and_then(|d| d.confirm_title.as_deref().map(tr))
+                .unwrap_or_else(|| tr("Switch to {label}?"))
+                .replace("{label}", &label);
+            let body = def.and_then(|d| d.confirm_body.as_deref().map(tr)).unwrap_or_default();
+            let button = def.and_then(|d| d.confirm_button.as_deref().map(tr)).unwrap_or_else(|| tr("Switch"));
+            return Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: tr("Cancel").into(), visible: true };
         }
         let lines: Vec<String> = sends.iter()
-            .map(|(id, code)| format!("{} → {}", app.name(id), app.state(Some(id)).input_label(*code)))
+            .map(|(id, code)| format!("{} → {}", app.name(id), view::display_label(&app.state(Some(id)).input_label(*code))))
             .collect();
+        let n = sends.len();
         Dialog {
-            title: format!("Switch the input on {} displays?", sends.len()).into(),
+            title: trn("Switch the input on {0} display?", "Switch the input on {0} displays?", n as u64, &[&n]).into(),
             message: lines.join("\n").into(),
-            primary: "Switch".into(),
-            secondary: "Cancel".into(),
+            primary: tr("Switch").into(),
+            secondary: tr("Cancel").into(),
             visible: true,
         }
     }
@@ -2276,10 +2305,15 @@ impl Controller {
             let app = self.app.borrow();
             let Some(def) = app.state(Some(&id)).def(code) else { return };
             (def.safety == SafetyClass::ConfirmRequired).then(|| {
-                let title = def.confirm_title.clone().or_else(|| def.confirm_message.clone()).unwrap_or_else(|| format!("Change {}?", def.name));
-                let body = def.confirm_body.clone().unwrap_or_default();
-                let button = def.confirm_button.clone().unwrap_or_else(|| "Continue".into());
-                Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: "Cancel".into(), visible: true }
+                let title = def
+                    .confirm_title
+                    .as_deref()
+                    .or(def.confirm_message.as_deref())
+                    .map(tr)
+                    .unwrap_or_else(|| trf("Change {0}?", &[&view::display_label(&def.name)]));
+                let body = def.confirm_body.as_deref().map(tr).unwrap_or_default();
+                let button = def.confirm_button.as_deref().map(tr).unwrap_or_else(|| tr("Continue"));
+                Dialog { title: title.into(), message: body.into(), primary: button.into(), secondary: tr("Cancel").into(), visible: true }
             })
         };
         let send = move |c: &Rc<Controller>| c.send_to(&id, Command::Set { code, value: 1, confirmed: true, origin: Origin::Window });
@@ -2309,11 +2343,12 @@ impl Controller {
             }
         };
         let Some(name) = name else {
-            self.show_toast("Connect the monitor to save its current settings");
+            self.show_toast(&tr("Connect the monitor to save its current settings"));
             return;
         };
         let saved = self.save_settings();
-        self.show_toast(&if saved { format!("Saved as {name}") } else { format!("Couldn't save {name}") });
+        let name = tr(&name);
+        self.show_toast(&if saved { trf("Saved as {0}", &[&name]) } else { trf("Couldn't save {0}", &[&name]) });
     }
 
     /// Saves, re-applies and re-renders. False when the file couldn't be written.
@@ -2321,7 +2356,7 @@ impl Controller {
         let result = self.store.save(&self.app.borrow().settings);
         if let Err(e) = &result {
             log::write(&format!("Settings save failed: {e}"));
-            self.show_toast(&format!("Couldn't save settings: {e}"));
+            self.show_toast(&trf("Couldn't save settings: {0}", &[e]));
         }
         self.apply_settings();
         self.update_tray();
@@ -2357,6 +2392,22 @@ impl Controller {
         self.render();
     }
 
+    /// Settings → Language: 0 = follow the system, else `i18n::LANGUAGES[index - 1]`. Saved, then applied at once:
+    /// the Rust text (setup cards, tray tip, window) is built again and Slint switches its own.
+    fn set_language(self: &Rc<Self>, index: i32) {
+        let code = usize::try_from(index)
+            .ok()
+            .and_then(|i| i.checked_sub(1))
+            .and_then(|i| i18n::LANGUAGES.get(i))
+            .map(|(code, _)| (*code).to_string());
+        self.app.borrow_mut().settings.language = code.clone();
+        crate::set_language(code.as_deref());
+        crate::select_ui_language();
+        self.refresh_setup_hints();
+        self.save_settings(); // updates the tray tip and renders
+        self.render_editor();
+    }
+
     fn set_included(self: &Rc<Self>, id: &str, on: bool) {
         monitor_entry(&mut self.app.borrow_mut().settings, &MonitorId(id.to_string())).included = on;
         self.save_settings();
@@ -2376,7 +2427,7 @@ impl Controller {
             capability_report(&app.name(&id), &id, app.state(Some(&id)), raw.as_deref())
         };
         let ok = crate::clipboard::set(&report);
-        self.show_toast(if ok { "Capability report copied" } else { "Couldn't copy" });
+        self.show_toast(&if ok { tr("Capability report copied") } else { tr("Couldn't copy") });
     }
 
     /// The banner's button: leave safe mode on every display in it, or try the shown display again.
@@ -2456,30 +2507,28 @@ impl Controller {
     }
 
     fn editor_validation(&self, ed: &EditorState) -> (Severity, String, String, bool) {
-        let keys_hint = if cfg!(target_os = "macos") {
-            "Control, Option or Command"
-        } else if cfg!(target_os = "linux") {
-            "Ctrl, Alt or Super"
-        } else {
-            "Ctrl, Alt or the Windows key"
-        };
         if ed.result == "!key" {
             return (
                 Severity::Error,
-                "This key can't be used".into(),
-                "Use a letter, number, arrow, Home, End, Page Up, Page Down, Insert, Delete or function key.".into(),
+                tr("This key can't be used"),
+                tr("Use a letter, number, arrow, Home, End, Page Up, Page Down, Insert, Delete or function key."),
                 false,
             );
         }
         if ed.result.starts_with('!') {
-            return (Severity::Error, "This shortcut isn't valid".into(), format!("Start with {keys_hint}."), false);
+            return (Severity::Error, tr("This shortcut isn't valid"), trf("Start with {0}.", &[&keys_hint()]), false);
         }
         let app = self.app.borrow();
         if !ed.result.is_empty() {
             if let Some(other) = Action::ALL.iter().find(|a| {
                 **a != ed.action && app.settings.hotkeys.get(a).is_some_and(|g| g.eq_ignore_ascii_case(&ed.result))
             }) {
-                return (Severity::Warning, format!("{} already uses this shortcut", other.label()), "Choose a different combination.".into(), false);
+                return (
+                    Severity::Warning,
+                    trf("{0} already uses this shortcut", &[&tr(other.label())]),
+                    tr("Choose a different combination."),
+                    false,
+                );
             }
         }
         let changed = !ed.result.eq_ignore_ascii_case(&ed.original);
@@ -2509,16 +2558,15 @@ impl Controller {
         } else {
             view::keycaps(&ed.result)
         };
-        let keys_hint = if cfg!(target_os = "macos") { "Control, Option or Command" } else if cfg!(target_os = "linux") { "Ctrl, Alt or Super" } else { "Ctrl, Alt or the Windows key" };
         app.set_editor(ShortcutEditor {
             visible: true,
-            action: ed.action.label().into(),
+            action: tr(ed.action.label()).into(),
             keys: ModelRc::new(VecModel::from(keys.into_iter().map(SharedString::from).collect::<Vec<_>>())),
             live,
             severity,
             error_title: title.into(),
             error_message: message.into(),
-            hint: format!("Shortcuts start with {keys_hint}, and can include Shift.").into(),
+            hint: trf("Shortcuts start with {0}, and can include Shift.", &[&keys_hint()]).into(),
             can_save,
             can_clear: !ed.result.is_empty() && !ed.original.is_empty(),
         });
@@ -2557,15 +2605,14 @@ impl Controller {
             // The conflict dialog: one OK button, the result is left unchanged.
             let dialog = Dialog {
                 visible: true,
-                title: format!("{} can't use its default shortcut", this.label()).into(),
-                message: format!(
-                    "{} already uses {}. Change that shortcut first.",
-                    other.label(),
-                    view::keycaps(this.default_gesture()).join("+")
+                title: trf("{0} can't use its default shortcut", &[&tr(this.label())]).into(),
+                message: trf(
+                    "{0} already uses {1}. Change that shortcut first.",
+                    &[&tr(other.label()), &view::keycaps(this.default_gesture()).join("+")],
                 )
                 .into(),
                 primary: SharedString::new(),
-                secondary: "OK".into(),
+                secondary: tr("OK").into(),
             };
             self.ask(dialog, Box::new(|_| {}));
         }
@@ -2602,20 +2649,20 @@ impl Controller {
                     f.snapshot_count = Some(count);
                     f.status = None;
                 }
-                FinderEvent::NoSnapshot => f.status = Some((Severity::Warning, "Take a snapshot first.".into())),
+                FinderEvent::NoSnapshot => f.status = Some((Severity::Warning, tr("Take a snapshot first."))),
                 FinderEvent::Refused(kind) => {
                     let text = match kind {
-                        ResultKind::SafeMode => "Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first.",
-                        ResultKind::Asleep => "The monitor is asleep or this PC is locked. Try again once it's awake.",
-                        _ => "The monitor didn't answer. Try again.",
+                        ResultKind::SafeMode => tr("Safe mode is on, so the finder doesn't read the monitor. Leave safe mode first."),
+                        ResultKind::Asleep => tr("The monitor is asleep or this PC is locked. Try again once it's awake."),
+                        _ => tr("The monitor didn't answer. Try again."),
                     };
-                    f.status = Some((Severity::Warning, text.into()));
+                    f.status = Some((Severity::Warning, text));
                 }
                 FinderEvent::Changes(changes) => {
                     f.status = Some(if changes.is_empty() {
-                        (Severity::Info, "Nothing changed. Make sure the setting really changed on screen, then compare again.".into())
+                        (Severity::Info, tr("Nothing changed. Make sure the setting really changed on screen, then compare again."))
                     } else {
-                        (Severity::Info, "Select a change to name it.".into())
+                        (Severity::Info, tr("Select a change to name it."))
                     });
                     f.changes = changes;
                     f.selected = None;
@@ -2623,8 +2670,11 @@ impl Controller {
                 FinderEvent::Saved { code, result } => {
                     let name = f.name.clone();
                     f.status = Some(match result {
-                        Ok(()) => (Severity::Success, format!("Saved \"{name}\" (0x{code:02X}). It now appears in Monitor settings.")),
-                        Err(e) => (Severity::Error, format!("Couldn't save: {e}")),
+                        Ok(()) => (
+                            Severity::Success,
+                            trf("Saved \"{0}\" ({1}). It now appears in Monitor settings.", &[&name, &format!("0x{code:02X}")]),
+                        ),
+                        Err(e) => (Severity::Error, trf("Couldn't save: {0}", &[&e])),
                     });
                 }
             }
@@ -2651,9 +2701,16 @@ impl Controller {
             let rows = values
                 .into_iter()
                 .map(|v| {
-                    let tag = if v == change.before { " (before)" } else if v == change.after { " (now)" } else { "" };
+                    let hex = format!("0x{v:02X}");
+                    let caption = if v == change.before {
+                        trf("{0} (before)", &[&hex])
+                    } else if v == change.after {
+                        trf("{0} (now)", &[&hex])
+                    } else {
+                        hex
+                    };
                     let label = named.and_then(|d| u8::try_from(v).ok().and_then(|b| d.value_labels.get(&b).cloned())).unwrap_or_default();
-                    (v, format!("0x{v:02X}{tag}"), label)
+                    (v, caption, label)
                 })
                 .collect();
             let f = &mut st.finder;
@@ -2673,7 +2730,7 @@ impl Controller {
             let Some(change) = f.selected.and_then(|i| f.changes.get(i)).cloned() else { return };
             let name = f.name.trim().to_string();
             if name.is_empty() {
-                f.status = Some((Severity::Warning, "Enter a name for the setting first.".into()));
+                f.status = Some((Severity::Warning, tr("Enter a name for the setting first.")));
                 None
             } else {
                 let labels: BTreeMap<u8, String> = f
@@ -2772,7 +2829,7 @@ impl Controller {
                 2 => match app.settings.auto_location {
                     Some((lat, lon)) => AutoMode::Sun { lat, lon },
                     None => {
-                        app.auto_note = "Enter your latitude and longitude, then Save.".into();
+                        app.auto_note = tr("Enter your latitude and longitude, then Save.");
                         AutoMode::Off
                     }
                 },
@@ -2786,12 +2843,12 @@ impl Controller {
 
     fn save_auto_times(self: &Rc<Self>, day: &str, night: &str) {
         let (Some(day), Some(night)) = (parse_hhmm(day), parse_hhmm(night)) else {
-            self.app.borrow_mut().auto_note = "Use 24-hour times like 07:00 and 19:30.".into();
+            self.app.borrow_mut().auto_note = tr("Use 24-hour times like 07:00 and 19:30.");
             self.render();
             return;
         };
         if day == night {
-            self.app.borrow_mut().auto_note = "Day and Night need different times.".into();
+            self.app.borrow_mut().auto_note = tr("Day and Night need different times.");
             self.render();
             return;
         }
@@ -2810,7 +2867,7 @@ impl Controller {
         let parse = |t: &str, limit: f64| t.trim().replace(',', ".").parse::<f64>().ok().filter(|v| v.abs() <= limit);
         let (Some(lat), Some(lon)) = (parse(lat, 90.0), parse(lon, 180.0)) else {
             self.app.borrow_mut().auto_note =
-                "Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive).".into();
+                tr("Latitude is -90 to 90 and longitude -180 to 180, in degrees (north and east are positive).");
             self.render();
             return;
         };
@@ -2863,8 +2920,24 @@ fn get_fields(st: &State, target: GetTarget) -> Vec<(&'static str, String, Strin
     fields
 }
 
-fn level_glyph(code: Option<u8>) -> (&'static str, &'static str) {
-    if code == Some(BRIGHTNESS) { (glyph::SUN, "Brightness") } else { (glyph::CONTRAST, "Contrast") }
+fn level_glyph(code: Option<u8>) -> (&'static str, String) {
+    if code == Some(BRIGHTNESS) { (glyph::SUN, tr("Brightness")) } else { (glyph::CONTRAST, tr("Contrast")) }
+}
+
+/// The profile's brightness lock note (it starts with its own separator, " (…)"), through the catalog.
+fn lock_note(note: &str) -> String {
+    if note.is_empty() { String::new() } else { tr(note) }
+}
+
+/// The modifiers a shortcut starts with, in this OS's words.
+fn keys_hint() -> String {
+    if cfg!(target_os = "macos") {
+        tr("Control, Option or Command")
+    } else if cfg!(target_os = "linux") {
+        tr("Ctrl, Alt or Super")
+    } else {
+        tr("Ctrl, Alt or the Windows key")
+    }
 }
 
 /// Wayland ignores `focus_window`, and a window only takes focus with the launcher's activation token when it is
@@ -2885,30 +2958,31 @@ fn raise_on_wayland(ui: &MainWindow) {
 /// The text "Copy capability report" puts on the clipboard.
 fn capability_report(name: &str, id: &MonitorId, st: &State, raw: Option<&str>) -> String {
     let identity = st.monitor.as_ref().map(|m| m.info.identity.clone()).unwrap_or_default();
-    let known = |v: Option<&str>| v.filter(|v| !v.is_empty()).unwrap_or("unknown").to_string();
+    // The labels are translated; the values, the warnings and the raw capability string are kept as they are.
+    let known = |v: Option<&str>| v.filter(|v| !v.is_empty()).map_or_else(|| tr("unknown"), str::to_string);
     let mut lines = vec![
-        format!("{} capability report", tvc_cli::version_line()),
-        format!("Display: {name}"),
-        format!("Id: {id}"),
-        format!("EDID id: {}", known(Some(&identity.edid_id))),
-        format!("Serial: {}", known(identity.serial.as_deref())),
-        format!("Connector: {}", known(identity.connector.as_deref())),
-        format!("Support: {} ({:?})", view::support_label(&st.level), st.level),
+        trf("{0} capability report", &[&tvc_cli::version_line()]),
+        trf("Display: {0}", &[&name]),
+        trf("Id: {0}", &[id]),
+        trf("EDID id: {0}", &[&known(Some(&identity.edid_id))]),
+        trf("Serial: {0}", &[&known(identity.serial.as_deref())]),
+        trf("Connector: {0}", &[&known(identity.connector.as_deref())]),
+        trf("Support: {0} ({1})", &[&view::support_label(&st.level), &format!("{:?}", st.level)]),
     ];
     let caps = st.controls.as_ref().map(|rc| &rc.capabilities);
     if let Some(caps) = caps {
-        lines.push(format!("Model: {}", known(Some(caps.model.trim()))));
-        lines.push(format!("MCCS version: {}", known(Some(&caps.mccs_ver))));
+        lines.push(trf("Model: {0}", &[&known(Some(caps.model.trim()))]));
+        lines.push(trf("MCCS version: {0}", &[&known(Some(&caps.mccs_ver))]));
     }
     match caps.map(|c| c.warnings.as_slice()).unwrap_or_default() {
-        [] => lines.push("Warnings: none".into()),
+        [] => lines.push(tr("Warnings: none")),
         warnings => {
-            lines.push("Warnings:".into());
+            lines.push(tr("Warnings:"));
             lines.extend(warnings.iter().map(|w| format!("- {w}")));
         }
     }
-    lines.push("Capabilities:".into());
-    lines.push(raw.unwrap_or("(not read from the display yet)").to_string());
+    lines.push(tr("Capabilities:"));
+    lines.push(raw.map_or_else(|| tr("(not read from the display yet)"), str::to_string));
     lines.join("\n")
 }
 
@@ -3079,7 +3153,7 @@ fn wire(ui: &MainWindow) {
     app.on_copy_text(|text| {
         with(|c| {
             let ok = crate::clipboard::set(&text);
-            c.show_toast(if ok { "Copied" } else { "Couldn't copy" });
+            c.show_toast(&if ok { tr("Copied") } else { tr("Couldn't copy") });
         })
     });
     app.on_edit_hotkey(|i| with(|c| c.edit_hotkey(i as usize)));
@@ -3116,6 +3190,7 @@ fn wire(ui: &MainWindow) {
         })
     });
     app.on_finder_save(|| with(|c| c.finder_save()));
+    app.on_set_language(|i| with(|c| c.set_language(i)));
 }
 
 #[cfg(test)]

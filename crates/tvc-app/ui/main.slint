@@ -87,18 +87,18 @@ export component MainWindow inherits Window {
                         if root.together: VerticalLayout {
                             alignment: center;
                             padding-left: 8px;
-                            Badge { text: "Together"; }
+                            Badge { text: @tr("Together"); }
                         }
                         if !root.together && App.experimental: VerticalLayout {
                             alignment: center;
                             padding-left: 8px;
-                            Badge { text: "Experimental"; warning: true; }
+                            Badge { text: @tr("Experimental"); warning: true; }
                         }
                         for d in App.displays: VerticalLayout {
                             alignment: center;
                             if !root.together && d.id == App.selected-id && d.kind == "built-in": VerticalLayout {
                                 padding-left: 8px;
-                                Badge { text: "Built-in"; }
+                                Badge { text: @tr("Built-in"); }
                             }
                         }
                     }
@@ -131,7 +131,7 @@ export component MainWindow inherits Window {
                 DisplayPicker {
                     displays: App.displays;
                     selected: App.selected-id;
-                    selected-name: root.together ? "All together" : App.model-name;
+                    selected-name: root.together ? @tr("All together") : App.model-name;
                     together-available: App.together-available;
                     select(id) => { App.select-display(id); }
                 }
@@ -144,9 +144,9 @@ export component MainWindow inherits Window {
                     padding-left: Theme.gutter - 12px;
                     alignment: start;
                     accessible-role: tab-list;
-                    tab-display := Tab { label: "Display"; selected: root.tab == 0; clicked => { root.tab = 0; } }
-                    tab-monitor := Tab { label: "Monitor"; shown: root.monitor-tab; selected: root.tab == 1; clicked => { root.tab = 1; } }
-                    tab-settings := Tab { label: "Settings"; selected: root.tab == 2; clicked => { root.tab = 2; } }
+                    tab-display := Tab { label: @tr("Display"); selected: root.tab == 0; clicked => { root.tab = 0; } }
+                    tab-monitor := Tab { label: @tr("Monitor"); shown: root.monitor-tab; selected: root.tab == 1; clicked => { root.tab = 1; } }
+                    tab-settings := Tab { label: @tr("Settings"); selected: root.tab == 2; clicked => { root.tab = 2; } }
                 }
                 Rectangle {
                     y: parent.height - 1px;

@@ -1,5 +1,6 @@
 //! "System setup" cards. Windows has none.
 
+use tvc_core::i18n::{tr, trf};
 use tvc_core::link::LinkFailure;
 
 /// One setup card. `command` is the copyable text (lines separated by `\n`); empty when there is nothing to copy.
@@ -16,11 +17,11 @@ pub struct Hint {
 /// A card's button. The root steps run first, together under one password prompt, then the user steps in order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fix {
-    /// The button's text ("Allow access").
-    pub label: &'static str,
+    /// The button's text ("Allow access"), translated.
+    pub label: String,
     pub steps: Vec<Step>,
-    /// Shown when the check after a successful run still finds the problem.
-    pub still: &'static str,
+    /// Shown when the check after a successful run still finds the problem, translated.
+    pub still: String,
 }
 
 /// Shell lines of a fix, built from constants and the exe path only.
@@ -241,9 +242,9 @@ fn mac_hints(failure: Option<LinkFailure>) -> Vec<Hint> {
     }
     vec![hint(
         "macos-unsupported-port",
-        "Use a USB-C or Thunderbolt port for this monitor",
-        "The built-in HDMI port on M1 and base M2 Macs doesn't pass monitor controls through. \
-         Connect the monitor with USB-C or Thunderbolt (or a USB-C to DisplayPort cable) instead.",
+        &tr("Use a USB-C or Thunderbolt port for this monitor"),
+        &tr("The built-in HDMI port on M1 and base M2 Macs doesn't pass monitor controls through. \
+         Connect the monitor with USB-C or Thunderbolt (or a USB-C to DisplayPort cable) instead."),
         "",
     )]
 }
@@ -284,52 +285,52 @@ fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, 
     if denied && backlight && !nvidia_denied {
         hints.push(fix_hint(
             "linux-backlight-permission",
-            "Allow brightness control for the built-in display",
-            "Your user can't change the built-in display's brightness, and the login manager didn't do it for the \
+            &tr("Allow brightness control for the built-in display"),
+            &tr("Your user can't change the built-in display's brightness, and the login manager didn't do it for the \
              app either. Allow access to add your user to the video group, which the app's udev rule lets write \
-             the brightness.",
+             the brightness."),
             Fix {
-                label: "Allow access",
+                label: tr("Allow access"),
                 steps: vec![Step::Root(format!(
                     "{}\nusermod -aG video \"$(id -nu \"${{PKEXEC_UID:-$SUDO_UID}}\")\"",
                     install_rules()
                 ))],
-                still: "Your user is in the video group now; log out and back in to use it.",
+                still: tr("Your user is in the video group now; log out and back in to use it."),
             },
         ));
     } else if denied {
         hints.push(fix_hint(
             "linux-i2c-permission",
-            "Allow access to monitor controls",
-            "Your user can't open the monitor's I²C bus. Allow access to install a udev rule that opens it to your \
-             login session (your distribution's ddcutil package ships an equivalent rule).",
+            &tr("Allow access to monitor controls"),
+            &tr("Your user can't open the monitor's I²C bus. Allow access to install a udev rule that opens it to your \
+             login session (your distribution's ddcutil package ships an equivalent rule)."),
             Fix {
-                label: "Allow access",
+                label: tr("Allow access"),
                 steps: vec![Step::Root(install_rules())],
-                still: "Access is set up; log out and back in if the monitor still isn't found.",
+                still: tr("Access is set up; log out and back in if the monitor still isn't found."),
             },
         ));
     }
     if failure == Some(LinkFailure::ModuleMissing) {
         hints.push(fix_hint(
             "linux-i2c-module",
-            "Load the i2c-dev kernel module",
-            "There are no /dev/i2c-* devices, so the i2c-dev module isn't loaded. Load it now and at every boot.",
+            &tr("Load the i2c-dev kernel module"),
+            &tr("There are no /dev/i2c-* devices, so the i2c-dev module isn't loaded. Load it now and at every boot."),
             Fix {
-                label: "Load the module",
+                label: tr("Load the module"),
                 steps: vec![Step::Root("modprobe i2c-dev\necho i2c-dev > /etc/modules-load.d/i2c-dev.conf".into())],
-                still: "The module is loaded; restart the computer if the monitor still isn't found.",
+                still: tr("The module is loaded; restart the computer if the monitor still isn't found."),
             },
         ));
     }
     if facts.nvidia_without_ddc && !nvidia_denied {
         hints.push(hint(
             "linux-nvidia",
-            "Turn on monitor controls in the NVIDIA driver",
-            "NVIDIA's driver isn't offering this monitor's control channel. Check that kernel modesetting is on (the \
+            &tr("Turn on monitor controls in the NVIDIA driver"),
+            &tr("NVIDIA's driver isn't offering this monitor's control channel. Check that kernel modesetting is on (the \
              nvidia-drm.modeset=1 kernel option, the default on recent drivers). If the monitor still can't be \
              reached, add the driver option below and restart the computer (on some systems, rebuild the \
-             initramfs first).",
+             initramfs first)."),
             "echo 'options nvidia NVreg_RegistryDwords=RMUseSwI2c=0x01;RMI2cSpeed=100' | \
              sudo tee /etc/modprobe.d/nvidia-ddc.conf",
         ));
@@ -337,26 +338,26 @@ fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, 
     if facts.ddcci_driver {
         hints.push(fix_hint(
             "linux-ddcci",
-            "The ddcci kernel driver also controls the monitor",
-            "The ddcci driver (ddcci-dkms) drives the monitor's brightness itself, so its changes and this app's \
+            &tr("The ddcci kernel driver also controls the monitor"),
+            &tr("The ddcci driver (ddcci-dkms) drives the monitor's brightness itself, so its changes and this app's \
              fight each other. Unload it while you use this app; to keep it from loading at boot, uninstall it or \
-             blacklist it in /etc/modprobe.d.",
+             blacklist it in /etc/modprobe.d."),
             Fix {
-                label: "Unload the driver",
+                label: tr("Unload the driver"),
                 steps: vec![Step::Root("modprobe -r ddcci_backlight ddcci".into())],
-                still: "The driver is unloaded; restart the computer if it comes back.",
+                still: tr("The driver is unloaded; restart the computer if it comes back."),
             },
         ));
     }
     if facts.powerdevil_ddc {
         hints.push(fix_hint(
             "linux-powerdevil",
-            "KDE's power manager also controls monitor brightness",
-            "PowerDevil talks to the monitor over DDC/CI too, so the two fight over the bus and brightness changes \
+            &tr("KDE's power manager also controls monitor brightness"),
+            &tr("PowerDevil talks to the monitor over DDC/CI too, so the two fight over the bus and brightness changes \
              don't stick. Turn off its DDC control (the same override `systemctl --user edit \
-             plasma-powerdevil.service` makes); laptop screen brightness keeps working.",
+             plasma-powerdevil.service` makes); laptop screen brightness keeps working."),
             Fix {
-                label: "Turn off PowerDevil's DDC",
+                label: tr("Turn off PowerDevil's DDC"),
                 steps: vec![Step::User(
                     "mkdir -p ~/.config/systemd/user/plasma-powerdevil.service.d\n\
                      printf '[Service]\\nEnvironment=POWERDEVIL_NO_DDCUTIL=1\\n' > \
@@ -367,17 +368,18 @@ fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, 
                      systemctl --user daemon-reload && systemctl --user restart plasma-powerdevil.service"
                         .into(),
                 )],
-                still: "PowerDevil's DDC control is off; log out and back in if brightness changes still don't stick.",
+                still: tr("PowerDevil's DDC control is off; log out and back in if brightness changes still don't stick."),
             },
         ));
     }
     if let Some(other) = facts.other_ddc {
         hints.push(hint(
             "linux-other-ddc",
-            "Another app also controls the monitor",
-            &format!(
-                "{other} talks to the monitor over DDC/CI too, so the two can fight over the bus and changes may not \
-                 stick. Quit it, or turn off its monitor control, while you use this app."
+            &tr("Another app also controls the monitor"),
+            &trf(
+                "{0} talks to the monitor over DDC/CI too, so the two can fight over the bus and changes may not \
+                 stick. Quit it, or turn off its monitor control, while you use this app.",
+                &[&other],
             ),
             "",
         ));
@@ -392,18 +394,19 @@ fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, 
     if !hotkeys_ok {
         hints.push(hint(
             "linux-hotkeys",
-            "Set desktop shortcuts",
-            "This desktop doesn't let apps register global shortcuts. Add these commands as custom shortcuts instead: \
+            &tr("Set desktop shortcuts"),
+            &tr("This desktop doesn't let apps register global shortcuts. Add these commands as custom shortcuts instead: \
              GNOME: Settings → Keyboard → Custom Shortcuts; KDE: System Settings → Keyboard → Shortcuts → Add New → \
-             Command or Script; COSMIC: Settings → Keyboard → Custom shortcuts.",
+             Command or Script; COSMIC: Settings → Keyboard → Custom shortcuts."),
             &shortcut_commands(&facts.command),
         ));
     }
     if !facts.polkit_agent {
         for h in hints.iter_mut().filter(|h| h.fix.as_ref().is_some_and(|f| f.root_script().is_some())) {
-            h.message.push_str(
-                " No password prompt seems to be running on this desktop; if none appears, run the command in a \
+            h.message = trf(
+                "{0} No password prompt seems to be running on this desktop; if none appears, run the command in a \
                  terminal instead.",
+                &[&h.message],
             );
         }
     }
@@ -415,17 +418,17 @@ fn linux_hints(failure: Option<LinkFailure>, backlight: bool, hotkeys_ok: bool, 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn appindicator_hint(facts: &LinuxFacts) -> Hint {
     const ID: &str = "linux-gnome-appindicator";
-    const TITLE: &str = "Install the AppIndicator extension to see the tray icon";
+    let title = tr("Install the AppIndicator extension to see the tray icon");
     let ubuntu = facts.os_release_ids.as_deref().is_some_and(|ids| ids.to_ascii_lowercase().contains("ubuntu"));
     if ubuntu && facts.ubuntu_appindicator {
         return fix_hint(
             ID,
-            TITLE,
-            "GNOME shows tray icons only through the AppIndicator extension. Ubuntu ships it; turn it back on.",
+            &title,
+            &tr("GNOME shows tray icons only through the AppIndicator extension. Ubuntu ships it; turn it back on."),
             Fix {
-                label: "Turn on",
+                label: tr("Turn on"),
                 steps: vec![Step::UserAfterLogin(enable_extension(UBUNTU_APPINDICATOR_UUID))],
-                still: "The extension is turned on; log out and back in if the tray icon doesn't appear.",
+                still: tr("The extension is turned on; log out and back in if the tray icon doesn't appear."),
             },
         );
     }
@@ -433,21 +436,21 @@ fn appindicator_hint(facts: &LinuxFacts) -> Hint {
     let Some(pm) = facts.package_manager else {
         return hint(
             ID,
-            TITLE,
-            "GNOME shows tray icons only through the AppIndicator extension. Install it with your package manager \
+            &title,
+            &tr("GNOME shows tray icons only through the AppIndicator extension. Install it with your package manager \
              (usually as gnome-shell-extension-appindicator) or from extensions.gnome.org, log out and back in, then \
-             turn it on.",
+             turn it on."),
             &format!("gnome-extensions enable {uuid}"),
         );
     };
     fix_hint(
         ID,
-        TITLE,
-        "GNOME shows tray icons only through the AppIndicator extension. Install it and turn it on.",
+        &title,
+        &tr("GNOME shows tray icons only through the AppIndicator extension. Install it and turn it on."),
         Fix {
-            label: "Install and turn on",
+            label: tr("Install and turn on"),
             steps: vec![Step::Root(install_command(pm, appindicator_package(pm))), Step::UserAfterLogin(enable_extension(uuid))],
-            still: "The extension is installed and turned on; log out and back in to see the tray icon.",
+            still: tr("The extension is installed and turned on; log out and back in to see the tray icon."),
         },
     )
 }
@@ -457,22 +460,23 @@ fn appindicator_hint(facts: &LinuxFacts) -> Hint {
 fn tray_host_hint(desktop: Option<&str>) -> Hint {
     let has = |name: &str| desktop.is_some_and(|d| d.split(':').any(|p| p.to_ascii_lowercase().contains(name)));
     let how = if has("cinnamon") {
-        "Add the XApp Status applet to a panel, and check that xapp-sn-watcher is running."
+        tr("Add the XApp Status applet to a panel, and check that xapp-sn-watcher is running.")
     } else if has("xfce") {
-        "Add the Status Tray plugin to a panel (Panel → Panel Preferences → Items)."
+        tr("Add the Status Tray plugin to a panel (Panel → Panel Preferences → Items).")
     } else if has("kde") {
-        "Add the System Tray widget to a panel."
+        tr("Add the System Tray widget to a panel.")
     } else if has("sway") || has("hyprland") || has("wlroots") || has("river") {
-        "Use a bar with a tray, such as Waybar with its tray module."
+        tr("Use a bar with a tray, such as Waybar with its tray module.")
     } else {
-        "Add a system tray (status notifier) to your panel."
+        tr("Add a system tray (status notifier) to your panel.")
     };
     hint(
         "linux-tray-host",
-        "Add a system tray to see the tray icon",
-        &format!(
+        &tr("Add a system tray to see the tray icon"),
+        &trf(
             "This desktop has no tray for app icons right now, so the app keeps its window open instead of hiding in \
-             the tray. {how}"
+             the tray. {0}",
+            &[&how],
         ),
         "",
     )
@@ -822,7 +826,7 @@ mod tests {
                 enable_extension(APPINDICATOR_UUID)
             )
         );
-        let labels: Vec<_> = h.iter().map(|h| h.fix.as_ref().map(|f| f.label)).collect();
+        let labels: Vec<_> = h.iter().map(|h| h.fix.as_ref().map(|f| f.label.as_str())).collect();
         assert_eq!(
             labels,
             [Some("Allow access"), Some("Turn off PowerDevil's DDC"), Some("Install and turn on"), None]
@@ -1006,14 +1010,14 @@ mod tests {
     #[test]
     fn copy_text_matches_the_steps() {
         let fix = Fix {
-            label: "x",
+            label: "x".into(),
             steps: vec![
                 Step::Root("a".into()),
                 Step::User("b".into()),
                 Step::Root("it's".into()),
                 Step::UserAfterLogin("c".into()),
             ],
-            still: "",
+            still: String::new(),
         };
         assert_eq!(fix.root_script().as_deref(), Some("set -e\na\nit's"));
         assert_eq!(fix.user_scripts(), [("set -e\nb".to_string(), false), ("set -e\nc".to_string(), true)]);

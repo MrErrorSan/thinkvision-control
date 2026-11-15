@@ -23,15 +23,15 @@ export component Tray inherits SystemTrayIcon {
     clicked => { root.open(); }
 
     Menu {
-        MenuItem { title: "Open ThinkVision Control"; activated => { root.open(); } }
+        MenuItem { title: @tr("Open ThinkVision Control"); activated => { root.open(); } }
         MenuSeparator { }
-        if root.connected && root.brightness-items: MenuItem { title: "Brightness up"; activated => { root.step-brightness(5); } }
-        if root.connected && root.brightness-items: MenuItem { title: "Brightness down"; activated => { root.step-brightness(-5); } }
-        if root.connected: MenuItem { title: "Day preset"; activated => { root.preset(0); } }
-        if root.connected: MenuItem { title: "Night preset"; activated => { root.preset(1); } }
-        if root.connected: MenuItem { title: "Switch to this PC"; activated => { root.switch-to-me(); } }
+        if root.connected && root.brightness-items: MenuItem { title: @tr("Brightness up"); activated => { root.step-brightness(5); } }
+        if root.connected && root.brightness-items: MenuItem { title: @tr("Brightness down"); activated => { root.step-brightness(-5); } }
+        if root.connected: MenuItem { title: @tr("Day preset"); activated => { root.preset(0); } }
+        if root.connected: MenuItem { title: @tr("Night preset"); activated => { root.preset(1); } }
+        if root.connected: MenuItem { title: @tr("Switch to this PC"); activated => { root.switch-to-me(); } }
         if root.connected: MenuSeparator { }
-        MenuItem { title: "Exit"; activated => { root.quit(); } }
+        MenuItem { title: @tr("Exit"); activated => { root.quit(); } }
     }
 }
 
@@ -39,7 +39,7 @@ export component Tray inherits SystemTrayIcon {
 // the card and DWM rounds the corners. It stays "visible"; Rust shows and hides it with layered alpha.
 export component Osd inherits Window {
     in property <string> glyph: Glyphs.brightness;
-    in property <string> label: "Brightness";
+    in property <string> label: @tr("Brightness");
     in property <string> display;          // the display's name when several are attached; "" = none
     in property <string> value-text;
     in property <float> fraction;          // 0..1; < 0 hides the bar

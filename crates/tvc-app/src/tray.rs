@@ -2,17 +2,18 @@
 
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 use tvc_core::engine::MonitorStatus;
+use tvc_core::i18n::{tr, trf};
 
 use crate::Tray;
 
 pub fn tooltip(status: MonitorStatus, short_name: &str) -> String {
     let state = match status {
-        MonitorStatus::Connected => short_name,
-        MonitorStatus::Connecting => "Connecting",
-        MonitorStatus::NotFound => "Not connected",
-        MonitorStatus::NotResponding => "Not responding",
+        MonitorStatus::Connected => short_name.to_string(),
+        MonitorStatus::Connecting => tr("Connecting"),
+        MonitorStatus::NotFound => tr("Not connected"),
+        MonitorStatus::NotResponding => tr("Not responding"),
     };
-    format!("ThinkVision Control – {state}")
+    trf("ThinkVision Control – {0}", &[&state])
 }
 
 pub fn icon(tray: &Tray, status: MonitorStatus, taskbar_light: bool) -> Image {
