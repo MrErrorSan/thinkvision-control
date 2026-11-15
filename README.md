@@ -94,7 +94,7 @@ For scripts, launchers and Stream Deck. If the app is running, the command is ha
 
 ```bash
 thinkvision-control --preset night          # or day
-thinkvision-control --input this            # hdmi, dp, usbc, this
+thinkvision-control --input this --yes      # hdmi, dp, usbc, this; without --yes it asks first
 thinkvision-control --step brightness=+10   # or contrast=-5
 thinkvision-control --get all --json        # brightness, contrast, input, colour-mode, all
 thinkvision-control --help                  # everything, including exit codes
@@ -102,7 +102,7 @@ thinkvision-control --help                  # everything, including exit codes
 
 **Windows:** in scripts and terminals, call `tvc` instead, installed next to the app: `& "$env:ProgramFiles\ThinkVision Control\tvc.exe" --get all` in PowerShell. It takes the same arguments, waits for the result and passes on its output and exit code. `thinkvision-control.exe` is a windowed program, so cmd and PowerShell don't wait for it and drop its exit code.
 
-The same as links: `thinkvision://preset/night`, `thinkvision://input/this`, `thinkvision://step/brightness/+10`.
+The same as links: `thinkvision://preset/night`, `thinkvision://input/this`, `thinkvision://step/brightness/+10`. An input link needs no `--yes`; a display without a verified profile always asks on screen.
 
 ## Troubleshooting
 

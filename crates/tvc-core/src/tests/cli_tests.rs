@@ -153,7 +153,7 @@ fn a_lone_url_argument_is_a_verb() {
     assert_eq!(command(&["THINKVISION:input/this"]), CliCommand::Input(InputChoice::This));
     assert!(parse(&["thinkvision://nonsense"]).is_err());
     assert_eq!(parse(&["--startup", "thinkvision://get/all", "--json"]).unwrap(),
-        Parsed { command: CliCommand::Get(GetTarget::All), startup: true, json: true, ..Parsed::default() });
+        Parsed { command: CliCommand::Get(GetTarget::All), startup: true, json: true, from_link: true, ..Parsed::default() });
 }
 
 #[test]
@@ -217,6 +217,17 @@ fn version_and_yes_flags() {
     assert_eq!(parse(&["--input", "this", "--YES"]).unwrap(),
         Parsed { command: CliCommand::Input(InputChoice::This), yes: true, ..Parsed::default() });
     assert_eq!(version_line(), format!("thinkvision-control {}", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn a_link_verb_is_marked_from_link() {
+    let link = parse(&["thinkvision://input/hdmi"]).unwrap();
+    assert_eq!((link.command, link.from_link, link.yes), (CliCommand::Input(InputChoice::Kind("hdmi".into())), true, false));
+    assert!(parse(&["thinkvision://display/P32p-20/input/this"]).unwrap().from_link);
+    // Typed verbs aren't, nor is a link that lost to an earlier typed verb.
+    assert!(!parse(&["--input", "hdmi"]).unwrap().from_link);
+    assert!(!parse(&["--input", "dp", "thinkvision://input/hdmi"]).unwrap().from_link);
+    assert!(parse(&["thinkvision://input/hdmi", "--input", "dp"]).unwrap().from_link);
 }
 
 #[test]

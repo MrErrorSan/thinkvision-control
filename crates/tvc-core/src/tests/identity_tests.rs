@@ -30,6 +30,12 @@ fn only_n_ids_are_unstable_and_folders_are_safe() {
     assert!(MonitorId("DEL4321-N1".into()).is_unstable());
     assert!(!MonitorId("LEN62A2-SV1".into()).is_unstable());
     assert!(!MonitorId("LEN62A2-PDP-1".into()).is_unstable());
+    assert!(MonitorId("UNKNOWN-N12".into()).is_unstable());
+    // Dashes in a serial or connector: only the marker right after the EDID id counts.
+    for stable in ["LEN62A2-SAB-N123", "LEN62A2-SN-1", "LEN62A2-SN12", "LEN62A2-Pcard0-N1", "LEN62A2-PDP-N2",
+        "LEN62A2-SNX", "LEN62A2-N", "LEN62A2-N1-2", "LEN62A2-N1a", "LEN62A2", ""] {
+        assert!(!MonitorId(stable.into()).is_unstable(), "{stable}");
+    }
     assert_eq!(MonitorId(r"LEN62A2-P\?\DISPLAY#1".into()).folder_name(), "LEN62A2-P___DISPLAY_1");
 }
 

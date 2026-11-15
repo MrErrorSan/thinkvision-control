@@ -3,6 +3,7 @@
 //! video group that), else through logind's `Session.SetBrightness` (systemd 243+), which any user may call for their
 //! own session.
 
+use std::cmp::Ordering;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
@@ -121,14 +122,15 @@ impl Panel for Sysfs {
         Ok(to_percent(self.raw()?, self.max))
     }
 
-    fn set(&mut self, percent: u16) -> Result<(), LinkError> {
-        let raw = from_percent(percent, self.max);
+    fn set(&mut self, percent: u16, toward: Ordering) -> Result<u16, LinkError> {
+        let raw = from_percent(percent, self.max, toward);
         match &self.logind {
             // Gone: the engine reconnects, and `open` checks again which route works.
             Some(bus) => logind_set(bus, &self.name, raw)
                 .map_err(|e| LinkError::Gone(format!("backlight write through logind failed: {e}"))),
             None => fs::write(self.brightness(), raw.to_string()).map_err(|e| failure("write", e)),
-        }
+        }?;
+        Ok(to_percent(raw, self.max))
     }
 }
 

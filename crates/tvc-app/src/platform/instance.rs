@@ -202,8 +202,19 @@ mod imp {
     use windows_sys::Win32::System::WindowsProgramming::GetUserNameW;
     use windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
 
-    /// The mutex handle, kept open (and owned) for the life of the process; never closed.
-    pub struct Lock(HANDLE);
+    /// A handle to another copy's mutex. Closed on drop, unless `wait` made this process the owner: then it stays
+    /// open for the life of the process, since closing the last handle would free the name for a third copy. (The
+    /// busy retry opens one per attempt, every 250 ms.)
+    pub struct Lock(HANDLE, std::cell::Cell<bool>);
+
+    impl Drop for Lock {
+        fn drop(&mut self) {
+            if !self.1.get() {
+                // SAFETY: our handle, not used after this.
+                unsafe { CloseHandle(self.0) };
+            }
+        }
+    }
 
     pub struct Listener;
 
@@ -233,7 +244,7 @@ mod imp {
         if handle.is_null() || !existed {
             Acquire::Owned(Listener)
         } else {
-            Acquire::Busy(Lock(handle))
+            Acquire::Busy(Lock(handle, std::cell::Cell::new(false)))
         }
     }
 
@@ -241,7 +252,10 @@ mod imp {
     pub fn wait(lock: &Lock, timeout: Duration) -> Option<Listener> {
         // SAFETY: a valid mutex handle that we keep open.
         match unsafe { WaitForSingleObject(lock.0, timeout.as_millis() as u32) } {
-            WAIT_OBJECT_0 | WAIT_ABANDONED => Some(Listener),
+            WAIT_OBJECT_0 | WAIT_ABANDONED => {
+                lock.1.set(true); // ours now: keep the handle open
+                Some(Listener)
+            }
             _ => None,
         }
     }

@@ -3,7 +3,8 @@
 //! owner died inside one, so the app starts in safe mode.
 //!
 //! Each owner has its own file, `risky-operation-<key>.txt`, so one process never reads or clears another's.
-//! The key is `pid-<pid>` for now. 0.0.8 wrote a single `risky-operation.txt`; it counts as stale.
+//! The key is `pid-<pid>`, or `pid-<pid>-<name>` when one process keeps several markers in one folder (the
+//! unstable `-N` monitors share [`SESSION_MARKERS`]). 0.0.8 wrote a single `risky-operation.txt`; it counts as stale.
 //!
 //! There is deliberately no drop guard: a panic unwinding out of the operation is exactly the crash to remember.
 
@@ -12,6 +13,10 @@ use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 const PREFIX: &str = "risky-operation";
+
+/// The folder in `monitors/` that holds the crash markers of monitors with unstable (`-N`) ids, whose other state
+/// lives in a temporary folder: kept here, the next start finds them like every other monitor's.
+pub const SESSION_MARKERS: &str = "_session";
 
 /// This owner's marker file.
 #[derive(Clone, Debug)]
@@ -40,15 +45,21 @@ pub fn process_key() -> String {
     format!("pid-{}", std::process::id())
 }
 
+/// The owner's process id: `pid-<pid>` or `pid-<pid>-<name>`. None for other keys.
+fn key_pid(key: &str) -> Option<u32> {
+    let rest = key.strip_prefix("pid-")?;
+    rest.split_once('-').map_or(rest, |(pid, _)| pid).parse().ok()
+}
+
 impl Marker {
     pub fn new(dir: impl Into<PathBuf>, key: &str) -> Self {
         Self { path: dir.into().join(format!("{PREFIX}-{key}.txt")) }
     }
 
-    /// Every marker in `dir` whose owner is gone. `is_alive(pid)` answers for `pid-<pid>` keys; other keys and the
-    /// 0.0.8 file are always stale. This process's own marker is never returned.
+    /// Every marker in `dir` whose owner is gone. `is_alive(pid)` answers for `pid-<pid>` (and `pid-<pid>-<name>`)
+    /// keys; other keys and the 0.0.8 file are always stale. This process's own markers are never returned.
     pub fn left_over(dir: &Path, is_alive: impl Fn(u32) -> bool) -> Vec<LeftOver> {
-        let own = process_key();
+        let own = std::process::id();
         let Ok(entries) = fs::read_dir(dir) else { return Vec::new() };
         let mut found: Vec<LeftOver> = entries.flatten().filter_map(|entry| {
             let name = entry.file_name().into_string().ok()?;
@@ -57,11 +68,8 @@ impl Marker {
             } else {
                 name.strip_prefix(&format!("{PREFIX}-"))?.strip_suffix(".txt")?.to_string()
             };
-            if key == own {
-                return None;
-            }
-            if let Some(pid) = key.strip_prefix("pid-").and_then(|p| p.parse::<u32>().ok()) {
-                if is_alive(pid) {
+            if let Some(pid) = key_pid(&key) {
+                if pid == own || is_alive(pid) {
                     return None;
                 }
             }
@@ -79,6 +87,19 @@ impl Marker {
     /// Removes this owner's marker.
     pub fn clear(&self) {
         let _ = fs::remove_file(&self.path);
+    }
+
+    /// Removes every marker of this process in `dir`: `pid-<pid>` and each `pid-<pid>-<name>`.
+    pub fn clear_process(dir: &Path) {
+        let own = std::process::id();
+        let Ok(entries) = fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let key = name.strip_prefix(&format!("{PREFIX}-")).and_then(|n| n.strip_suffix(".txt"));
+            if key.and_then(key_pid) == Some(own) {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
     }
 
     /// Writes the marker before `operation`, flushed to disk so even a system crash leaves it behind.

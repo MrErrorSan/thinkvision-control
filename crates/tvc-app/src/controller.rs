@@ -555,18 +555,22 @@ pub struct CliJob {
     command: CliCommand,
     json: bool,
     yes: bool,
+    /// The verb came from a `thinkvision:` link: confirmed like `--yes` (a deliberate action, like a hotkey).
+    from_link: bool,
     /// `--display`; None = the default (every display that supports the verb).
     display: Option<String>,
     /// The forwarding launch's responder; None for this process's own verb.
     reply: Option<Responder>,
+    /// When the verb arrived (a forwarded one: when the listener took it), for the confirm's deadline.
+    arrived: Instant,
     /// The arguments as given, for the log.
     args: String,
 }
 
 impl CliJob {
     pub fn own(parsed: &Parsed, args: &[String]) -> Self {
-        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, display: parsed.display.clone(),
-            reply: None, args: tvc_cli::command_line(args) }
+        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, from_link: parsed.from_link,
+            display: parsed.display.clone(), reply: None, arrived: Instant::now(), args: tvc_cli::command_line(args) }
     }
 }
 
@@ -581,6 +585,39 @@ impl Drop for AwaitingConfirm {
             let line = failure_line(&command, json, "NeedsConfirmation", NOT_CONFIRMED);
             reply.reply(Reply { exit: tvc_cli::EXIT_NEEDS_CONFIRMATION as u8, stdout: format!("{line}\n") });
         }
+    }
+}
+
+/// One display's part of a command-line answer.
+struct Row {
+    id: MonitorId,
+    name: String,
+    exit: i32,
+    text: String,
+    json: String,
+}
+
+/// The exit code, text and JSON of an answer from `rows`: one row's own (the 0.0.8 output); for several the first
+/// failure's exit code, each row as `line` puts it joined by `separator`, and an array of objects tagged with `id`
+/// and `name`.
+fn combine_rows(rows: &[Row], line: impl Fn(&Row) -> String, separator: &str) -> (i32, String, String) {
+    match rows {
+        [row] => (row.exit, row.text.clone(), row.json.clone()),
+        _ => (
+            tvc_cli::combined_exit_code(&rows.iter().map(|r| r.exit).collect::<Vec<_>>()),
+            rows.iter().map(line).collect::<Vec<_>>().join(separator),
+            format!("[{}]", rows.iter().map(|r| tagged(&r.id, &r.name, &r.json)).collect::<Vec<_>>().join(",")),
+        ),
+    }
+}
+
+/// A forwarded `--input`'s confirm wasn't answered in time: exit 3.
+fn confirm_timed_out(job: CliJob) {
+    if let CliJob { command, json, reply: Some(reply), args, .. } = job {
+        let exit = tvc_cli::EXIT_NEEDS_CONFIRMATION;
+        log::write(&format!("CLI {args} (forwarded): exit {exit}, {CONFIRM_TIMED_OUT}"));
+        let line = failure_line(&command, json, "NeedsConfirmation", CONFIRM_TIMED_OUT);
+        reply.reply(Reply { exit: exit as u8, stdout: format!("{line}\n") });
     }
 }
 
@@ -871,7 +908,8 @@ impl Controller {
         }
         if let Some((command, json, args)) = self.headless_job.borrow().clone() {
             let text = failure_json(&command, "TimedOut", TIMED_OUT);
-            let job = CliJob { command, json, yes: false, display: None, reply: None, args };
+            let job = CliJob { command, json, yes: false, from_link: false, display: None, reply: None,
+                arrived: Instant::now(), args };
             self.finish(job, tvc_cli::exit_code(None, true), TIMED_OUT, text, false);
         }
     }
@@ -969,13 +1007,6 @@ impl Controller {
     /// Prints the values: the 0.0.8 single object for one target, an array of objects with `id` and `name` for
     /// several. All of it English, the OSD's echo too.
     fn answer_get(&self, job: CliJob, target: GetTarget, targets: &[MonitorId]) {
-        struct Row {
-            id: MonitorId,
-            name: String,
-            exit: i32,
-            text: String,
-            json: String,
-        }
         let rows: Vec<Row> = i18n::english(|| targets.iter().map(|id| {
             let (name, fields) = {
                 let app = self.app.borrow();
@@ -996,14 +1027,7 @@ impl Controller {
             };
             Row { id: id.clone(), name, exit, text, json }
         }).collect());
-        let (exit, text, json) = match rows.as_slice() {
-            [row] => (row.exit, row.text.clone(), row.json.clone()),
-            _ => (
-                tvc_cli::combined_exit_code(&rows.iter().map(|r| r.exit).collect::<Vec<_>>()),
-                rows.iter().map(|r| format!("{} ({})\n{}", r.name, r.id, r.text)).collect::<Vec<_>>().join("\n\n"),
-                format!("[{}]", rows.iter().map(|r| tagged(&r.id, &r.name, &r.json)).collect::<Vec<_>>().join(",")),
-            ),
-        };
+        let (exit, text, json) = combine_rows(&rows, |r| format!("{} ({})\n{}", r.name, r.id, r.text), "\n\n");
         if !self.headless.get() && exit == 0 {
             OsdHost::show(&self.osd, Content::Message(&text.replace('\n', " · ")));
         }
@@ -1021,8 +1045,9 @@ impl Controller {
         f(self.app.borrow_mut().view_of(id))
     }
 
-    /// Args forwarded by a second launch; `responder` gets the verb's exit code and output.
-    pub fn on_forwarded(self: &Rc<Self>, args: Vec<String>, responder: Responder) {
+    /// Args forwarded by a second launch, which the listener took at `arrived`; `responder` gets the verb's exit
+    /// code and output.
+    pub fn on_forwarded(self: &Rc<Self>, args: Vec<String>, responder: Responder, arrived: Instant) {
         let parsed = match tvc_cli::parse(&args) {
             Ok(parsed) => parsed,
             Err(e) => {
@@ -1051,7 +1076,7 @@ impl Controller {
                     self.show_window();
                 }
             }
-            _ => self.run_cli(CliJob { reply: Some(responder), ..CliJob::own(&parsed, &args) }),
+            _ => self.run_cli(CliJob { reply: Some(responder), arrived, ..CliJob::own(&parsed, &args) }),
         }
     }
 
@@ -1119,8 +1144,11 @@ impl Controller {
     }
 
     /// `--input`. One on-screen confirm covers every target; it is needed without `--yes`, and always when a
-    /// target has no verified profile. A headless run can't ask, so it exits 3; a forwarded one gets exit 3 when the
-    /// confirm goes unanswered for `CONFIRM_WAIT`.
+    /// target has no verified profile. A `thinkvision://input/…` link (and the Linux launcher's action, which
+    /// passes `--yes`) counts as confirmed, like a hotkey, so it switches a verified display as 0.0.8 did. A headless
+    /// run can't ask, so it exits 3 (for a link on an unverified display too: start the app, then use the link
+    /// again); a forwarded one gets exit 3 when the confirm goes unanswered until `CONFIRM_WAIT` after the verb
+    /// arrived (it may have waited in `pending_cli` for the displays first), and the confirm is taken down then.
     fn run_input(self: &Rc<Self>, job: CliJob, choice: &InputChoice, targets: Vec<MonitorId>) {
         let (live, mut done) = self.split_connected(targets);
         let mut sends = vec![];
@@ -1142,20 +1170,27 @@ impl Controller {
             }
         }
         let experimental = sends.iter().any(|(id, _)| self.is_experimental(id));
-        if sends.is_empty() || (job.yes && !experimental) {
+        let confirmed = job.yes || job.from_link;
+        if sends.is_empty() || (confirmed && !experimental) {
             self.send_inputs(Origin::Cli, sends, done, Some(job));
             return;
         }
         if self.headless.get() && job.reply.is_none() {
-            let text = if job.yes { NEEDS_SCREEN } else { NEEDS_YES };
+            let text = if confirmed { NEEDS_SCREEN } else { NEEDS_YES };
             OsdHost::show(&self.osd, Content::Message(text));
             let json = failure_json(&job.command, "NeedsConfirmation", text);
             self.finish(job, tvc_cli::EXIT_NEEDS_CONFIRMATION, text, json, true);
             return;
         }
+        let forwarded = job.reply.is_some();
+        // The forwarding launch stops waiting 15 s after it sent the verb: answer it before then.
+        let left = CONFIRM_WAIT.saturating_sub(job.arrived.elapsed());
+        if forwarded && left.is_zero() {
+            confirm_timed_out(job);
+            return;
+        }
         self.show_window();
         let dialog = self.inputs_dialog(&sends);
-        let forwarded = job.reply.is_some();
         let pending = Rc::new(RefCell::new(AwaitingConfirm(Some(job))));
         let waiting = Rc::downgrade(&pending);
         let tag = if forwarded {
@@ -1175,15 +1210,13 @@ impl Controller {
             tag,
         );
         if forwarded {
-            // Unanswered, the forwarding launch gets exit 3 before its own 15 s run out.
-            slint::Timer::single_shot(CONFIRM_WAIT, move || {
+            // Unanswered, the forwarding launch gets exit 3 before its own 15 s run out. Taking the job first means
+            // a Switch pressed later finds nothing to run; the confirm comes down with the reply.
+            slint::Timer::single_shot(left, move || {
                 let Some(pending) = waiting.upgrade() else { return }; // answered, or the window closed
                 let job = pending.borrow_mut().0.take();
-                if let Some(CliJob { command, json, reply: Some(reply), args, .. }) = job {
-                    let exit = tvc_cli::EXIT_NEEDS_CONFIRMATION;
-                    log::write(&format!("CLI {args} (forwarded): exit {exit}, {CONFIRM_TIMED_OUT}"));
-                    let line = failure_line(&command, json, "NeedsConfirmation", CONFIRM_TIMED_OUT);
-                    reply.reply(Reply { exit: exit as u8, stdout: format!("{line}\n") });
+                if let Some(job) = job {
+                    confirm_timed_out(job);
                 }
                 with(|c| c.withdraw(tag));
             });
@@ -1809,26 +1842,12 @@ impl Controller {
     /// A write verb's answer: the 0.0.8 line or object for one target; for several a line each, or an array of
     /// objects with `id` and `name`, and the first failure's exit code. English, as everything the command line prints.
     fn finish_results(&self, job: CliJob, code: Option<u8>, results: &[(MonitorId, WriteResult)]) {
-        struct Row {
-            id: MonitorId,
-            name: String,
-            exit: i32,
-            text: String,
-            json: String,
-        }
         let rows: Vec<Row> = i18n::english(|| results.iter().map(|(id, r)| {
             let text = self.result_text(id, code, r);
             let json = result_json(r.outcome == WriteOutcome::Ok, &format!("{:?}", r.kind), &text);
             Row { id: id.clone(), name: self.app.borrow().name(id), exit: tvc_cli::exit_code(Some(r.kind), true), text, json }
         }).collect());
-        let (exit, text, json) = match rows.as_slice() {
-            [row] => (row.exit, row.text.clone(), row.json.clone()),
-            _ => (
-                tvc_cli::combined_exit_code(&rows.iter().map(|r| r.exit).collect::<Vec<_>>()),
-                rows.iter().map(|r| format!("{}: {}", r.name, r.text)).collect::<Vec<_>>().join("\n"),
-                format!("[{}]", rows.iter().map(|r| tagged(&r.id, &r.name, &r.json)).collect::<Vec<_>>().join(",")),
-            ),
-        };
+        let (exit, text, json) = combine_rows(&rows, |r| format!("{}: {}", r.name, r.text), "\n");
         self.finish(job, exit, &text, json, true);
     }
 
@@ -2278,9 +2297,11 @@ impl Controller {
                 .and_then(|d| d.confirm_title.as_deref().map(tr))
                 .unwrap_or_else(|| tr("Switch to {label}?"))
                 .replace("{label}", &label);
-            // The profile's body warns that this PC loses the monitor; switching to this PC's own input it doesn't.
-            let body = if *code == u16::from(app.settings.monitor(id).this_machine_input) {
-                tr("This is this PC's input, so you can keep controlling the monitor from this PC.")
+            // The profile's body warns that this PC loses the monitor. Settings can't tell whether the user ever set
+            // This PC's input (it defaults to 0x11), so the warning stays unless the monitor already shows the
+            // target input (its last read 0x60): then nothing switches.
+            let body = if st.value(INPUT) == Some(*code) {
+                tr("The monitor already shows this input, so nothing changes.")
             } else {
                 def.and_then(|d| d.confirm_body.as_deref().map(tr)).unwrap_or_default()
             };
@@ -3273,7 +3294,7 @@ mod tests {
     use tvc_core::profile::ProfileStore;
     use tvc_core::support::SupportLevel;
 
-    use super::{cli_targets, display_at, level_for, master_percent, tagged, together_value};
+    use super::{cli_targets, combine_rows, display_at, level_for, master_percent, tagged, together_value, Row};
 
     fn close(actual: f32, expected: f32, tolerance: f32) -> bool {
         (actual - expected).abs() <= tolerance
@@ -3444,6 +3465,20 @@ mod tests {
             r#"{"id":"LEN-1","name":"Left","ok":true,"kind":"Ok"}"#);
         // Both are JSON strings, escaped.
         assert_eq!(tagged(&id("a\"b"), "C:\\x", "{}"), r#"{"id":"a\"b","name":"C:\\x"}"#);
+    }
+
+    #[test]
+    fn combine_rows_is_one_rows_own_or_every_row() {
+        let row = |i: &str, exit: i32, text: &str| Row {
+            id: id(i), name: format!("Name {i}"), exit, text: text.into(), json: format!(r#"{{"t":"{text}"}}"#),
+        };
+        let line = |r: &Row| format!("{}: {}", r.name, r.text);
+        assert_eq!(combine_rows(&[row("A", 4, "a")], line, "\n"), (4, "a".into(), r#"{"t":"a"}"#.into()));
+        assert_eq!(combine_rows(&[row("A", 0, "a"), row("B", 5, "b"), row("C", 4, "c")], line, "\n"), (
+            5,
+            "Name A: a\nName B: b\nName C: c".into(),
+            r#"[{"id":"A","name":"Name A","t":"a"},{"id":"B","name":"Name B","t":"b"},{"id":"C","name":"Name C","t":"c"}]"#.into(),
+        ));
     }
 
     fn info(edid: &str, backend: BackendKind) -> DisplayInfo {

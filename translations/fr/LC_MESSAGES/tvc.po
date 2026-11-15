@@ -1168,9 +1168,8 @@ msgid ""
 msgstr "Vous ne pourrez plus contrôler le moniteur depuis ce PC tant que vous ne serez pas revenu à cette entrée."
 
 #: crates/tvc-app/src/controller.rs:2283
-msgid ""
-"This is this PC's input, so you can keep controlling the monitor from this PC."
-msgstr "C'est l'entrée de ce PC, vous pourrez donc continuer à contrôler le moniteur depuis ce PC."
+msgid "The monitor already shows this input, so nothing changes."
+msgstr "Le moniteur affiche déjà cette entrée, rien ne change donc."
 
 #: crates/tvc-core/src/profile/generic-mccs.json:40
 msgid "Sharpness"

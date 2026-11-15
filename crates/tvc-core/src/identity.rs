@@ -10,9 +10,11 @@ use crate::link::{DisplayKind, LinkFailure, MonitorLink};
 pub struct MonitorId(pub String);
 
 impl MonitorId {
-    /// True for an `-N{ordinal}` id, which may change on the next rescan.
+    /// True for an `-N{ordinal}` id, which may change on the next rescan. The marker is the letter after the EDID
+    /// id (which never holds a `-`: "LEN62A2", "UNKNOWN"), so a serial or connector with "-N" in it doesn't count.
     pub fn is_unstable(&self) -> bool {
-        self.0.rsplit_once('-').is_some_and(|(_, tail)| tail.starts_with('N'))
+        self.0.split_once('-').and_then(|(_, rest)| rest.strip_prefix('N'))
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
     }
 
     /// A folder name for this id: ASCII letters, digits, `-` and `_`; everything else becomes `_`.

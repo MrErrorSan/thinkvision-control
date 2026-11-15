@@ -9,7 +9,9 @@
 //!
 //! **Folders.** Each engine works in `<root>/monitors/<id folder>/`, with an `identity.json` there so saved state
 //! can be matched later. An unstable `-N` id gets a folder in the temp directory instead, removed at shutdown,
-//! so nothing that enables writes is persisted under it. The 0.0.8 files in the root move, once, into the folder
+//! so nothing that enables writes is persisted under it. Only its crash marker is kept, in
+//! `<root>/monitors/_session/` ([`crate::crash::SESSION_MARKERS`]) and named for the id, so a crash there still starts
+//! the next run in safe mode. The 0.0.8 files in the root move, once, into the folder
 //! of the first LEN62A2 that [`identity::match_saved`] matches to them.
 //!
 //! **Engines start unconnected:** send `Connect` (or `ConnectReading`) through `Send` once a monitor is listed.
@@ -30,6 +32,7 @@ use crate::engine::{
     Command, Engine, EngineConfig, EngineHandle, Event, Origin, PowerState, Timing, WriteOutcome, WriteResult,
     SHUTDOWN_WAIT,
 };
+use crate::crash::{self, Marker};
 use crate::identity::{self, BackendKind, DisplayInfo, Discovery, ListError, MonitorId, MonitorIdentity};
 use crate::i18n::tr;
 use crate::log;
@@ -285,6 +288,10 @@ impl Hub {
             }
         };
         let dir = self.dir_for(&id, &info.identity);
+        let crash = id.is_unstable().then(|| {
+            let key = format!("{}-{}", crash::process_key(), id.folder_name());
+            Marker::new(self.root.join("monitors").join(crash::SESSION_MARKERS), &key)
+        });
         // The built-in panel: its own profile and no DDC pacing.
         let backlight = info.backend == BackendKind::Backlight;
         let config = EngineConfig {
@@ -295,6 +302,7 @@ impl Hub {
             timing: backlight.then(|| Timing { gap: Duration::ZERO, settle: Duration::ZERO, ..Timing::default() }),
             safe_mode: self.safe_mode,
             level: backlight.then(|| SupportLevel::Verified { profile: "builtin-backlight".into() }),
+            crash,
         };
         let (sink, batches) = (self.sink.clone(), self.batches.clone());
         let tag = id.clone();
@@ -382,7 +390,7 @@ impl Hub {
                 let answers = answers(&command);
                 if !engine.is_some_and(|e| e.send_op(op, command)) {
                     if let Some((origin, code, preset)) = answers {
-                        let event = Event::Result { origin, code, preset, result: not_responding(), op: Some(op) };
+                        let event = Event::Result { origin, code, preset, result: not_responding(origin), op: Some(op) };
                         emit(&self.sink, HubEvent::Monitor { id, event });
                     }
                 }
@@ -411,7 +419,7 @@ impl Hub {
         }
         for (id, engine) in engines {
             if !engine.send_op(op, command.clone()) && answers.is_some() {
-                answer(&self.batches, &self.sink, op, id, Some(not_responding()));
+                answer(&self.batches, &self.sink, op, id, Some(not_responding(origin)));
             }
         }
     }
@@ -486,11 +494,14 @@ fn answers(command: &Command) -> Option<(Origin, Option<u8>, Option<String>)> {
     }
 }
 
-fn not_responding() -> WriteResult {
+/// The answer for a monitor whose engine is gone: in English for the command line (as the engine answers it), else
+/// in the UI language.
+fn not_responding(origin: Origin) -> WriteResult {
+    let message = || tr("Monitor not responding");
     WriteResult {
         outcome: WriteOutcome::NotResponding,
         kind: ResultKind::NotResponding,
-        message: tr("Monitor not responding"),
+        message: if origin == Origin::Cli { crate::i18n::english(message) } else { message() },
         value: None,
         kept: None,
     }

@@ -69,3 +69,23 @@ fn regression_core_12_markers_are_per_owner() {
     b.disarm();
     assert_eq!(stale(dir.path()), [("pid-4000000004".to_string(), "capability read".to_string())]);
 }
+
+#[test]
+fn named_markers_follow_their_owner_process() {
+    let dir = TempDir::new();
+    Marker::new(dir.path(), "pid-4000000006-LEN62A2-N1").arm("capability read");
+    Marker::new(dir.path(), &format!("{}-LEN62A2-N2", process_key())).arm("capability read");
+    Marker::new(dir.path(), &process_key()).arm("finder snapshot");
+    // Alive: neither is left over; this process's are never left over.
+    assert!(Marker::left_over(dir.path(), |pid| pid == 4_000_000_006).is_empty());
+    assert_eq!(stale(dir.path()), [("pid-4000000006-LEN62A2-N1".to_string(), "capability read".to_string())]);
+
+    // An orderly exit clears every marker of this process, and only those.
+    Marker::clear_process(dir.path());
+    assert!(!dir.path().join(format!("risky-operation-{}.txt", process_key())).exists());
+    assert!(!dir.path().join(format!("risky-operation-{}-LEN62A2-N2.txt", process_key())).exists());
+    let left = Marker::left_over(dir.path(), |_| false);
+    assert_eq!(left.len(), 1);
+    left[0].clear();
+    assert!(stale(dir.path()).is_empty());
+}

@@ -134,6 +134,7 @@ pub fn engine_config(link: Box<dyn MonitorLink>, dir: &Path, timing: Timing, saf
         timing: Some(timing),
         safe_mode,
         level: Some(SupportLevel::Verified { profile: "p32p20".into() }),
+        crash: None,
     }
 }
 

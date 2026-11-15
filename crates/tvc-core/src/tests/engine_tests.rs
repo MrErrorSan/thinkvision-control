@@ -1113,6 +1113,41 @@ fn connect_reading_reads_only_the_given_codes() {
 }
 
 #[test]
+fn connect_reading_a_code_the_monitor_lacks_stays_connected() {
+    let mut read = BTreeMap::new();
+    read.insert(0x14, LinkError::Unsupported("0x14".into()));
+    let (_dir, h, _link) = scripted_with(Script { read, ..Script::default() });
+
+    let events = h.run(Command::ConnectReading(vec![0x14]));
+
+    // Same answer as a full connect: the monitor reads other codes it advertises, so it is Connected and only the
+    // code asked for is missing (the command line's Unsupported, exit 4).
+    assert_eq!(statuses(&events).last(), Some(&MonitorStatus::Connected));
+    assert!(!values(&events).iter().any(|(c, _)| *c == 0x14));
+}
+
+#[test]
+fn connect_reading_stops_at_the_first_other_code_that_reads() {
+    let mut read = BTreeMap::new();
+    read.insert(0x12, LinkError::Unsupported("0x12".into()));
+    let (_dir, h, link) = scripted_with(Script { read, ..Script::default() });
+
+    h.run(Command::ConnectReading(vec![0x12]));
+
+    // 0x12 is answered by the script; of the other advertised codes only the first (0x10) is read.
+    assert_eq!(link.fake.state().reads, [0x10]);
+}
+
+#[test]
+fn connect_reading_when_every_code_is_unsupported_is_not_responding() {
+    let (_dir, h, _link) = scripted_with(Script { unsupported_reads: true, ..Script::default() });
+
+    assert_eq!(statuses(&h.run(Command::ConnectReading(vec![0x10]))).last(), Some(&MonitorStatus::NotResponding));
+    let result = h.set(0x12, 50, false);
+    assert!(result.message.contains("supports none of the controls"), "{}", result.message);
+}
+
+#[test]
 fn dead_engine_reports_not_responding() {
     let dir = TempDir::new();
     let (tx, rx) = std::sync::mpsc::channel();

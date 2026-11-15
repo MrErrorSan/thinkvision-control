@@ -73,6 +73,9 @@ pub struct Parsed {
     pub json: bool,
     /// `--yes`: confirms an input switch given on the command line.
     pub yes: bool,
+    /// The verb came from a `thinkvision:` link: a deliberate user action, like a hotkey, so an input switch on a
+    /// verified display needs no `--yes`.
+    pub from_link: bool,
     /// `--version`: print the version and exit.
     pub version: bool,
     /// `--display <name|id|all>`: which display a verb acts on; None = the default target. Resolved by the app
@@ -136,22 +139,23 @@ pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Parsed, CliError> {
                             parsed.display.get_or_insert_with(|| v.to_string());
                             Ok(None)
                         }
-                        Some(v) => parse_verb(&name, v).map(|c| Some((c, None))),
+                        Some(v) => parse_verb(&name, v).map(|c| Some((c, None, false))),
                         None => Err(format!("'--{typed}' needs a value ({})", choices(&name))),
                     }
                 }
                 (None, _) => Err(format!("unknown option '--{typed}'")),
             }
         } else if is_url(arg) {
-            url_command(arg).map(Some)
+            url_command(arg).map(|(c, display)| Some((c, display, true)))
         } else if arg.starts_with('-') {
             Err(format!("unknown option '{arg}'"))
         } else {
             Err(format!("unexpected argument '{arg}'"))
         };
         match outcome {
-            Ok(Some((verb, display))) if command.is_none() => {
+            Ok(Some((verb, display, from_link))) if command.is_none() => {
                 command = Some(verb);
+                parsed.from_link = from_link;
                 if let Some(display) = display {
                     parsed.display.get_or_insert(display);
                 }
@@ -342,6 +346,8 @@ Flags:
                           Without it, the verb acts on the default display.
   --json      Print the result as JSON
   --yes       Confirm an --input switch without asking on screen
+              (an input link needs no --yes on a display with a verified
+              profile; other displays always ask on screen)
   --startup   Start in the tray without a window
 
 --get on several displays prints a JSON array with one object per display;

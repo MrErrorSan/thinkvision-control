@@ -14,6 +14,8 @@ mod sysfs;
 #[cfg(windows)]
 mod lcd;
 
+use std::cmp::Ordering;
+
 use tvc_core::identity::{BackendKind, DisplayInfo, MonitorIdentity};
 use tvc_core::link::{DisplayKind, LinkFailure, MonitorLink};
 
@@ -92,14 +94,27 @@ pub fn to_percent(raw: u32, max: u32) -> u16 {
     ((u64::from(raw.min(max)) * 100 + u64::from(max) / 2) / u64::from(max)) as u16
 }
 
-/// `percent` (clamped to 100) as the nearest raw value of `max`.
-pub fn from_percent(percent: u16, max: u32) -> u32 {
-    ((u64::from(percent.min(100)) * u64::from(max) + 50) / 100) as u32
+/// `percent` (clamped to 100) as a raw value of `max`: the nearest one for `Equal`; for a move up (`Greater`) the
+/// first at or above `percent`, for a move down (`Less`) the last at or below it, so a step never snaps back.
+pub fn from_percent(percent: u16, max: u32, toward: Ordering) -> u32 {
+    let bias = match toward {
+        Ordering::Greater => 99,
+        Ordering::Equal => 50,
+        Ordering::Less => 0,
+    };
+    ((u64::from(percent.min(100)) * u64::from(max) + bias) / 100) as u32
 }
 
-/// The supported level closest to `percent`, the lower one on a tie. None when `levels` is empty.
-pub fn nearest_level(levels: &[u8], percent: u16) -> Option<u8> {
-    levels.iter().copied().min_by_key(|&l| (u16::from(l).abs_diff(percent), l))
+/// The supported level for `percent`: the closest for `Equal` (the lower one on a tie); for a move up
+/// (`Greater`) the lowest at or above `percent`, for a move down (`Less`) the highest at or below it, falling back
+/// to the closest when there is none that far. None when `levels` is empty.
+pub fn nearest_level(levels: &[u8], percent: u16, toward: Ordering) -> Option<u8> {
+    let past = match toward {
+        Ordering::Greater => levels.iter().copied().filter(|&l| u16::from(l) >= percent).min(),
+        Ordering::Less => levels.iter().copied().filter(|&l| u16::from(l) <= percent).max(),
+        Ordering::Equal => None,
+    };
+    past.or_else(|| levels.iter().copied().min_by_key(|&l| (u16::from(l).abs_diff(percent), l)))
 }
 
 /// The `/sys/class/backlight` device to use, from `(name, type)` pairs: `firmware` over `platform` over `raw`, then
@@ -158,22 +173,47 @@ mod tests {
 
     #[test]
     fn raw_from_percent_rounds_to_nearest_and_clamps() {
-        assert_eq!(from_percent(0, 255), 0);
-        assert_eq!(from_percent(100, 255), 255);
-        assert_eq!(from_percent(50, 255), 128); // 127.5 rounds up
-        assert_eq!(from_percent(33, 3), 1);
-        assert_eq!(from_percent(150, 255), 255); // above 100 clamps
-        assert_eq!(from_percent(1, 1), 0);
-        assert_eq!(from_percent(50, 1), 1);
-        assert_eq!(from_percent(100, u32::MAX), u32::MAX); // no overflow
-        assert_eq!(from_percent(50, 0), 0);
+        let near = |p, max| from_percent(p, max, Ordering::Equal);
+        assert_eq!(near(0, 255), 0);
+        assert_eq!(near(100, 255), 255);
+        assert_eq!(near(50, 255), 128); // 127.5 rounds up
+        assert_eq!(near(33, 3), 1);
+        assert_eq!(near(150, 255), 255); // above 100 clamps
+        assert_eq!(near(1, 1), 0);
+        assert_eq!(near(50, 1), 1);
+        assert_eq!(near(100, u32::MAX), u32::MAX); // no overflow
+        assert_eq!(near(50, 0), 0);
+    }
+
+    #[test]
+    fn raw_from_percent_rounds_in_a_steps_direction() {
+        // max 7: 55% is raw 3.85 and 45% raw 3.15; up gives 4 for both, down 3.
+        assert_eq!(from_percent(55, 7, Ordering::Greater), 4);
+        assert_eq!(from_percent(45, 7, Ordering::Greater), 4);
+        assert_eq!(from_percent(55, 7, Ordering::Less), 3);
+        assert_eq!(from_percent(45, 7, Ordering::Less), 3);
+        // Exact values stay put, and the ends clamp.
+        assert_eq!(from_percent(100, 7, Ordering::Greater), 7);
+        assert_eq!(from_percent(0, 7, Ordering::Less), 0);
+        assert_eq!(from_percent(150, 7, Ordering::Greater), 7);
+        assert_eq!(from_percent(100, u32::MAX, Ordering::Greater), u32::MAX); // no overflow
+        // A step from 57% (raw 4) up by 5 reaches raw 5 instead of snapping back to 4.
+        assert_eq!(to_percent(from_percent(62, 7, Ordering::Greater), 7), 71);
+        assert_eq!(to_percent(from_percent(62, 7, Ordering::Equal), 7), 57);
+        for max in [100, 255, 937, 120000] {
+            for percent in 0..=100 {
+                for toward in [Ordering::Less, Ordering::Greater] {
+                    assert_eq!(to_percent(from_percent(percent, max, toward), max), percent, "max {max}, {percent}%");
+                }
+            }
+        }
     }
 
     #[test]
     fn percent_round_trips_at_common_maxima() {
         for max in [100, 255, 937, 19393, 120000] {
             for percent in 0..=100 {
-                assert_eq!(to_percent(from_percent(percent, max), max), percent, "max {max}, {percent}%");
+                assert_eq!(to_percent(from_percent(percent, max, Ordering::Equal), max), percent, "max {max}, {percent}%");
             }
         }
     }
@@ -181,14 +221,30 @@ mod tests {
     #[test]
     fn nearest_level_takes_the_lower_on_a_tie() {
         let levels = [0, 10, 20, 50, 100];
-        assert_eq!(nearest_level(&levels, 15), Some(10));
-        assert_eq!(nearest_level(&levels, 16), Some(20));
-        assert_eq!(nearest_level(&levels, 35), Some(20));
-        assert_eq!(nearest_level(&levels, 36), Some(50));
-        assert_eq!(nearest_level(&levels, 100), Some(100));
-        assert_eq!(nearest_level(&levels, 300), Some(100));
-        assert_eq!(nearest_level(&[60, 40], 50), Some(40)); // the list's order doesn't matter
-        assert_eq!(nearest_level(&[], 50), None);
+        let near = |levels: &[u8], p| nearest_level(levels, p, Ordering::Equal);
+        assert_eq!(near(&levels, 15), Some(10));
+        assert_eq!(near(&levels, 16), Some(20));
+        assert_eq!(near(&levels, 35), Some(20));
+        assert_eq!(near(&levels, 36), Some(50));
+        assert_eq!(near(&levels, 100), Some(100));
+        assert_eq!(near(&levels, 300), Some(100));
+        assert_eq!(near(&[60, 40], 50), Some(40)); // the list's order doesn't matter
+        assert_eq!(near(&[], 50), None);
+    }
+
+    #[test]
+    fn nearest_level_in_a_steps_direction_never_snaps_back() {
+        let levels: Vec<u8> = (0..=10).map(|n| n * 10).collect();
+        // At 50, +5 asks 55: up gives 60 (nearest would give 50 again); -5 asks 45: down gives 40.
+        assert_eq!(nearest_level(&levels, 55, Ordering::Greater), Some(60));
+        assert_eq!(nearest_level(&levels, 45, Ordering::Less), Some(40));
+        assert_eq!(nearest_level(&levels, 55, Ordering::Equal), Some(50));
+        // A level hit exactly is kept; past the ends, the end level.
+        assert_eq!(nearest_level(&levels, 60, Ordering::Greater), Some(60));
+        assert_eq!(nearest_level(&levels, 300, Ordering::Greater), Some(100));
+        assert_eq!(nearest_level(&[20, 50], 10, Ordering::Less), Some(20));
+        assert_eq!(nearest_level(&[60, 40], 45, Ordering::Greater), Some(60)); // order doesn't matter
+        assert_eq!(nearest_level(&[], 50, Ordering::Greater), None);
     }
 
     #[test]

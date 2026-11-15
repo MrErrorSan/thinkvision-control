@@ -331,6 +331,27 @@ fn n_id_never_adopts_legacy_files() {
 }
 
 #[test]
+fn n_id_keeps_its_crash_marker_where_the_next_start_looks() {
+    let root = TempDir::new();
+    let link = FakeLink::new();
+    link.state().delay = Duration::from_millis(300);
+    let mut hub = Hub::new(root.path(), vec![(display("LEN62A2", None, None), link)]);
+    assert_eq!(hub.wait_monitors(), ["LEN62A2-N1"]);
+    hub.to("LEN62A2-N1", Command::Connect);
+
+    // During the capability read: in `monitors/_session` (main.rs's `state_dirs`), named for the monitor.
+    let marker = root.path().join("monitors").join(crate::crash::SESSION_MARKERS)
+        .join(format!("risky-operation-{}-LEN62A2-N1.txt", crate::crash::process_key()));
+    let deadline = Instant::now() + WAIT;
+    while !marker.exists() {
+        assert!(Instant::now() < deadline, "no marker at {}", marker.display());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    hub.wait_status("LEN62A2-N1", MonitorStatus::Connected);
+    assert!(!marker.exists());
+}
+
+#[test]
 fn identity_json_written() {
     let root = TempDir::new();
     let _hub = Hub::new(root.path(), vec![(display("LEN62A2", Some("V1"), Some("DP-1")), FakeLink::new())]);

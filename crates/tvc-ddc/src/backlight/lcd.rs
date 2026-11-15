@@ -8,6 +8,7 @@
 //! - `IOCTL_VIDEO_QUERY_DISPLAY_BRIGHTNESS`, function 0x126 = 0x230498: a `DISPLAY_BRIGHTNESS`;
 //! - `IOCTL_VIDEO_SET_DISPLAY_BRIGHTNESS`, function 0x127 = 0x23049C: a `DISPLAY_BRIGHTNESS`.
 
+use std::cmp::Ordering;
 use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::{null, null_mut};
@@ -74,9 +75,9 @@ impl Panel for LcdPanel {
         Ok(level.into())
     }
 
-    fn set(&mut self, percent: u16) -> Result<(), LinkError> {
+    fn set(&mut self, percent: u16, toward: Ordering) -> Result<u16, LinkError> {
         let lcd = self.lcd()?;
-        let level = nearest_level(&lcd.levels, percent).unwrap_or_default();
+        let level = nearest_level(&lcd.levels, percent, toward).unwrap_or_default();
         let b = DISPLAY_BRIGHTNESS {
             ucDisplayPolicy: (DISPLAYPOLICY_AC | DISPLAYPOLICY_DC) as u8,
             ucACBrightness: level,
@@ -84,7 +85,7 @@ impl Panel for LcdPanel {
         };
         lcd.ioctl(IOCTL_VIDEO_SET_DISPLAY_BRIGHTNESS, (&b as *const DISPLAY_BRIGHTNESS).cast(),
             size_of::<DISPLAY_BRIGHTNESS>() as u32, null_mut(), 0)?;
-        Ok(())
+        Ok(level.into())
     }
 }
 

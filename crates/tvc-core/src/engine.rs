@@ -285,6 +285,9 @@ pub struct EngineConfig {
     pub safe_mode: bool,
     /// Forced level (the built-in panel, tests); None = `support::resolve` from the identity and capabilities.
     pub level: Option<SupportLevel>,
+    /// Where the crash marker goes; None = this process's marker in `dir`. A monitor whose `dir` isn't kept (an
+    /// unstable id's temporary folder) keeps it where the next start looks.
+    pub crash: Option<Marker>,
 }
 
 pub struct Engine;
@@ -295,7 +298,7 @@ impl Engine {
     /// `safe_mode`, `SafeMode(true)`; send `Connect` to start talking to the monitor. A thread that can't be
     /// spawned is logged and reported as `Status(NotResponding)`.
     pub fn spawn(config: EngineConfig, sink: Box<dyn Fn(Event) + Send>) -> EngineHandle {
-        let EngineConfig { id, identity, link, dir, timing, safe_mode, level } = config;
+        let EngineConfig { id, identity, link, dir, timing, safe_mode, level, crash } = config;
         let (tx, rx) = mpsc::channel();
         let (done_tx, done) = mpsc::channel::<()>();
         let stop = Arc::new(AtomicBool::new(false));
@@ -331,7 +334,7 @@ impl Engine {
             link,
             profiles,
             caps_cache,
-            crash: Marker::new(&dir, &crash::process_key()),
+            crash: crash.unwrap_or_else(|| Marker::new(&dir, &crash::process_key())),
             level,
             backups: BackupStore::new(&dir),
             dir,
@@ -767,17 +770,18 @@ impl Worker {
         }
         let codes: Vec<u8> = match only {
             Some(codes) => codes.to_vec(),
-            None => {
-                let mut codes: BTreeSet<u8> = self.controls.values()
-                    .filter(|d| matches!(d.kind, ControlKind::Range | ControlKind::Enum)
-                        && matches!(d.section, Section::Main | Section::Advanced))
-                    .map(|d| d.code)
-                    .collect();
-                codes.extend(self.cache.keys());
-                codes.into_iter().collect()
-            }
+            None => self.connect_codes(),
         };
-        match self.refresh(&codes, false) {
+        let read = match self.refresh(&codes, false) {
+            // A monitor that lacks the code asked for still counts if it reads another code it advertises, so
+            // `--get contrast` on a panel with brightness only answers Unsupported, as the resident app does.
+            Some(0) if only.is_some() => {
+                let rest: Vec<u8> = self.connect_codes().into_iter().filter(|c| !codes.contains(c)).collect();
+                self.read_any(&rest)
+            }
+            other => other,
+        };
+        match read {
             Some(0) if !codes.is_empty() => {
                 log::write(&format!("Connect: every read was unsupported. {NO_CONTROLS_MESSAGE}."));
                 self.no_controls = true;
@@ -786,6 +790,33 @@ impl Worker {
             Some(_) => self.set_status(MonitorStatus::Connected, None),
             None => {}
         }
+    }
+
+    /// What a full connect reads: every Range/Enum code in Main/Advanced the monitor advertises, plus the cached
+    /// ones.
+    fn connect_codes(&self) -> Vec<u8> {
+        let mut codes: BTreeSet<u8> = self.controls.values()
+            .filter(|d| matches!(d.kind, ControlKind::Range | ControlKind::Enum)
+                && matches!(d.section, Section::Main | Section::Advanced))
+            .map(|d| d.code)
+            .collect();
+        codes.extend(self.cache.keys());
+        codes.into_iter().collect()
+    }
+
+    /// Reads `codes` in turn until one answers with a value: Some(1) then, Some(0) if none did, None at a `Gone`.
+    fn read_any(&mut self, codes: &[u8]) -> Option<usize> {
+        for &code in codes {
+            match self.read(code) {
+                Ok(reading) => {
+                    self.update_cache(code, reading);
+                    return Some(1);
+                }
+                Err(LinkError::Gone(_)) => return None, // `run_op` already marked the monitor lost
+                Err(e) => log::write(&format!("Read {} failed: {e}", hex(code))),
+            }
+        }
+        Some(0)
     }
 
     /// Reads and caches the capability string, re-resolving the controls; reads values for codes it adds. Guarded

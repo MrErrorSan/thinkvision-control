@@ -23,6 +23,8 @@ Exec=thinkvision-control --preset day
 Name=Night preset
 Exec=thinkvision-control --preset night
 
+# A deliberate action, like a hotkey: --yes switches a verified display at once; a display without a verified
+# profile still asks on screen.
 [Desktop Action SwitchToMe]
 Name=Switch monitor to this computer
-Exec=thinkvision-control --input this
+Exec=thinkvision-control --input this --yes

@@ -136,6 +136,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     if let Some(listener) = listener {
         listener.listen(|args, responder| {
+            let arrived = std::time::Instant::now();
             if controller::closing() {
                 responder.busy();
                 return;
@@ -143,7 +144,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let responder = platform::instance::BusyUnlessTaken::new(responder);
             let _ = slint::invoke_from_event_loop(move || controller::with(|c| {
                 if let Some(responder) = responder.take() {
-                    c.on_forwarded(args, responder);
+                    c.on_forwarded(args, responder, arrived);
                 }
             }));
         });
@@ -177,7 +178,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     // An orderly exit, even one that cut a capability read short, is not a crash.
     for dir in state_dirs(&data_dir) {
-        Marker::new(dir, &tvc_core::crash::process_key()).clear();
+        Marker::clear_process(&dir);
     }
     log::write(&format!("Exit {exit_code}"));
     if exit_code != 0 {
@@ -186,7 +187,8 @@ fn main() -> Result<(), slint::PlatformError> {
     Ok(())
 }
 
-/// The data directory and every monitor's folder in it: where crash markers and cached capabilities live.
+/// The data directory and every monitor's folder in it: where crash markers and cached capabilities live. The
+/// unstable (`-N`) monitors' markers are in `monitors/_session` (`tvc_core::crash::SESSION_MARKERS`).
 fn state_dirs(data_dir: &Path) -> Vec<PathBuf> {
     let monitors = std::fs::read_dir(data_dir.join("monitors")).into_iter().flatten().flatten()
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))

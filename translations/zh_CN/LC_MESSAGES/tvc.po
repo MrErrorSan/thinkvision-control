@@ -1163,9 +1163,8 @@ msgid ""
 msgstr "在切换回来之前，你将无法从此电脑控制显示器。"
 
 #: crates/tvc-app/src/controller.rs:2283
-msgid ""
-"This is this PC's input, so you can keep controlling the monitor from this PC."
-msgstr "这是此电脑的输入源，你仍可从此电脑控制显示器。"
+msgid "The monitor already shows this input, so nothing changes."
+msgstr "显示器已在显示此输入源，因此不会有任何变化。"
 
 #: crates/tvc-core/src/profile/generic-mccs.json:40
 msgid "Sharpness"
