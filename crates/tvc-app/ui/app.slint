@@ -1,8 +1,20 @@
 // Everything the window shows and every action it can take. Rust fills this on open and while visible,
 // and listens to the callbacks. Pages read it directly, so no property drilling.
-import { Banner, InputItem, RangeRow, ControlGroup, PresetRow, HotkeyRow, SetupHint, Dialog, FinderChange, FinderValue, ShortcutEditor } from "types.slint";
+import { Banner, InputItem, RangeRow, ControlGroup, PresetRow, HotkeyRow, SetupHint, Dialog, FinderChange, FinderValue, ShortcutEditor, DisplayEntry } from "types.slint";
 
 export global App {
+    // Displays. The picker is hidden when fewer than two are attached. In Together mode (`selected-id` == "")
+    // `main-ranges` holds the master sliders in percent (codes 0x10, 0x12, 0x62), and range-changed /
+    // range-released on them go to every included display.
+    in property <[DisplayEntry]> displays;
+    in property <string> selected-id;           // the display the tabs show; "" = All together
+    in property <bool> together-available;      // two or more displays can be controlled together
+    in property <bool> experimental;            // the selected display has no verified profile
+    callback select-display(string);            // a display id, or "" for All together
+    callback set-included(string, bool);        // display id, part of Together mode
+    callback set-offset(string, int);           // display id, Together offset in percent
+    callback copy-capability-report();          // the selected display's raw capabilities, identity, level, warnings
+
     // Header
     in property <string> model-name: "Monitor";
     in property <string> status-glyph;

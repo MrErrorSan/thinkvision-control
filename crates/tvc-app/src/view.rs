@@ -12,9 +12,19 @@ use tvc_core::profile::{ControlDefinition, ControlKind, Group, Section};
 
 use crate::controller::State;
 use crate::{
-    App, Banner, ControlGroup, ControlKind as UiKind, ControlRow, FinderChange, FinderValue, HotkeyRow, InputItem,
-    PresetRow, RangeRow, Severity, SetupHint,
+    App, Banner, ControlGroup, ControlKind as UiKind, ControlRow, DisplayEntry, FinderChange, FinderValue, HotkeyRow,
+    InputItem, PresetRow, RangeRow, Severity, SetupHint,
 };
+
+/// The display picker (multi-display contract): `entries` in picker order, `selected_id` "" for All together.
+/// The controller builds the entries; w4-ui may keep the models in place like `sync` does.
+pub fn render_displays(app: &App, entries: Vec<DisplayEntry>, selected_id: &str, together_available: bool,
+    experimental: bool) {
+    app.set_displays(ModelRc::new(VecModel::from(entries)));
+    app.set_selected_id(selected_id.into());
+    app.set_together_available(together_available);
+    app.set_experimental(experimental);
+}
 
 pub const BRIGHTNESS: u8 = 0x10;
 pub const CONTRAST: u8 = 0x12;
@@ -449,6 +459,8 @@ fn monitor_groups(st: &State, shown: &ModelRc<ControlGroup>) -> Vec<ControlGroup
 }
 
 pub fn render(app: &App, st: &State) {
+    // One display until w4-controller passes the real list.
+    render_displays(app, Vec::new(), "", false, false);
     let (status_glyph, status_text) = status_line(st);
     app.set_model_name(s(header_name(st)));
     app.set_status_glyph(s(status_glyph));

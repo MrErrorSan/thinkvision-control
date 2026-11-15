@@ -103,3 +103,20 @@ export struct Dialog {
     primary: string,
     secondary: string,
 }
+
+// One attached display in the picker (multi-display). `state`: connected | connecting | unreachable |
+// not-responding | read-only | disconnected. `kind`: external | built-in. `level`: verified | experimental |
+// read-only. `offset` is the Together-mode offset in percent; `included` = part of Together mode.
+export struct DisplayEntry {
+    id: string,
+    name: string,
+    detail: string,
+    state: string,
+    kind: string,
+    level: string,
+    included: bool,
+    offset: int,
+    has-input: bool,
+    has-colour: bool,
+    has-volume: bool,
+}

@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
-use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget, Parsed};
+use tvc_core::cli::{self as tvc_cli, CliCommand, GetTarget, InputChoice, Parsed};
 use tvc_core::engine::{
     Command, Event, FinderEvent, MonitorStatus, Origin, PowerState, ResolvedControls, WriteOutcome, WriteResult,
 };
@@ -166,7 +166,7 @@ pub struct CliJob {
 
 impl CliJob {
     pub fn own(parsed: &Parsed) -> Self {
-        Self { command: parsed.command, json: parsed.json, yes: parsed.yes, reply: None }
+        Self { command: parsed.command.clone(), json: parsed.json, yes: parsed.yes, reply: None }
     }
 }
 
@@ -212,7 +212,7 @@ pub struct Controller {
     /// A one-shot CLI run with no resident app: exit after the OSD.
     headless: Cell<bool>,
     /// The headless run's own verb and `--json`, for its timeout line.
-    headless_job: Cell<Option<(CliCommand, bool)>>,
+    headless_job: RefCell<Option<(CliCommand, bool)>>,
     /// The headless run's own verb has printed its result.
     done: Cell<bool>,
     /// Verbs that arrived before the first connect attempt finished.
@@ -282,7 +282,7 @@ impl Controller {
             scheme,
             demo,
             headless: Cell::new(false),
-            headless_job: Cell::new(None),
+            headless_job: RefCell::new(None),
             done: Cell::new(false),
             pending_cli: RefCell::new(vec![]),
             waiting: RefCell::new(VecDeque::new()),
@@ -386,7 +386,7 @@ impl Controller {
     /// `cold` (no cached capabilities, so the connect reads them first) gets the longer one.
     pub fn start_headless(self: &Rc<Self>, job: CliJob, cold: bool) {
         self.headless.set(true);
-        self.headless_job.set(Some((job.command, job.json)));
+        *self.headless_job.borrow_mut() = Some((job.command.clone(), job.json));
         self.pending_cli.borrow_mut().push(job);
         let budget = if cold { HEADLESS_COLD_BUDGET } else { HEADLESS_BUDGET };
         slint::Timer::single_shot(budget, || with(|c| c.headless_timeout()));
@@ -398,7 +398,7 @@ impl Controller {
     }
 
     fn own_job(&self) -> Option<CliJob> {
-        let (command, json) = self.headless_job.get()?;
+        let (command, json) = self.headless_job.borrow().clone()?;
         Some(CliJob { command, json, yes: false, reply: None })
     }
 
@@ -547,7 +547,7 @@ impl Controller {
             return;
         }
         let origin = Origin::Cli;
-        let command = job.command;
+        let command = job.command.clone();
         let cmd = match command {
             CliCommand::Show | CliCommand::Help => {
                 self.show_window();
@@ -562,8 +562,23 @@ impl Controller {
                 let preset = if night { st.settings.night.clone() } else { st.settings.day.clone() };
                 Command::ApplyPreset { preset, origin }
             }
-            CliCommand::Input(code) => {
-                let value = code.unwrap_or(self.st.borrow().settings.this_machine_input) as u16;
+            CliCommand::Input(ref choice) => {
+                // w4-controller: resolve per display. Until then: this PC, the n-th input, or the first of a kind.
+                let value = {
+                    let st = self.st.borrow();
+                    let inputs = &st.profile.inputs;
+                    match choice {
+                        InputChoice::This => Some(st.settings.this_machine_input),
+                        InputChoice::Slot(n) => inputs.get(usize::from(*n).wrapping_sub(1)).map(|i| i.code),
+                        InputChoice::Kind(kind) => inputs.iter().find(|i| i.kind == *kind).map(|i| i.code),
+                    }
+                };
+                let Some(value) = value.map(u16::from) else {
+                    const NO_INPUT: &str = "This monitor has no such input.";
+                    let json = failure_json(&job.command, "Unsupported", NO_INPUT);
+                    self.finish(job, tvc_cli::exit_code(Some(ResultKind::Unsupported), true), NO_INPUT, json, true);
+                    return;
+                };
                 if !job.yes && status == MonitorStatus::Connected {
                     self.confirm_cli_input(job, value);
                     return;
@@ -1881,6 +1896,11 @@ fn wire(ui: &MainWindow) {
     app.on_save_auto_times(|day, night| with(|c| c.save_auto_times(&day, &night)));
     app.on_save_auto_location(|lat, lon| with(|c| c.save_auto_location(&lat, &lon)));
     app.on_restore_backup(|| with(|c| c.send(Command::RestoreBackup { origin: Origin::Window })));
+    // Multi-display callbacks; w4-controller implements them.
+    app.on_select_display(|_id| {});
+    app.on_set_included(|_id, _on| {});
+    app.on_set_offset(|_id, _offset| {});
+    app.on_copy_capability_report(|| {});
     app.on_dialog_result(|yes| with(|c| c.on_dialog_result(yes)));
     app.on_set_background(|on| {
         with(|c| {

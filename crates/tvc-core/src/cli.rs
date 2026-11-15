@@ -9,9 +9,25 @@ use crate::result::ResultKind;
 
 const MAX_STEP: i32 = 100;
 
-// The first name per code is the canonical one `format` writes.
-const INPUTS: [(&str, Option<u8>); 6] =
-    [("hdmi", Some(0x11)), ("dp", Some(0x0F)), ("displayport", Some(0x0F)), ("usbc", Some(0x31)), ("usb-c", Some(0x31)), ("this", None)];
+// The first name per choice is the canonical one `format` writes. Kinds match a display's input kinds
+// (`InputOption::kind`); w4-cli adds the slots `1`, `2`, `3`.
+const INPUTS: [(&str, &str); 6] =
+    [("hdmi", "hdmi"), ("dp", "dp"), ("displayport", "dp"), ("usbc", "usbc"), ("usb-c", "usbc"), ("this", "")];
+
+/// Which input `--input` asks for; each display resolves it against its own inputs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InputChoice {
+    /// This PC's input (`ThisMachineInput`, per display).
+    This,
+    /// The display's n-th input button, 1-based.
+    Slot(u8),
+    /// An input kind: "hdmi", "dp" or "usbc".
+    Kind(String),
+}
+
+fn input_choice(kind: &str) -> InputChoice {
+    if kind.is_empty() { InputChoice::This } else { InputChoice::Kind(kind.into()) }
+}
 const STEPS: [(&str, u8); 2] = [("brightness", 0x10), ("contrast", 0x12)];
 const TARGETS: [(&str, GetTarget); 6] = [("brightness", GetTarget::Brightness), ("contrast", GetTarget::Contrast),
     ("input", GetTarget::Input), ("colour-mode", GetTarget::ColourMode), ("color-mode", GetTarget::ColourMode),
@@ -27,14 +43,13 @@ pub enum GetTarget {
     All,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum CliCommand {
     /// Open the window.
     #[default]
     Show,
     Preset { night: bool },
-    /// `None` = this PC's input (`ThisMachineInput`).
-    Input(Option<u8>),
+    Input(InputChoice),
     Step { code: u8, delta: i32 },
     /// Read and print.
     Get(GetTarget),
@@ -42,7 +57,7 @@ pub enum CliCommand {
     Help,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Parsed {
     pub command: CliCommand,
     /// `--startup`: start in the tray without a window.
@@ -53,6 +68,9 @@ pub struct Parsed {
     pub yes: bool,
     /// `--version`: print the version and exit.
     pub version: bool,
+    /// `--display <name|id|all>`: which display a verb acts on; None = the default target. Resolved by the app
+    /// against the attached displays (w4-cli parses it).
+    pub display: Option<String>,
 }
 
 /// A malformed command line; exit code 2, with `message` and the usage on stderr.
@@ -171,7 +189,10 @@ pub fn format(command: &CliCommand) -> Option<Vec<String>> {
     match *command {
         CliCommand::Show => Some(Vec::new()),
         CliCommand::Preset { night } => args("--preset", if night { "night" } else { "day" }.into()),
-        CliCommand::Input(code) => INPUTS.iter().find(|(_, c)| *c == code).and_then(|(n, _)| args("--input", n.to_string())),
+        CliCommand::Input(ref choice) => match choice {
+            InputChoice::Slot(n) => args("--input", n.to_string()),
+            _ => INPUTS.iter().find(|(_, k)| input_choice(k) == *choice).and_then(|(n, _)| args("--input", n.to_string())),
+        },
         CliCommand::Step { code, delta } if (-MAX_STEP..=MAX_STEP).contains(&delta) => {
             let name = STEPS.iter().find(|(_, c)| *c == code)?.0;
             args("--step", format!("{name}={}{}", if delta < 0 { "-" } else { "+" }, delta.abs()))
@@ -251,7 +272,7 @@ fn parse_verb(name: &str, value: &str) -> Result<CliCommand, String> {
             "night" => Some(CliCommand::Preset { night: true }),
             _ => None,
         },
-        "input" => INPUTS.iter().find(|(n, _)| *n == lower).map(|(_, c)| CliCommand::Input(*c)),
+        "input" => INPUTS.iter().find(|(n, _)| *n == lower).map(|(_, k)| CliCommand::Input(input_choice(k))),
         "get" => TARGETS.iter().find(|(n, _)| *n == lower).map(|(_, t)| CliCommand::Get(*t)),
         _ => return parse_step(&lower),
     };

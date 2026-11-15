@@ -1,6 +1,6 @@
 //! CommandLineTests.
 
-use crate::cli::{exit_code, format, help, parse, parse_url, version_line, CliCommand, GetTarget, Parsed};
+use crate::cli::{exit_code, format, help, parse, parse_url, version_line, CliCommand, GetTarget, InputChoice, Parsed};
 use crate::hotkey::{Action, Gesture};
 use crate::result::ResultKind;
 
@@ -12,7 +12,7 @@ fn command(args: &[&str]) -> CliCommand {
 fn format_round_trips_through_parse() {
     let commands = [
         CliCommand::Preset { night: false }, CliCommand::Preset { night: true },
-        CliCommand::Input(Some(0x11)), CliCommand::Input(Some(0x0F)), CliCommand::Input(Some(0x31)), CliCommand::Input(None),
+        CliCommand::Input(InputChoice::Kind("hdmi".into())), CliCommand::Input(InputChoice::Kind("dp".into())), CliCommand::Input(InputChoice::Kind("usbc".into())), CliCommand::Input(InputChoice::This),
         CliCommand::Step { code: 0x10, delta: 5 }, CliCommand::Step { code: 0x12, delta: -5 },
         CliCommand::Get(GetTarget::Brightness), CliCommand::Get(GetTarget::Contrast), CliCommand::Get(GetTarget::Input),
         CliCommand::Get(GetTarget::ColourMode), CliCommand::Get(GetTarget::All), CliCommand::Help,
@@ -24,21 +24,21 @@ fn format_round_trips_through_parse() {
 
 #[test]
 fn canonical_format() {
-    assert_eq!(format(&CliCommand::Input(Some(0x0F))).unwrap(), ["--input", "dp"]);
-    assert_eq!(format(&CliCommand::Input(None)).unwrap(), ["--input", "this"]);
+    assert_eq!(format(&CliCommand::Input(InputChoice::Kind("dp".into()))).unwrap(), ["--input", "dp"]);
+    assert_eq!(format(&CliCommand::Input(InputChoice::This)).unwrap(), ["--input", "this"]);
     assert_eq!(format(&CliCommand::Step { code: 0x10, delta: 5 }).unwrap(), ["--step", "brightness=+5"]);
     assert_eq!(format(&CliCommand::Step { code: 0x12, delta: 0 }).unwrap(), ["--step", "contrast=+0"]);
     assert_eq!(format(&CliCommand::Show).unwrap(), Vec::<String>::new());
     assert!(format(&CliCommand::Step { code: 0x10, delta: 500 }).is_none());
-    assert!(format(&CliCommand::Input(Some(0x99))).is_none());
+    assert!(format(&CliCommand::Input(InputChoice::Kind("vga".into()))).is_none());
 }
 
 #[test]
 fn accepts_both_value_forms_case_insensitively() {
     assert_eq!(command(&["--preset=NIGHT"]), CliCommand::Preset { night: true });
     assert_eq!(command(&["--preset", "night"]), CliCommand::Preset { night: true });
-    assert_eq!(command(&["--INPUT", "USB-C"]), CliCommand::Input(Some(0x31)));
-    assert_eq!(command(&["--input=displayport"]), CliCommand::Input(Some(0x0F)));
+    assert_eq!(command(&["--INPUT", "USB-C"]), CliCommand::Input(InputChoice::Kind("usbc".into())));
+    assert_eq!(command(&["--input=displayport"]), CliCommand::Input(InputChoice::Kind("dp".into())));
     assert_eq!(command(&["--step", "contrast=-7"]), CliCommand::Step { code: 0x12, delta: -7 });
     assert_eq!(command(&["--step=brightness=3"]), CliCommand::Step { code: 0x10, delta: 3 });
 }
@@ -62,7 +62,7 @@ fn first_verb_wins_and_a_malformed_verb_is_an_error() {
 #[test]
 fn startup_flag_combines_with_a_command() {
     assert_eq!(parse(&["--startup", "--input", "usb-c"]).unwrap(),
-        Parsed { command: CliCommand::Input(Some(0x31)), startup: true, json: false, ..Parsed::default() });
+        Parsed { command: CliCommand::Input(InputChoice::Kind("usbc".into())), startup: true, json: false, ..Parsed::default() });
     assert_eq!(parse(&["--startup"]).unwrap(), Parsed { command: CliCommand::Show, startup: true, json: false, ..Parsed::default() });
 }
 
@@ -116,12 +116,12 @@ fn urls_parse_case_insensitively_with_either_form() {
         ("thinkvision://preset/day", CliCommand::Preset { night: false }),
         ("ThinkVision://Preset/Night/", CliCommand::Preset { night: true }),
         ("thinkvision:preset/night", CliCommand::Preset { night: true }),
-        ("thinkvision://input/hdmi", CliCommand::Input(Some(0x11))),
-        ("thinkvision://input/dp", CliCommand::Input(Some(0x0F))),
-        ("thinkvision://input/displayport", CliCommand::Input(Some(0x0F))),
-        ("thinkvision://input/usbc", CliCommand::Input(Some(0x31))),
-        ("thinkvision://input/USB-C", CliCommand::Input(Some(0x31))),
-        ("thinkvision://input/this", CliCommand::Input(None)),
+        ("thinkvision://input/hdmi", CliCommand::Input(InputChoice::Kind("hdmi".into()))),
+        ("thinkvision://input/dp", CliCommand::Input(InputChoice::Kind("dp".into()))),
+        ("thinkvision://input/displayport", CliCommand::Input(InputChoice::Kind("dp".into()))),
+        ("thinkvision://input/usbc", CliCommand::Input(InputChoice::Kind("usbc".into()))),
+        ("thinkvision://input/USB-C", CliCommand::Input(InputChoice::Kind("usbc".into()))),
+        ("thinkvision://input/this", CliCommand::Input(InputChoice::This)),
         ("thinkvision://step/brightness/+5", CliCommand::Step { code: 0x10, delta: 5 }),
         ("thinkvision://step/contrast/-10/", CliCommand::Step { code: 0x12, delta: -10 }),
         ("thinkvision://step/brightness/%2B5", CliCommand::Step { code: 0x10, delta: 5 }),
@@ -146,7 +146,7 @@ fn bad_urls_are_none() {
 #[test]
 fn a_lone_url_argument_is_a_verb() {
     assert_eq!(command(&["thinkvision://preset/night"]), CliCommand::Preset { night: true });
-    assert_eq!(command(&["THINKVISION:input/this"]), CliCommand::Input(None));
+    assert_eq!(command(&["THINKVISION:input/this"]), CliCommand::Input(InputChoice::This));
     assert!(parse(&["thinkvision://nonsense"]).is_err());
     assert_eq!(parse(&["--startup", "thinkvision://get/all", "--json"]).unwrap(),
         Parsed { command: CliCommand::Get(GetTarget::All), startup: true, json: true, ..Parsed::default() });
@@ -201,7 +201,7 @@ fn flags_reject_values() {
 
 #[test]
 fn second_valid_verb_is_ignored_invalid_is_error() {
-    assert_eq!(command(&["--input", "dp", "--preset", "night"]), CliCommand::Input(Some(0x0F)));
+    assert_eq!(command(&["--input", "dp", "--preset", "night"]), CliCommand::Input(InputChoice::Kind("dp".into())));
     assert_eq!(command(&["--get", "all", "thinkvision://preset/day"]), CliCommand::Get(GetTarget::All));
     assert!(parse(&["--preset", "day", "--input", "vga"]).is_err());
     assert!(parse(&["--preset", "day", "thinkvision://nonsense"]).is_err());
@@ -211,7 +211,7 @@ fn second_valid_verb_is_ignored_invalid_is_error() {
 fn version_and_yes_flags() {
     assert_eq!(parse(&["--version"]).unwrap(), Parsed { version: true, ..Parsed::default() });
     assert_eq!(parse(&["--input", "this", "--YES"]).unwrap(),
-        Parsed { command: CliCommand::Input(None), yes: true, ..Parsed::default() });
+        Parsed { command: CliCommand::Input(InputChoice::This), yes: true, ..Parsed::default() });
     assert_eq!(version_line(), format!("thinkvision-control {}", env!("CARGO_PKG_VERSION")));
 }
 

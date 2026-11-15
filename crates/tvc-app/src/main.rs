@@ -92,7 +92,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let mode = match parsed.command {
         CliCommand::Show if parsed.startup => "tray".to_string(),
         CliCommand::Show => "window".to_string(),
-        command => format!("command line {}", cli::format(&command).map(|a| a.join(" ")).unwrap_or_default()),
+        ref command => format!("command line {}", cli::format(command).map(|a| a.join(" ")).unwrap_or_default()),
     };
     log::write(&format!("Start: {}, {mode}{}", cli::version_line(), if demo { ", demo" } else { "" }));
 
