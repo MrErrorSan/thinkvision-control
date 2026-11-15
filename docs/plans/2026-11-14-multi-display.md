@@ -91,7 +91,7 @@ todos:
     status: pending
     depends-on: w4-contract
   - id: w4-tray-osd
-    content: The tray with per-display rows and a Together toggle; the OSD naming the display and showing on that display's screen, identified without the title literal; hotkey target registration. Mockup 4. Fixes APP-16.
+    content: The tray stays the 0.0.8 design (no per-display rows); the OSD naming the display and showing on that display's screen, identified without the title literal; hotkey target registration. Mockup 4. Fixes APP-16.
     status: pending
     depends-on: w4-contract
   - id: w4-cli
@@ -398,7 +398,7 @@ pub enum HubEvent {
 - The minimum width drops to 360 px.
 
 **w4-tray-osd.**
-- **Tray:** one brightness row per display, plus a Together toggle.
+- **Tray (revised 2026-11-15, your decision):** no tray flyout and no per-display rows. The icon only shows that the app is running in the background, so a user can tell why global shortcuts might not work. Clicking it restores the window, and the app minimises back to it. The menu stays as in 0.0.8.
 - **OSD:** shows the display's name, on that display's screen. On Windows the screen comes from `MonitorFromPoint`/HMONITOR, and the OSD window is identified by a handle instead of its title.
 
 **w4-cli.**
@@ -500,3 +500,4 @@ pub enum HubEvent {
   - **The OSD's window attributes come from a flag set while it is created.** The title match in 0.0.8 never fired (APP-16), so the OSD gets `with_active(false)` and skip-taskbar for the first time in 0.1.0. This needs a live check.
   - **Laptop panel on Windows:** `\\.\LCD` brightness IOCTLs instead of WMI; the capability string is `(prot(monitor)type(LCD)vcp(10))`.
   - **Hotkeys act on All by default.** UnderPointer uses the cursor on Windows only and falls back to All elsewhere.
+- **The tray is locked to the 0.0.8 design (your decision, 2026-11-15).** The per-display rows and the Together toggle Wave 4 added from mockup 4 are removed.
