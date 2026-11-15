@@ -177,6 +177,9 @@ pub enum Command {
     /// One connect attempt: capabilities (once per process, never in safe mode), then every Range/Enum code in
     /// Main/Advanced plus every cached code. No retry burst; follow with `RequestReconnect` if that's wanted.
     Connect,
+    /// Like `Connect`, but reads only `codes` after connecting (`--get brightness`). Stub: reads everything
+    /// until w1-engine.
+    ConnectReading(Vec<u8>),
     /// After a display/device/power event: reconnect even while connected, then burst if still not connected.
     RecheckAfterEvent,
     /// Start (or restart) the retry burst; no-op while connected. Paused while asleep.
@@ -439,7 +442,7 @@ impl Worker {
 
     fn handle(&mut self, command: Command) {
         match command {
-            Command::Connect => {
+            Command::Connect | Command::ConnectReading(_) => {
                 if !self.asleep() {
                     self.reconnect();
                 }
