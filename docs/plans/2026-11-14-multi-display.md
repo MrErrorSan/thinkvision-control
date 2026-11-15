@@ -498,5 +498,5 @@ pub enum HubEvent {
   - **Together mode doesn't use `Target::All`.** It sends one `Target::One` per included, connected display under a shared OpId, because raw values differ per model and `All` would also reach excluded displays. `HubEvent::Batch` still feeds the same handler.
   - **A detached display stays in the picker as Disconnected for the session.**
   - **The OSD's window attributes come from a flag set while it is created.** The title match in 0.0.8 never fired (APP-16), so the OSD gets `with_active(false)` and skip-taskbar for the first time in 0.1.0. This needs a live check.
-  - **Laptop panel on Windows:** `\.\LCD` brightness IOCTLs instead of WMI; the capability string is `(prot(monitor)type(LCD)vcp(10))`.
+  - **Laptop panel on Windows:** `\\.\LCD` brightness IOCTLs instead of WMI; the capability string is `(prot(monitor)type(LCD)vcp(10))`.
   - **Hotkeys act on All by default.** UnderPointer uses the cursor on Windows only and falls back to All elsewhere.
