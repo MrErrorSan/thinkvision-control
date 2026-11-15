@@ -278,3 +278,35 @@ fn native_show(osd: &Osd, show: bool) {
 fn native_show(osd: &Osd, show: bool) {
     let _ = if show { osd.show() } else { osd.hide() };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::bottom_centre;
+
+    #[test]
+    fn bottom_centre_at_scale_one() {
+        // 320 x 64 card, its bottom 96 px above the work area's bottom: x = 960 - 160, y = 1040 - 64 - 96.
+        assert_eq!(bottom_centre((0, 0, 1920, 1040), 1.0), (800, 880));
+    }
+
+    #[test]
+    fn bottom_centre_scales_card_and_gap() {
+        // 480 x 96 card, 144 px gap.
+        assert_eq!(bottom_centre((0, 0, 1920, 1040), 1.5), (720, 800));
+        // 400 x 80 card, 120 px gap.
+        assert_eq!(bottom_centre((0, 0, 2560, 1400), 1.25), (1080, 1200));
+        // 640 x 128 card, 192 px gap.
+        assert_eq!(bottom_centre((0, 0, 3840, 2120), 2.0), (1600, 1800));
+    }
+
+    #[test]
+    fn bottom_centre_offset_and_negative_origins() {
+        // A second screen to the right.
+        assert_eq!(bottom_centre((1920, 0, 2560, 1400), 1.0), (3040, 1240));
+        // A screen to the left and above the primary one.
+        assert_eq!(bottom_centre((-1920, -200, 1920, 1080), 1.0), (-1120, 720));
+        assert_eq!(bottom_centre((-1920, -200, 1920, 1080), 1.25), (-1160, 680));
+        // Below the primary one.
+        assert_eq!(bottom_centre((0, 1080, 1920, 1040), 1.0), (800, 1960));
+    }
+}

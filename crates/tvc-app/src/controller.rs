@@ -249,6 +249,14 @@ impl State {
     }
 }
 
+#[cfg(test)]
+impl State {
+    /// A fresh state for unit tests (`view` tests can't reach `State::new`), belonging to `monitor`.
+    pub(crate) fn for_test(profile: Arc<Profile>, monitor: Option<Monitor>) -> Self {
+        Self { monitor, ..Self::new(profile) }
+    }
+}
+
 /// The app-wide state and one [`State`] per controllable display.
 struct AppState {
     settings: Settings,
@@ -2970,4 +2978,236 @@ fn wire(ui: &MainWindow) {
         })
     });
     app.on_finder_save(|| with(|c| c.finder_save()));
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use tvc_core::engine::ResolvedControls;
+    use tvc_core::identity::{BackendKind, DisplayInfo, MonitorId, MonitorIdentity};
+    use tvc_core::link::DisplayKind;
+    use tvc_core::mccs::MonitorCapabilities;
+    use tvc_core::profile::ProfileStore;
+    use tvc_core::support::SupportLevel;
+
+    use super::{cli_targets, display_at, level_for, master_percent, tagged, together_value};
+
+    fn close(actual: f32, expected: f32, tolerance: f32) -> bool {
+        (actual - expected).abs() <= tolerance
+    }
+
+    #[test]
+    fn together_value_adds_the_offset_and_clips() {
+        assert_eq!(together_value(50.0, 0, 100), 50);
+        assert_eq!(together_value(50.0, 10, 100), 60);
+        assert_eq!(together_value(50.0, -10, 100), 40);
+        // The sum is clipped at 0 and 100 %.
+        assert_eq!(together_value(95.0, 10, 100), 100);
+        assert_eq!(together_value(5.0, -10, 100), 0);
+        assert_eq!(together_value(0.0, -200, 100), 0);
+        assert_eq!(together_value(100.0, 200, 100), 100);
+        assert_eq!(together_value(150.0, 0, 100), 100);
+        assert_eq!(together_value(-5.0, 0, 100), 0);
+    }
+
+    #[test]
+    fn together_value_scales_to_the_display_max() {
+        assert_eq!(together_value(100.0, 0, 255), 255);
+        assert_eq!(together_value(0.0, 0, 255), 0);
+        // 127.5 rounds away from zero.
+        assert_eq!(together_value(50.0, 0, 255), 128);
+        assert_eq!(together_value(40.0, 10, 50), 25);
+        assert_eq!(together_value(100.0, 50, 50), 50);
+        assert_eq!(together_value(33.3, 0, 100), 33);
+    }
+
+    #[test]
+    fn together_value_max_zero_is_zero() {
+        assert_eq!(together_value(0.0, 0, 0), 0);
+        assert_eq!(together_value(50.0, 0, 0), 0);
+        assert_eq!(together_value(100.0, 50, 0), 0);
+    }
+
+    #[test]
+    fn master_percent_removes_the_offset_and_clamps() {
+        assert!(close(master_percent(50, 100, 0), 50.0, 1e-4));
+        assert!(close(master_percent(60, 100, 10), 50.0, 1e-4));
+        assert!(close(master_percent(40, 100, -10), 50.0, 1e-4));
+        assert!(close(master_percent(128, 255, 0), 50.196, 1e-3));
+        assert!(close(master_percent(255, 255, 0), 100.0, 1e-4));
+        // Clamped to 0–100.
+        assert!(close(master_percent(100, 100, -10), 100.0, 1e-4));
+        assert!(close(master_percent(0, 100, 10), 0.0, 1e-4));
+        assert!(close(master_percent(5, 100, 50), 0.0, 1e-4));
+    }
+
+    #[test]
+    fn master_percent_max_zero_is_zero() {
+        assert!(close(master_percent(0, 0, 0), 0.0, 0.0));
+        assert!(close(master_percent(5, 0, 0), 0.0, 0.0));
+        assert!(close(master_percent(0, 0, -50), 0.0, 0.0));
+    }
+
+    #[test]
+    fn master_percent_inverts_together_value() {
+        for max in [100u16, 255, 50] {
+            // One raw step, in percent: what rounding to the display's own scale can lose.
+            let step = 100.0 / f32::from(max);
+            for offset in [-20, 0, 20] {
+                for master in (0..=100).step_by(5).map(|m| m as f32) {
+                    let sum = master + offset as f32;
+                    let value = together_value(master, offset, max);
+                    let back = master_percent(value, max, offset);
+                    // Where the sum isn't clipped, the master comes back.
+                    let expected = if (0.0..=100.0).contains(&sum) { master } else { (sum.clamp(0.0, 100.0) - offset as f32).clamp(0.0, 100.0) };
+                    assert!(close(back, expected, step / 2.0 + 1e-3), "max {max} offset {offset} master {master}: {back}");
+                }
+            }
+        }
+    }
+
+    fn id(text: &str) -> MonitorId {
+        MonitorId(text.into())
+    }
+
+    #[test]
+    fn display_at_finds_the_screen() {
+        let screens = [(id("A"), (0, 0, 1920, 1080)), (id("B"), (1920, 0, 2560, 1440))];
+        assert_eq!(display_at((100, 100), &screens), Some(id("A")));
+        assert_eq!(display_at((0, 0), &screens), Some(id("A")));
+        assert_eq!(display_at((1919, 1079), &screens), Some(id("A")));
+        assert_eq!(display_at((2000, 1200), &screens), Some(id("B")));
+        assert_eq!(display_at((4479, 1439), &screens), Some(id("B")));
+    }
+
+    #[test]
+    fn display_at_right_and_bottom_edges_are_exclusive() {
+        let screens = [(id("A"), (0, 0, 1920, 1080)), (id("B"), (1920, 0, 2560, 1440))];
+        // x = 1920 is B's first column, not A's last.
+        assert_eq!(display_at((1920, 10), &screens), Some(id("B")));
+        // y = 1080 is below A; B is taller, so (10, 1080) is on neither.
+        assert_eq!(display_at((10, 1080), &screens), None);
+        assert_eq!(display_at((4480, 10), &screens), None);
+        assert_eq!(display_at((2000, 1440), &screens), None);
+    }
+
+    #[test]
+    fn display_at_outside_every_screen() {
+        let screens = [(id("A"), (0, 0, 1920, 1080)), (id("L"), (-1280, -200, 1280, 1024))];
+        assert_eq!(display_at((-1, -201), &screens), None);
+        assert_eq!(display_at((5000, 5000), &screens), None);
+        assert_eq!(display_at((-1, 0), &screens), Some(id("L")));
+        assert_eq!(display_at((-1280, -200), &screens), Some(id("L")));
+        assert_eq!(display_at((-1281, 0), &screens), None);
+        assert_eq!(display_at((0, 0), &[]), None);
+    }
+
+    #[test]
+    fn display_at_overlapping_screens_first_wins() {
+        let screens = [(id("A"), (0, 0, 100, 100)), (id("B"), (50, 50, 100, 100))];
+        assert_eq!(display_at((60, 60), &screens), Some(id("A")));
+        assert_eq!(display_at((120, 120), &screens), Some(id("B")));
+        let swapped = [screens[1].clone(), screens[0].clone()];
+        assert_eq!(display_at((60, 60), &swapped), Some(id("B")));
+    }
+
+    fn rows(list: &[(&str, &str, bool)]) -> Vec<(String, String, bool)> {
+        list.iter().map(|(id, name, able)| (id.to_string(), name.to_string(), *able)).collect()
+    }
+
+    #[test]
+    fn cli_targets_all_skips_unsupported() {
+        let list = rows(&[("LEN-1", "Left", true), ("DEL-9", "Dell", false), ("LEN-2", "Right", true)]);
+        assert_eq!(cli_targets(None, &list).unwrap(), ["LEN-1", "LEN-2"]);
+        assert_eq!(cli_targets(Some("all"), &list).unwrap(), ["LEN-1", "LEN-2"]);
+        assert_eq!(cli_targets(Some("ALL"), &list).unwrap(), ["LEN-1", "LEN-2"]);
+        assert_eq!(cli_targets(Some(" All "), &list).unwrap(), ["LEN-1", "LEN-2"]);
+    }
+
+    #[test]
+    fn cli_targets_all_keeps_every_display_when_none_supports_the_verb() {
+        let list = rows(&[("LEN-1", "Left", false), ("DEL-9", "Dell", false)]);
+        assert_eq!(cli_targets(None, &list).unwrap(), ["LEN-1", "DEL-9"]);
+        assert_eq!(cli_targets(Some("all"), &list).unwrap(), ["LEN-1", "DEL-9"]);
+        assert!(cli_targets(None, &[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn cli_targets_named_display() {
+        let list = rows(&[("LEN-1", "Left", true), ("DEL-9", "Dell", false), ("LEN-2", "Right", true)]);
+        // A named display is a target even when it may not support the verb: it answers for itself.
+        assert_eq!(cli_targets(Some("DEL-9"), &list).unwrap(), ["DEL-9"]);
+        assert_eq!(cli_targets(Some("dell"), &list).unwrap(), ["DEL-9"]);
+        assert_eq!(cli_targets(Some("RIGHT"), &list).unwrap(), ["LEN-2"]);
+        // An exact id wins over another display's name.
+        let tricky = rows(&[("A", "B", true), ("B", "x", true)]);
+        assert_eq!(cli_targets(Some("B"), &tricky).unwrap(), ["B"]);
+    }
+
+    #[test]
+    fn cli_targets_ambiguous_or_unknown_is_an_error() {
+        let list = rows(&[("LEN-1", "P32p-20", true), ("LEN-2", "p32p-20", true)]);
+        let message = cli_targets(Some("P32P-20"), &list).unwrap_err().message;
+        assert!(message.contains("several") && message.contains("LEN-1") && message.contains("LEN-2"), "{message}");
+        let message = cli_targets(Some("Middle"), &list).unwrap_err().message;
+        assert!(message.contains("Middle") && message.contains("P32p-20 (LEN-1)"), "{message}");
+        assert!(cli_targets(Some("Middle"), &[]).is_err());
+    }
+
+    #[test]
+    fn tagged_puts_id_and_name_first() {
+        assert_eq!(tagged(&id("LEN-1"), "Left", "{}"), r#"{"id":"LEN-1","name":"Left"}"#);
+        assert_eq!(tagged(&id("LEN-1"), "Left", r#"{"ok":true,"kind":"Ok"}"#),
+            r#"{"id":"LEN-1","name":"Left","ok":true,"kind":"Ok"}"#);
+        // Both are JSON strings, escaped.
+        assert_eq!(tagged(&id("a\"b"), "C:\\x", "{}"), r#"{"id":"a\"b","name":"C:\\x"}"#);
+    }
+
+    fn info(edid: &str, backend: BackendKind) -> DisplayInfo {
+        DisplayInfo {
+            target: String::new(),
+            identity: MonitorIdentity { edid_id: edid.into(), serial: None, connector: None },
+            name: String::new(),
+            kind: if backend == BackendKind::Backlight { DisplayKind::BuiltIn } else { DisplayKind::External },
+            backend,
+        }
+    }
+
+    fn controls(vcp: &[(u8, Option<Vec<u8>>)]) -> ResolvedControls {
+        let profile = ProfileStore::new(std::env::temp_dir().join("tvc-app-test-no-overlay")).profile().clone();
+        let capabilities = MonitorCapabilities { vcp: vcp.iter().cloned().collect(), ..Default::default() };
+        ResolvedControls { profile, capabilities, controls: BTreeMap::new(), firmware: None }
+    }
+
+    #[test]
+    fn level_for_built_in_panel_is_verified() {
+        let panel = info("", BackendKind::Backlight);
+        let verified = SupportLevel::Verified { profile: "builtin-backlight".into() };
+        assert_eq!(level_for(&panel, None), verified);
+        assert_eq!(level_for(&panel, Some(&controls(&[]))), verified);
+        // Whatever its EDID says.
+        assert_eq!(level_for(&info("LEN62A2", BackendKind::Backlight), None), verified);
+    }
+
+    #[test]
+    fn level_for_empty_caps_is_read_only_unless_verified() {
+        assert_eq!(level_for(&info("DEL4321", BackendKind::Ddc), Some(&controls(&[]))), SupportLevel::ReadOnly);
+        assert_eq!(level_for(&info("LEN1234", BackendKind::Ddc), Some(&controls(&[]))), SupportLevel::ReadOnly);
+        assert_eq!(level_for(&info("", BackendKind::Ddc), Some(&controls(&[]))), SupportLevel::ReadOnly);
+        // No controls yet reads as not read yet.
+        assert_eq!(level_for(&info("DEL4321", BackendKind::Ddc), None), SupportLevel::GenericMccs);
+        assert_eq!(level_for(&info("DEL4321", BackendKind::Ddc), Some(&controls(&[(0x10, None)]))), SupportLevel::GenericMccs);
+        assert_eq!(level_for(&info("LEN1234", BackendKind::Ddc), Some(&controls(&[(0x60, Some(vec![0x11, 0x0F]))]))),
+            SupportLevel::LenovoFamily);
+    }
+
+    #[test]
+    fn level_for_len62a2_is_verified() {
+        let p32p20 = SupportLevel::Verified { profile: "p32p20".into() };
+        let display = info("LEN62A2", BackendKind::Ddc);
+        assert_eq!(level_for(&display, None), p32p20);
+        assert_eq!(level_for(&display, Some(&controls(&[]))), p32p20);
+        assert_eq!(level_for(&display, Some(&controls(&[(0x10, None)]))), p32p20);
+    }
 }

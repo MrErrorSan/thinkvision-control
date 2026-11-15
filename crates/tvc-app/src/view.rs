@@ -800,3 +800,224 @@ fn civil_date(days: i64) -> (i32, u32, u32) {
     let year = (yoe + era * 400 + i64::from(month <= 2)) as i32;
     (year, month, day)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use slint::{Model, ModelRc};
+    use tvc_core::engine::{MonitorStatus, ResolvedControls};
+    use tvc_core::hub::Monitor;
+    use tvc_core::identity::{BackendKind, DisplayInfo, MonitorId, MonitorIdentity};
+    use tvc_core::link::{DisplayKind, VcpReading};
+    use tvc_core::mccs::MonitorCapabilities;
+    use tvc_core::profile::{Profile, ProfileStore};
+    use tvc_core::support::SupportLevel;
+
+    use super::{
+        built_in, disabled_reason, glyph, header_name, monitor_groups, status_line, support_label, AttachedDisplay,
+        DISPLAY_CODES, INPUT, VOLUME,
+    };
+    use crate::controller::State;
+
+    fn store() -> ProfileStore {
+        ProfileStore::new(std::env::temp_dir().join("tvc-app-test-no-overlay"))
+    }
+
+    fn profile() -> Arc<Profile> {
+        store().profile().clone()
+    }
+
+    fn monitor(name: &str, kind: DisplayKind, backend: BackendKind) -> Monitor {
+        Monitor {
+            id: MonitorId("LEN62A2-S1".into()),
+            info: DisplayInfo {
+                target: String::new(),
+                identity: MonitorIdentity { edid_id: "LEN62A2".into(), serial: Some("S1".into()), connector: None },
+                name: name.into(),
+                kind,
+                backend,
+            },
+        }
+    }
+
+    fn state(monitor: Option<Monitor>) -> State {
+        State::for_test(profile(), monitor)
+    }
+
+    /// Controls as the P32p-20 profile resolves `vcp`, with the monitor's own `model` name.
+    fn controls(model: &str, vcp: &[(u8, Option<Vec<u8>>)], firmware: Option<&str>) -> Arc<ResolvedControls> {
+        let store = store();
+        let capabilities =
+            MonitorCapabilities { model: model.into(), vcp: vcp.iter().cloned().collect(), ..Default::default() };
+        Arc::new(ResolvedControls {
+            profile: store.profile().clone(),
+            controls: store.resolve(&capabilities),
+            capabilities,
+            firmware: firmware.map(String::from),
+        })
+    }
+
+    #[test]
+    fn support_label_words() {
+        assert_eq!(support_label(&SupportLevel::Verified { profile: "p32p20".into() }), "Verified");
+        assert_eq!(support_label(&SupportLevel::Verified { profile: "builtin-backlight".into() }), "Verified");
+        assert_eq!(support_label(&SupportLevel::LenovoFamily), "Experimental");
+        assert_eq!(support_label(&SupportLevel::GenericMccs), "Experimental");
+        assert_eq!(support_label(&SupportLevel::ReadOnly), "Read-only");
+    }
+
+    #[test]
+    fn header_name_prefers_the_monitor_then_the_os_name() {
+        let mut st = state(Some(monitor(" DELL U2720Q ", DisplayKind::External, BackendKind::Ddc)));
+        assert_eq!(header_name(&st), "DELL U2720Q");
+        // The name the monitor reported over DDC/CI wins.
+        st.controls = Some(controls(" P32p-20 ", &[(0x10, None)], None));
+        assert_eq!(header_name(&st), "P32p-20");
+    }
+
+    #[test]
+    fn header_name_without_a_name() {
+        let mut st = state(None);
+        assert_eq!(st.status, MonitorStatus::Connecting);
+        assert_eq!(header_name(&st), "Display");
+        st.status = MonitorStatus::Connected;
+        assert_eq!(header_name(&st), "Your display");
+        st.status = MonitorStatus::NotResponding;
+        assert_eq!(header_name(&st), "Display");
+        st.status = MonitorStatus::NotFound;
+        assert_eq!(header_name(&st), "No supported display");
+        st.displays = Some(vec![AttachedDisplay {
+            name: String::new(),
+            edid_id: "LEN62A2".into(),
+            kind: DisplayKind::External,
+            tracked: true,
+        }]);
+        assert_eq!(header_name(&st), "Display can't be reached");
+        let panel = state(Some(monitor("", DisplayKind::BuiltIn, BackendKind::Backlight)));
+        assert_eq!(header_name(&panel), "Built-in display");
+    }
+
+    #[test]
+    fn status_line_connected() {
+        let mut st = state(Some(monitor("", DisplayKind::External, BackendKind::Ddc)));
+        st.status = MonitorStatus::Connected;
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Connected".to_string()));
+        st.values.insert(INPUT, VcpReading { current: 0x11, max: 0 });
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Input: HDMI".to_string()));
+        st.controls = Some(controls("P32p-20", &[(INPUT, Some(vec![0x11, 0x0F]))], Some("LB1.2")));
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Input: HDMI · Firmware LB1.2".to_string()));
+        // An input the monitor doesn't advertise has no label.
+        st.values.insert(INPUT, VcpReading { current: 0x31, max: 0 });
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Connected · Firmware LB1.2".to_string()));
+    }
+
+    #[test]
+    fn status_line_by_level_and_state() {
+        let mut st = state(Some(monitor("", DisplayKind::External, BackendKind::Ddc)));
+        st.status = MonitorStatus::Connected;
+        st.level = SupportLevel::GenericMccs;
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Connected · No verified profile".to_string()));
+        st.level = SupportLevel::LenovoFamily;
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Connected · No verified profile".to_string()));
+        st.level = SupportLevel::ReadOnly;
+        assert_eq!(status_line(&st), (glyph::CONNECTED, "Connected".to_string()));
+        st.asleep = true;
+        assert_eq!(status_line(&st), (glyph::MOON, "Asleep".to_string()));
+        st.status = MonitorStatus::Connecting;
+        assert_eq!(status_line(&st), (glyph::CONNECTING, "Looking for your monitor…".to_string()));
+        st.status = MonitorStatus::NotResponding;
+        assert_eq!(status_line(&st), (glyph::ERROR, "Not responding".to_string()));
+        st.status = MonitorStatus::NotFound;
+        assert_eq!(status_line(&st), (glyph::NOT_FOUND, "Not connected".to_string()));
+        let mut panel = state(Some(monitor("", DisplayKind::BuiltIn, BackendKind::Backlight)));
+        panel.status = MonitorStatus::Connected;
+        assert_eq!(status_line(&panel), (glyph::CONNECTED, "Brightness through the system".to_string()));
+    }
+
+    #[test]
+    fn disabled_reason_by_state() {
+        let mut st = state(None);
+        let cases = [
+            (MonitorStatus::Connected, SupportLevel::ReadOnly, "Read only on this display"),
+            (MonitorStatus::Connected, SupportLevel::Verified { profile: "p32p20".into() }, ""),
+            (MonitorStatus::Connected, SupportLevel::GenericMccs, ""),
+            (MonitorStatus::Connecting, SupportLevel::ReadOnly, "Available once the monitor answers"),
+            (MonitorStatus::NotResponding, SupportLevel::GenericMccs, "Available when the monitor responds again"),
+            (MonitorStatus::NotFound, SupportLevel::LenovoFamily, "Available when the monitor is connected"),
+        ];
+        for (status, level, reason) in cases {
+            st.status = status;
+            st.level = level.clone();
+            assert_eq!(disabled_reason(&st), reason, "{status:?} {level:?}");
+        }
+    }
+
+    /// The Monitor tab as (group title, codes).
+    fn groups(st: &State) -> Vec<(String, Vec<i32>)> {
+        monitor_groups(st, &ModelRc::default())
+            .into_iter()
+            .map(|g| (g.title.to_string(), g.rows.iter().map(|r| r.code).collect()))
+            .collect()
+    }
+
+    fn monitor_tab_state() -> State {
+        let mut st = state(Some(monitor("", DisplayKind::External, BackendKind::Ddc)));
+        st.status = MonitorStatus::Connected;
+        // Ranges, Display-tab codes, hidden and unknown codes stay off the Monitor tab.
+        st.controls = Some(controls("P32p-20", &[(0x10, None), (INPUT, Some(vec![0x11])), (0x86, None), (0xE0, None),
+            (0xEA, None), (0xEC, None), (0x04, Some(vec![1])), (0xCA, None), (0x99, None)], None));
+        st
+    }
+
+    #[test]
+    fn monitor_groups_follow_the_profile_order() {
+        let mut st = monitor_tab_state();
+        // The P32p-20 order: E0, EA, 86 (not by code), then EC, then the resets.
+        assert_eq!(groups(&st), [
+            ("Picture".to_string(), vec![0xE0, 0xEA, 0x86]),
+            ("Ports".to_string(), vec![0xEC]),
+            ("Reset and restore".to_string(), vec![0x04]),
+        ]);
+        let mut reordered = (*st.profile).clone();
+        reordered.control_order = vec![0x86, 0xEA, 0xE0];
+        st.profile = Arc::new(reordered.clone());
+        assert_eq!(groups(&st)[0], ("Picture".to_string(), vec![0x86, 0xEA, 0xE0]));
+        // Unlisted codes go last, by code.
+        reordered.control_order = vec![0xEA];
+        st.profile = Arc::new(reordered);
+        assert_eq!(groups(&st)[0], ("Picture".to_string(), vec![0xEA, 0x86, 0xE0]));
+    }
+
+    #[test]
+    fn monitor_groups_read_only_rows_are_disabled() {
+        let mut st = monitor_tab_state();
+        let enabled = |st: &State| -> Vec<bool> {
+            monitor_groups(st, &ModelRc::default()).iter().flat_map(|g| g.rows.iter().map(|r| r.enabled)).collect()
+        };
+        assert!(enabled(&st).iter().all(|e| *e));
+        st.level = SupportLevel::ReadOnly;
+        let rows = enabled(&st);
+        assert_eq!(rows.len(), 5);
+        assert!(rows.iter().all(|e| !*e));
+        st.controls = None;
+        assert!(groups(&st).is_empty());
+    }
+
+    #[test]
+    fn built_in_panel_gets_no_presets() {
+        // `render` leaves the Day and Night preset cards out exactly when `built_in` holds.
+        assert!(built_in(&state(Some(monitor("", DisplayKind::BuiltIn, BackendKind::Backlight)))));
+        assert!(built_in(&state(Some(monitor("", DisplayKind::BuiltIn, BackendKind::Ddc)))));
+        assert!(built_in(&state(Some(monitor("", DisplayKind::External, BackendKind::Backlight)))));
+        assert!(!built_in(&state(Some(monitor("", DisplayKind::External, BackendKind::Ddc)))));
+        assert!(!built_in(&state(None)));
+    }
+
+    #[test]
+    fn display_codes_include_volume() {
+        assert_eq!(VOLUME, 0x62);
+        assert!(DISPLAY_CODES.contains(&0x62));
+        assert!(DISPLAY_CODES.contains(&INPUT));
+    }
+}

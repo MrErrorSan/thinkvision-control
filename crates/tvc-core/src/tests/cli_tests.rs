@@ -1,6 +1,9 @@
 //! CommandLineTests.
 
-use crate::cli::{exit_code, format, help, parse, parse_url, version_line, CliCommand, GetTarget, InputChoice, Parsed};
+use crate::cli::{
+    combined_exit_code, exit_code, format, help, parse, parse_url, resolve_display, version_line, CliCommand, GetTarget,
+    InputChoice, Parsed,
+};
 use crate::hotkey::{Action, Gesture};
 use crate::result::ResultKind;
 
@@ -246,4 +249,217 @@ fn linux_defaults_avoid_vt_and_workspace_keys() {
     assert_eq!(Action::InputHdmi.default_gesture_for(false), "Ctrl+Alt+F1");
     assert_eq!(Action::InputHdmi.default_gesture_for(true), "Ctrl+Win+1");
     assert_eq!(Action::BrightnessUp.default_gesture(), Action::BrightnessUp.default_gesture_for(cfg!(target_os = "linux")));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Wave 4: --display, display links, input slots, resolve_display and the multi-display helpers.
+
+fn display(args: &[&str]) -> Option<String> {
+    parse(args).unwrap().display
+}
+
+#[test]
+fn display_flag_both_forms() {
+    for args in [&["--display", "LEN-S1", "--preset", "day"][..], &["--display=LEN-S1", "--preset", "day"],
+        &["--preset", "day", "--DISPLAY", "LEN-S1"]] {
+        let parsed = parse(args).unwrap();
+        assert_eq!(parsed.command, CliCommand::Preset { night: false }, "{args:?}");
+        assert_eq!(parsed.display.as_deref(), Some("LEN-S1"), "{args:?}");
+    }
+    // Kept as typed (case and inner spaces), trimmed at the ends.
+    assert_eq!(display(&["--display", " My Screen ", "--get", "all"]).as_deref(), Some("My Screen"));
+    assert_eq!(display(&["--display=all", "--get", "all"]).as_deref(), Some("all"));
+    assert_eq!(display(&["--get", "all"]), None);
+}
+
+#[test]
+fn display_needs_value() {
+    for args in [&["--display"][..], &["--display="], &["--display", "--json"], &["--preset", "day", "--display"],
+        &["--display=", "--preset", "day"], &["--display", "  ", "--preset", "day"]] {
+        let message = parse(args).unwrap_err().message;
+        assert!(message.contains("--display"), "{args:?}: {message}");
+    }
+}
+
+#[test]
+fn display_without_verb_is_error() {
+    let message = parse(&["--display", "x"]).unwrap_err().message;
+    assert!(message.contains("--display x") && message.contains("needs a verb"), "{message}");
+    assert!(parse(&["--display", "x", "--json"]).is_err());
+    assert!(parse(&["--display", "x", "thinkvision://open"]).is_err());
+    assert_eq!(command(&["--display", "x", "--help"]), CliCommand::Help);
+    assert_eq!(command(&["-h", "--display", "x"]), CliCommand::Help);
+    let parsed = parse(&["--display", "x", "--version"]).unwrap();
+    assert!(parsed.version);
+    assert_eq!(parsed.command, CliCommand::Show);
+}
+
+#[test]
+fn first_display_wins() {
+    assert_eq!(display(&["--display", "a", "--display", "b", "--preset", "day"]).as_deref(), Some("a"));
+    assert_eq!(display(&["--display=a", "--preset", "day", "--display=b"]).as_deref(), Some("a"));
+    // A flag before a display link wins over the link's display, and a link's display over a later flag.
+    assert_eq!(display(&["--display", "a", "thinkvision://display/b/preset/day"]).as_deref(), Some("a"));
+    assert_eq!(display(&["thinkvision://display/b/preset/day", "--display", "a"]).as_deref(), Some("b"));
+}
+
+#[test]
+fn display_url() {
+    let parsed = parse(&["thinkvision://display/LEN-S1/step/brightness/+5"]).unwrap();
+    assert_eq!(parsed.command, CliCommand::Step { code: 0x10, delta: 5 });
+    assert_eq!(parsed.display.as_deref(), Some("LEN-S1"));
+    // The scheme and the "display" segment in any case; the verb lowercased as usual, the name kept.
+    let parsed = parse(&["THINKVISION:Display/Left/Preset/NIGHT/"]).unwrap();
+    assert_eq!(parsed.command, CliCommand::Preset { night: true });
+    assert_eq!(parsed.display.as_deref(), Some("Left"));
+    let parsed = parse(&["thinkvision://display/ALL/input/2"]).unwrap();
+    assert_eq!(parsed.command, CliCommand::Input(InputChoice::Slot(2)));
+    assert_eq!(parsed.display.as_deref(), Some("ALL"));
+}
+
+#[test]
+fn display_url_decodes() {
+    assert_eq!(display(&["thinkvision://display/My%20Screen/get/all"]).as_deref(), Some("My Screen"));
+    assert_eq!(display(&["thinkvision://display/a%2Fb/get/all"]).as_deref(), Some("a/b"));
+    assert_eq!(display(&["thinkvision://display/%C3%A9cran/get/all"]).as_deref(), Some("\u{e9}cran"));
+    // A malformed escape, invalid UTF-8, or a name that is only spaces is not a link.
+    for url in ["thinkvision://display/bad%2/get/all", "thinkvision://display/%ZZ/get/all",
+        "thinkvision://display/%FF/get/all", "thinkvision://display/%20/get/all"] {
+        assert!(parse(&[url]).is_err(), "{url}");
+        assert_eq!(parse_url(url), None, "{url}");
+    }
+}
+
+#[test]
+fn display_url_rejects() {
+    for url in ["thinkvision://display/x/open", "thinkvision://display/x", "thinkvision://display//preset/day",
+        "thinkvision://display/x/", "thinkvision://display/", "thinkvision://display/x/bogus/day"] {
+        assert_eq!(parse_url(url), None, "{url}");
+        let message = parse(&[url]).unwrap_err().message;
+        assert!(message.contains("not a known thinkvision: link"), "{url}: {message}");
+    }
+}
+
+#[test]
+fn display_url_parse_url_drops_display() {
+    assert_eq!(parse_url("thinkvision://display/LEN-S1/step/brightness/+5"), Some(CliCommand::Step { code: 0x10, delta: 5 }));
+    assert_eq!(parse_url("thinkvision://display/all/get/all"), Some(CliCommand::Get(GetTarget::All)));
+    assert_eq!(parse_url("thinkvision:display/x/preset/day"), Some(CliCommand::Preset { night: false }));
+}
+
+#[test]
+fn ignored_url_display() {
+    let parsed = parse(&["--preset", "day", "thinkvision://display/b/get/all"]).unwrap();
+    assert_eq!(parsed.command, CliCommand::Preset { night: false });
+    assert_eq!(parsed.display, None);
+    let parsed = parse(&["thinkvision://display/a/get/all", "thinkvision://display/b/preset/day"]).unwrap();
+    assert_eq!(parsed.command, CliCommand::Get(GetTarget::All));
+    assert_eq!(parsed.display.as_deref(), Some("a"));
+}
+
+#[test]
+fn input_slots() {
+    assert_eq!(command(&["--input", "1"]), CliCommand::Input(InputChoice::Slot(1)));
+    assert_eq!(command(&["--input=3"]), CliCommand::Input(InputChoice::Slot(3)));
+    assert_eq!(command(&["thinkvision://input/2"]), CliCommand::Input(InputChoice::Slot(2)));
+    assert_eq!(parse_url("thinkvision://input/2"), Some(CliCommand::Input(InputChoice::Slot(2))));
+    for args in [&["--input", "0"][..], &["--input", "4"], &["--input=0"], &["--input", "-1"], &["thinkvision://input/4"]] {
+        assert!(parse(args).is_err(), "{args:?}");
+    }
+    assert_eq!(parse_url("thinkvision://input/0"), None);
+    assert!(parse(&["--input", "4"]).unwrap_err().message.contains('4'));
+}
+
+#[test]
+fn format_out_of_range_slot() {
+    assert_eq!(format(&CliCommand::Input(InputChoice::Slot(1))).unwrap(), ["--input", "1"]);
+    assert_eq!(format(&CliCommand::Input(InputChoice::Slot(3))).unwrap(), ["--input", "3"]);
+    assert!(format(&CliCommand::Input(InputChoice::Slot(0))).is_none());
+    assert!(format(&CliCommand::Input(InputChoice::Slot(4))).is_none());
+    assert!(format(&CliCommand::Input(InputChoice::Slot(255))).is_none());
+}
+
+fn displays(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+    pairs.iter().map(|(id, name)| (id.to_string(), name.to_string())).collect()
+}
+
+#[test]
+fn resolve_all() {
+    let list = displays(&[("LEN-2", "Right"), ("LEN-1", "Left"), ("DEL-9", "Dell")]);
+    for wanted in ["all", "ALL", "All", " all "] {
+        assert_eq!(resolve_display(wanted, &list).unwrap(), ["LEN-2", "LEN-1", "DEL-9"], "{wanted}");
+    }
+    assert!(resolve_display("all", &[]).unwrap().is_empty());
+}
+
+#[test]
+fn resolve_exact_id_wins() {
+    // "B" is display 1's name and display 2's id: the id wins.
+    let list = displays(&[("A", "B"), ("B", "x")]);
+    assert_eq!(resolve_display("B", &list).unwrap(), ["B"]);
+    // The id match is exact: "b" is no id, so it matches display 1's name, ignoring case.
+    assert_eq!(resolve_display("b", &list).unwrap(), ["A"]);
+    assert_eq!(resolve_display(" B ", &list).unwrap(), ["B"]);
+}
+
+#[test]
+fn resolve_name_case_insensitive() {
+    let list = displays(&[("LEN-1", "ThinkVision P32p-20"), ("DEL-9", "DELL U2720Q")]);
+    assert_eq!(resolve_display("thinkvision p32p-20", &list).unwrap(), ["LEN-1"]);
+    assert_eq!(resolve_display("dell u2720q", &list).unwrap(), ["DEL-9"]);
+    assert_eq!(resolve_display("DELL U2720Q", &list).unwrap(), ["DEL-9"]);
+}
+
+#[test]
+fn resolve_ambiguous() {
+    let list = displays(&[("LEN-1", "P32p-20"), ("DEL-9", "Dell"), ("LEN-2", "p32p-20")]);
+    let message = resolve_display("P32P-20", &list).unwrap_err().message;
+    assert!(message.contains("several"), "{message}");
+    assert!(message.contains("P32p-20 (LEN-1)") && message.contains("p32p-20 (LEN-2)"), "{message}");
+    assert!(!message.contains("DEL-9"), "{message}");
+    // An id still picks one of them.
+    assert_eq!(resolve_display("LEN-2", &list).unwrap(), ["LEN-2"]);
+}
+
+#[test]
+fn resolve_none() {
+    let list = displays(&[("LEN-1", "Left"), ("DEL-9", "Dell")]);
+    let message = resolve_display("Middle", &list).unwrap_err().message;
+    assert!(message.contains("'Middle'"), "{message}");
+    assert!(message.contains("Left (LEN-1)") && message.contains("Dell (DEL-9)"), "{message}");
+    let message = resolve_display("Middle", &[]).unwrap_err().message;
+    assert!(message.contains("'Middle'") && message.contains("none is attached"), "{message}");
+}
+
+#[test]
+fn combined_exit_code_is_first_failure() {
+    assert_eq!(combined_exit_code(&[]), 0);
+    assert_eq!(combined_exit_code(&[0, 0]), 0);
+    assert_eq!(combined_exit_code(&[0, 5, 1]), 5);
+    assert_eq!(combined_exit_code(&[8]), 8);
+}
+
+#[test]
+fn action_input_choice() {
+    assert_eq!(Action::InputHdmi.input_choice(), Some(InputChoice::Kind("hdmi".into())));
+    assert_eq!(Action::InputDp.input_choice(), Some(InputChoice::Kind("dp".into())));
+    assert_eq!(Action::InputUsbC.input_choice(), Some(InputChoice::Kind("usbc".into())));
+    assert_eq!(Action::SwitchToMe.input_choice(), Some(InputChoice::This));
+    assert_eq!(Action::BrightnessUp.input_choice(), None);
+    assert_eq!(Action::OpenPanel.input_choice(), None);
+    let with: Vec<Action> = Action::ALL.into_iter().filter(|a| a.input_choice().is_some()).collect();
+    assert_eq!(with, [Action::InputHdmi, Action::InputDp, Action::InputUsbC, Action::SwitchToMe]);
+    // Each input shortcut means what `--input` with its kind means.
+    for (action, arg) in [(Action::InputHdmi, "hdmi"), (Action::InputDp, "dp"), (Action::InputUsbC, "usbc"),
+        (Action::SwitchToMe, "this")] {
+        assert_eq!(Some(command(&["--input", arg])), action.input_choice().map(CliCommand::Input), "{arg}");
+    }
+}
+
+#[test]
+fn help_mentions_display() {
+    let text = help();
+    for needle in ["--display", "name|id|all", "thinkvision://display/", "1|2|3", "several displays"] {
+        assert!(text.contains(needle), "{needle}");
+    }
 }
