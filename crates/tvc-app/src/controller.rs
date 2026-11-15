@@ -119,6 +119,10 @@ pub struct State {
     pub auto_note: String,
     /// "Try again" was pressed: the banner shows progress until the status changes or 16 s pass.
     pub retrying: bool,
+    /// Why the last Day or Night preset from the window failed, shown on the preset cards; "" after a success.
+    pub preset_note: String,
+    /// A capability read was asked for and its `Controls` event hasn't come yet: the window shows progress.
+    pub reading_capabilities: bool,
 }
 
 impl State {
@@ -164,8 +168,8 @@ impl CliJob {
     }
 }
 
-/// A command-line `--input` waiting for the on-screen confirm. Dropped unconfirmed (Cancel, the window closed,
-/// another dialog already open), it answers exit 3.
+/// A command-line `--input` waiting for the on-screen confirm, shown now or queued behind another dialog. Dropped
+/// unconfirmed (Cancel, the window closed), it answers exit 3.
 struct AwaitingConfirm(Option<CliJob>);
 
 impl Drop for AwaitingConfirm {
@@ -179,7 +183,7 @@ impl Drop for AwaitingConfirm {
 }
 
 pub struct Controller {
-    /// Taken at exit by `into_engine`.
+    /// Taken at exit by `take_engine`.
     engine: RefCell<Option<EngineHandle>>,
     store: SettingsStore,
     st: RefCell<State>,
@@ -188,6 +192,8 @@ pub struct Controller {
     tray: RefCell<Option<Tray>>,
     hotkeys: RefCell<Option<platform::hotkeys::Hotkeys>>,
     confirm: RefCell<Option<Pending>>,
+    /// Confirms asked while another was open, shown in turn once it is answered.
+    dialogs: RefCell<VecDeque<(Dialog, Pending)>>,
     editor: RefCell<Option<EditorState>>,
     poll: slint::Timer,
     banner_hold: slint::Timer,
@@ -250,12 +256,15 @@ impl Controller {
                 safe_mode: false,
                 auto_note: String::new(),
                 retrying: false,
+                preset_note: String::new(),
+                reading_capabilities: false,
             }),
             window: RefCell::new(None),
             osd: Rc::new(RefCell::new(OsdHost::default())),
             tray: RefCell::new(None),
             hotkeys: RefCell::new(None),
             confirm: RefCell::new(None),
+            dialogs: RefCell::new(VecDeque::new()),
             editor: RefCell::new(None),
             poll: slint::Timer::default(),
             banner_hold: slint::Timer::default(),
@@ -292,7 +301,7 @@ impl Controller {
         self.exit_code.get()
     }
 
-    pub fn into_engine(&self) -> Option<EngineHandle> {
+    pub fn take_engine(&self) -> Option<EngineHandle> {
         self.engine.borrow_mut().take()
     }
 
@@ -730,6 +739,7 @@ impl Controller {
                     self.caps_live.set(true);
                 }
                 st.controls = Some(rc);
+                st.reading_capabilities = false;
                 drop(st);
                 self.render();
             }
@@ -768,6 +778,9 @@ impl Controller {
             if st.status != status {
                 st.retrying = false;
             }
+            if status != MonitorStatus::Connected {
+                st.reading_capabilities = false;
+            }
             st.status = status;
             st.failure = failure;
             match status {
@@ -779,6 +792,7 @@ impl Controller {
                 MonitorStatus::NotFound | MonitorStatus::NotResponding => {
                     st.range_note.clear();
                     st.notes.clear();
+                    st.preset_note.clear();
                     st.finder = FinderState::default();
                     st.values_stale = true;
                 }
@@ -805,7 +819,7 @@ impl Controller {
                 if !self.headless.get() && !self.caps_live.get() {
                     // Connected on the cached capabilities; refresh them from the monitor once things are quiet.
                     // Asked again on each connect until a live read lands (the engine ignores it after one).
-                    slint::Timer::single_shot(Duration::from_secs(2), || with(|c| c.send(Command::ReadCapabilities)));
+                    slint::Timer::single_shot(Duration::from_secs(2), || with(|c| c.read_capabilities()));
                 }
             }
         }
@@ -813,6 +827,32 @@ impl Controller {
             self.refresh_setup_hints();
         }
         self.update_tray();
+        self.render();
+    }
+
+    /// Asks the engine for a live capability read; the window shows progress until its `Controls` event, or until
+    /// the engine has handled the command (it sends no `Controls` when it skips the read, the read fails or the
+    /// string matches the cached one).
+    fn read_capabilities(&self) {
+        {
+            let mut st = self.st.borrow_mut();
+            if st.status != MonitorStatus::Connected {
+                return; // lost in the meantime: the next connect asks again
+            }
+            st.reading_capabilities = true;
+        }
+        self.send(Command::ReadCapabilities);
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.send(Command::Flush(tx));
+        std::thread::spawn(move || {
+            let _ = rx.recv();
+            let _ = slint::invoke_from_event_loop(|| {
+                with(|c| {
+                    c.st.borrow_mut().reading_capabilities = false;
+                    c.render();
+                })
+            });
+        });
         self.render();
     }
 
@@ -895,18 +935,20 @@ impl Controller {
                         self.send(Command::Refresh(codes));
                     }
                 } else if result.outcome != WriteOutcome::NotResponding {
+                    st.notes.insert(c, result.message.clone());
                     if view::GAINS.contains(&c) || c == INPUT || c == COLOUR_MODE {
                         drop(st);
                         self.show_toast(&result.message);
                         st = self.st.borrow_mut();
-                    } else {
-                        st.notes.insert(c, result.message.clone());
                     }
                 }
                 st.bump(c);
             }
             None if preset.is_some() => {
-                if !ok && result.outcome != WriteOutcome::NotResponding {
+                if ok {
+                    st.preset_note.clear();
+                } else if result.outcome != WriteOutcome::NotResponding {
+                    st.preset_note = result.message.clone();
                     drop(st);
                     self.show_toast(&result.message);
                     st = self.st.borrow_mut();
@@ -1017,7 +1059,9 @@ impl Controller {
 
     fn on_window_closed(self: &Rc<Self>) {
         self.poll.stop();
+        // Unanswered confirms count as Cancel (a command-line one answers exit 3 as it drops).
         self.confirm.borrow_mut().take();
+        self.dialogs.borrow_mut().clear();
         if self.editor.borrow_mut().take().is_some() {
             self.register_hotkeys();
         }
@@ -1058,11 +1102,13 @@ impl Controller {
         });
     }
 
+    /// Shows a confirm; while another is open it waits its turn. Without a visible window it is dropped (Cancel).
     fn ask(&self, dialog: Dialog, on_yes: Pending) {
         let Some(ui) = self.visible_window() else { return };
         let app = ui.global::<App>();
         if app.get_dialog().visible {
-            return; // a confirm is already open; this one counts as Cancel
+            self.dialogs.borrow_mut().push_back((dialog, on_yes));
+            return;
         }
         app.set_dialog(Dialog { visible: true, ..dialog });
         *self.confirm.borrow_mut() = Some(on_yes);
@@ -1084,6 +1130,10 @@ impl Controller {
             }
             drop(st);
             self.render();
+        }
+        let next = self.dialogs.borrow_mut().pop_front();
+        if let Some((dialog, on_yes)) = next {
+            self.ask(dialog, on_yes);
         }
     }
 

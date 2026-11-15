@@ -61,10 +61,12 @@ pub fn checksum_ok(edid: &[u8]) -> bool {
 fn descriptors(edid: &[u8]) -> impl Iterator<Item = &[u8]> + '_ {
     let base = (0..4).filter_map(move |i| edid.get(54 + i * 18..72 + i * 18));
     let cta = edid
-        .chunks_exact(128)
+        .as_chunks::<128>()
+        .0
+        .iter()
         .skip(1)
         .filter(|block| block[0] == 0x02 && (4..127).contains(&block[2]))
-        .flat_map(|block| block[usize::from(block[2])..127].chunks_exact(18));
+        .flat_map(|block| block[usize::from(block[2])..127].as_chunks::<18>().0.iter().map(|d| d.as_slice()));
     base.chain(cta)
 }
 

@@ -72,7 +72,8 @@ fn linux_hints(failure: Option<LinkFailure>, hotkeys_ok: bool, facts: &LinuxFact
              ddcutil package, which ships an equivalent rule), then log out and back in.",
             "echo 'KERNEL==\"i2c-[0-9]*\", SUBSYSTEM==\"i2c-dev\", ATTRS{class}==\"0x03*\", TAG+=\"uaccess\"' \
              | sudo tee /etc/udev/rules.d/60-thinkvision-i2c.rules\n\
-             sudo udevadm control --reload && sudo udevadm trigger",
+             sudo udevadm control --reload && sudo udevadm trigger --action=add --subsystem-match=i2c-dev \
+             --subsystem-match=backlight",
         ));
     }
     if failure == Some(LinkFailure::ModuleMissing) {
@@ -314,7 +315,10 @@ mod tests {
             ["linux-i2c-permission", "linux-powerdevil", "linux-gnome-appindicator", "linux-hotkeys"]
         );
         assert!(h[0].command.starts_with("echo 'KERNEL==\"i2c-[0-9]*\", SUBSYSTEM==\"i2c-dev\""));
-        assert!(h[0].command.ends_with("\nsudo udevadm control --reload && sudo udevadm trigger"));
+        assert!(h[0].command.ends_with(
+            "\nsudo udevadm control --reload && sudo udevadm trigger --action=add --subsystem-match=i2c-dev \
+             --subsystem-match=backlight"
+        ));
         assert!(h[1].command.contains("printf '[Service]\\nEnvironment=POWERDEVIL_NO_DDCUTIL=1\\n' > ~/.config"));
         assert!(h[2].command.starts_with("sudo dnf install"));
     }

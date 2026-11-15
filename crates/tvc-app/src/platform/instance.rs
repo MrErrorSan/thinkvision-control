@@ -30,11 +30,6 @@ impl Responder {
             send(reply);
         }
     }
-
-    /// A responder whose reply goes nowhere.
-    pub(crate) fn none() -> Self {
-        Self(None)
-    }
 }
 
 impl Drop for Responder {

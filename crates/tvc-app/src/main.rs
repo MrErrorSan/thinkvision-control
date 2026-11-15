@@ -153,7 +153,7 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let controller = controller::uninstall();
     let exit_code = controller.as_ref().map_or(0, |c| c.exit_code());
-    if let Some(engine) = controller.as_ref().and_then(|c| c.into_engine()) {
+    if let Some(engine) = controller.as_ref().and_then(|c| c.take_engine()) {
         engine.shutdown();
     }
     // An orderly exit, even one that cut a capability read short, is not a crash.

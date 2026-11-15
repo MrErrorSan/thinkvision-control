@@ -432,7 +432,11 @@ pub fn render(app: &App, st: &State) {
     app.set_connected(st.status == MonitorStatus::Connected);
     app.set_values_stale(st.values_stale);
     app.set_banner(banner(st));
-    app.set_loading(st.status == MonitorStatus::Connecting || (st.retrying && st.status != MonitorStatus::Connected));
+    app.set_loading(
+        st.status == MonitorStatus::Connecting
+            || (st.retrying && st.status != MonitorStatus::Connected)
+            || st.reading_capabilities,
+    );
     app.set_disabled_reason(s(disabled_reason(st)));
     let (empty_title, empty_message) = empty_state(st);
     app.set_empty_title(s(empty_title));
@@ -471,6 +475,7 @@ pub fn render(app: &App, st: &State) {
         ],
         |m| app.set_presets(m),
     );
+    app.set_preset_note(s(&st.preset_note));
     let modes = colour_modes(st);
     let mode = st.value(COLOUR_MODE);
     app.set_colour_mode_index(mode.and_then(|m| modes.iter().position(|(v, _)| *v == m)).map_or(-1, |i| i as i32));
