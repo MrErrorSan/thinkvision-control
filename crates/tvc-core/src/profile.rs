@@ -254,7 +254,7 @@ impl ProfileStore {
     /// (0xCA, 0xD6) can't be overridden.
     pub fn save_overlay(&self, def: &ControlDefinition) -> io::Result<()> {
         if self.embedded.get(&def.code).is_some_and(|d| d.safety == SafetyClass::NeverWrite) {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("{} can't be changed.", hex(def.code))));
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied, crate::i18n::trf("{0} can't be changed.", &[&hex(def.code)])));
         }
         let mut controls: Vec<ControlDefinition> =
             self.load_overlay().into_iter().filter(|d| d.code != def.code).collect();

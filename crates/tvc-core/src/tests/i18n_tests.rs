@@ -73,3 +73,12 @@ msgstr ""
     assert_eq!(c["Untranslated"], [""]);
     assert!(!c.contains_key(""));
 }
+
+#[test]
+fn english_scope_nests_and_restores() {
+    use crate::i18n::{english, tr};
+    // The default language is English, so this checks the scope's bookkeeping, not a translation.
+    let inner = english(|| english(|| tr("Brightness")));
+    assert_eq!(inner, "Brightness");
+    assert_eq!(tr("Brightness"), "Brightness");
+}

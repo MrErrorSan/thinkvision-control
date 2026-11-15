@@ -31,6 +31,7 @@ use crate::engine::{
     SHUTDOWN_WAIT,
 };
 use crate::identity::{self, BackendKind, DisplayInfo, Discovery, ListError, MonitorId, MonitorIdentity};
+use crate::i18n::tr;
 use crate::log;
 use crate::result::ResultKind;
 use crate::store::write_atomic;
@@ -489,7 +490,7 @@ fn not_responding() -> WriteResult {
     WriteResult {
         outcome: WriteOutcome::NotResponding,
         kind: ResultKind::NotResponding,
-        message: "Monitor not responding".into(),
+        message: tr("Monitor not responding"),
         value: None,
         kept: None,
     }

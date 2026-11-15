@@ -28,6 +28,7 @@ use crate::result::ResultKind;
 use crate::safety::{self, Verdict};
 use crate::store::{BackupStore, CapabilitiesCache, Preset};
 use crate::hub::OpId;
+use crate::i18n::{tr, trf, trn};
 use crate::identity::{MonitorId, MonitorIdentity};
 use crate::support::{self, SupportLevel};
 use crate::{hex, log};
@@ -46,9 +47,8 @@ const DRAG_EXPIRY: Duration = Duration::from_secs(2);
 /// Waits check for shutdown this often.
 const PAUSE_SLICE: Duration = Duration::from_millis(50);
 
-const ASLEEP_MESSAGE: &str = "The monitor is asleep or this PC is locked";
+/// English, for the log; `not_connected` shows the same text translated.
 const NO_CONTROLS_MESSAGE: &str = "The monitor answers but supports none of the controls this app uses";
-const READ_ONLY_MESSAGE: &str = "Changes are off for this monitor after repeated failed writes; reconnect it to try again.";
 /// Consecutive failed writes that make the monitor read-only until the next reconnect.
 const READ_ONLY_AFTER: u32 = 3;
 
@@ -174,7 +174,7 @@ impl WriteResult {
     }
 
     fn unsupported(name: &str) -> Self {
-        Self::blocked(ResultKind::Unsupported, format!("{name} isn't supported by this monitor."))
+        Self::blocked(ResultKind::Unsupported, trf("{0} isn't supported by this monitor.", &[&tr(name)]))
     }
 }
 
@@ -563,7 +563,21 @@ impl Worker {
         }
     }
 
+    /// A command from the command line answers in English (its result goes to stdout and JSON); the OSD that run
+    /// shows the same English text.
     fn handle(&mut self, command: Command) {
+        let cli = matches!(command,
+            Command::Set { origin: Origin::Cli, .. } | Command::Step { origin: Origin::Cli, .. }
+            | Command::EndDrag { origin: Origin::Cli, .. } | Command::ApplyPreset { origin: Origin::Cli, .. }
+            | Command::RestoreBackup { origin: Origin::Cli });
+        if cli {
+            crate::i18n::english(|| self.handle_command(command));
+        } else {
+            self.handle_command(command);
+        }
+    }
+
+    fn handle_command(&mut self, command: Command) {
         if matches!(command, Command::Connect | Command::ConnectReading(_) | Command::RecheckAfterEvent) {
             self.clear_read_only();
         }
@@ -681,7 +695,7 @@ impl Worker {
     /// crashed (capability read, finder), not ordinary writes, so a false alarm (the app killed mid-read) costs
     /// nothing the user notices.
     fn hold(&self) -> Option<WriteResult> {
-        self.asleep().then(|| WriteResult::blocked(ResultKind::Asleep, ASLEEP_MESSAGE.into()))
+        self.asleep().then(|| WriteResult::blocked(ResultKind::Asleep, tr("The monitor is asleep or this PC is locked")))
     }
 
     fn power(&mut self, state: PowerState) {
@@ -921,10 +935,10 @@ impl Worker {
             return Some(self.not_connected());
         }
         if self.read_only {
-            return Some(WriteResult::blocked(ResultKind::Refused, READ_ONLY_MESSAGE.into()));
+            return Some(WriteResult::blocked(ResultKind::Refused, tr("Changes are off for this monitor after repeated failed writes; reconnect it to try again.")));
         }
         (!self.caps_known).then(|| WriteResult::blocked(ResultKind::Refused,
-            "The monitor's capabilities haven't been read yet.".into()))
+            tr("The monitor's capabilities haven't been read yet.")))
     }
 
     fn set(&mut self, code: u8, value: u16, confirmed: bool) -> WriteResult {
@@ -954,7 +968,7 @@ impl Worker {
         if def.kind == ControlKind::Action {
             if let Err(e) = self.backups.save(&self.backup_values()) {
                 log::write(&format!("Backup failed: {e}"));
-                return WriteResult::blocked(ResultKind::Refused, format!("Backup failed — {} cancelled.", def.name));
+                return WriteResult::blocked(ResultKind::Refused, trf("Backup failed — {0} cancelled.", &[&tr(&def.name)]));
             }
         }
 
@@ -977,8 +991,8 @@ impl Worker {
                     if actual.current != v {
                         return WriteResult {
                             kept: Some(actual.current),
-                            ..WriteResult::blocked(ResultKind::Kept, format!(
-                                "{} remains {}; the monitor did not apply {v}.", def.name, actual.current))
+                            ..WriteResult::blocked(ResultKind::Kept, trf(
+                                "{0} remains {1}; the monitor did not apply {2}.", &[&tr(&def.name), &actual.current, &v]))
                         };
                     }
                 }
@@ -1028,7 +1042,7 @@ impl Worker {
                     WriteResult {
                         kept: Some(reading.current),
                         ..WriteResult::blocked(ResultKind::Kept,
-                            format!("The monitor stayed on {}", value_label(def, reading.current)))
+                            trf("The monitor stayed on {0}", &[&tr(&value_label(def, reading.current))]))
                     }
                 }
             }
@@ -1153,14 +1167,14 @@ impl Worker {
                 return result;
             }
         }
-        WriteResult::ok(format!("{} preset", preset.name), None)
+        WriteResult::ok(trf("{0} preset", &[&tr(&preset.name)]), None)
     }
 
     fn restore_backup(&mut self) -> WriteResult {
         let mut values = match self.backups.load_latest() {
             Ok(Some(values)) => values,
-            Ok(None) => return WriteResult::blocked(ResultKind::Refused, "No backup found.".into()),
-            Err(e) => return WriteResult::blocked(ResultKind::Refused, format!("Couldn't read the backup: {e}")),
+            Ok(None) => return WriteResult::blocked(ResultKind::Refused, tr("No backup found.")),
+            Err(e) => return WriteResult::blocked(ResultKind::Refused, trf("Couldn't read the backup: {0}", &[&e])),
         };
         if let Some(result) = self.write_gate() {
             return result;
@@ -1178,7 +1192,8 @@ impl Worker {
             match result.outcome {
                 WriteOutcome::Ok => restored += 1,
                 WriteOutcome::NotResponding => {
-                    return WriteResult { message: format!("{}; restored {restored} of {total} settings.", result.message),
+                    return WriteResult { message: trn("{0}; restored {1} of {2} settings.", "{0}; restored {1} of {2} settings.",
+                        total as u64, &[&result.message, &restored, &total]),
                         ..result };
                 }
                 _ => {
@@ -1188,9 +1203,10 @@ impl Worker {
             }
         }
         match kind {
-            None => WriteResult::ok("Backup restored".into(), None),
+            None => WriteResult::ok(tr("Backup restored"), None),
             Some(kind) => WriteResult::blocked(kind,
-                format!("Restored {restored} of {total} settings. {}", notes.join(" "))),
+                trn("Restored {0} of {1} settings. {2}", "Restored {0} of {1} settings. {2}", total as u64,
+                    &[&restored, &total, &notes.join(" ")])),
         }
     }
 
@@ -1240,11 +1256,12 @@ impl Worker {
     /// The result while not connected, by status.
     fn not_connected(&self) -> WriteResult {
         let (kind, message) = match self.status {
-            MonitorStatus::NotFound => (ResultKind::NotFound, "Monitor not found"),
-            MonitorStatus::NotResponding if self.no_controls => (ResultKind::NotResponding, NO_CONTROLS_MESSAGE),
-            _ => (ResultKind::NotResponding, "Monitor not responding"),
+            MonitorStatus::NotFound => (ResultKind::NotFound, tr("Monitor not found")),
+            MonitorStatus::NotResponding if self.no_controls => (ResultKind::NotResponding,
+                tr("The monitor answers but supports none of the controls this app uses")),
+            _ => (ResultKind::NotResponding, tr("Monitor not responding")),
         };
-        WriteResult { outcome: WriteOutcome::NotResponding, kind, message: message.into(), value: None, kept: None }
+        WriteResult { outcome: WriteOutcome::NotResponding, kind, message, value: None, kept: None }
     }
 
     /// The result of a failed call on control `name`: Unsupported is final for the control; otherwise the
@@ -1402,9 +1419,9 @@ fn call(sink: &Sink, event: Event) {
 
 fn describe(def: &ControlDefinition, value: u16) -> String {
     match def.kind {
-        ControlKind::Range => format!("{} {value}", def.name),
-        ControlKind::Enum => format!("{} → {}", def.name, value_label(def, value)),
-        ControlKind::Action => def.name.clone(),
+        ControlKind::Range => format!("{} {value}", tr(&def.name)),
+        ControlKind::Enum => format!("{} → {}", tr(&def.name), tr(&value_label(def, value))),
+        ControlKind::Action => tr(&def.name),
     }
 }
 

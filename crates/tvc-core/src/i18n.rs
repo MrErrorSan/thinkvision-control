@@ -21,6 +21,19 @@ const CATALOGS: &[(&str, &str)] = &[
 ];
 
 static CURRENT: RwLock<&str> = RwLock::new("en");
+
+thread_local! {
+    static FORCE_ENGLISH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `f` with every lookup on this thread returning English: for text that goes to the command line or JSON,
+/// which stay English whatever the window's language.
+pub fn english<R>(f: impl FnOnce() -> R) -> R {
+    let before = FORCE_ENGLISH.with(|c| c.replace(true));
+    let result = f();
+    FORCE_ENGLISH.with(|c| c.set(before));
+    result
+}
 static PARSED: OnceLock<HashMap<&'static str, Catalog>> = OnceLock::new();
 
 /// msgid → its forms (one, or one per plural form).
@@ -85,7 +98,7 @@ fn plural_form(language: &str, n: u64) -> usize {
 
 fn lookup(msgid: &str, form: usize) -> Option<String> {
     let language = language();
-    if language == "en" {
+    if language == "en" || FORCE_ENGLISH.with(std::cell::Cell::get) {
         return None;
     }
     let catalogs = PARSED.get_or_init(|| CATALOGS.iter().map(|(code, text)| (*code, parse(text))).collect());
